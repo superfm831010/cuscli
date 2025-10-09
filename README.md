@@ -1,214 +1,214 @@
-# Auto-Coder v1.0.39 Source Code
+# Auto-Coder v1.0.39 源代码
 
-> 🔒 **Private Repository** - This is a private repository containing the source code of Auto-Coder v1.0.39 for secondary development purposes.
+> 🔒 **私有仓库** - 这是一个包含 Auto-Coder v1.0.39 源代码的私有仓库，用于二次开发目的。
 
-## 📋 Project Description
+## 📋 项目简介
 
-This repository contains the complete source code of Auto-Coder v1.0.39, an AI-powered coding assistant tool. The code has been extracted from the official wheel package for secondary development and customization.
+本仓库包含 Auto-Coder v1.0.39 的完整源代码，这是一个 AI 驱动的编程助手工具。代码从官方 wheel 安装包中提取，用于二次开发和定制。
 
-**Original Package**: `auto-coder-1.0.39-py3-none-any.whl`
+**原始安装包**：`auto-coder-1.0.39-py3-none-any.whl`
 
-## ⚠️ Important Notice
+## ⚠️ 重要声明
 
-This software is **proprietary software** with the following restrictions:
-- ❌ Commercial use is strictly prohibited
-- ❌ Source code distribution is prohibited without authorization
-- ✅ Personal learning and research only
-- ✅ Closed, non-public environment use
+本软件为**专有软件**，具有以下限制：
+- ❌ 严格禁止商业使用
+- ❌ 未经授权禁止分发源代码
+- ✅ 仅供个人学习和研究使用
+- ✅ 仅限封闭的非公开环境使用
 
-For full license details, see [dist-info/LICENSE](dist-info/LICENSE).
+完整许可协议详见 [dist-info/LICENSE](dist-info/LICENSE)。
 
-## 🚀 Quick Start
+## 🚀 快速开始
 
-### Prerequisites
+### 前置要求
 
-- Python 3.10, 3.11, or 3.12
-- pip package manager
-- Virtual environment (recommended)
+- Python 3.10、3.11 或 3.12
+- pip 包管理器
+- 虚拟环境（推荐）
 
-### Installation
+### 安装步骤
 
-1. **Clone the repository** (if you have access):
+1. **克隆仓库**（如果您有访问权限）：
    ```bash
    git clone https://github.com/superfm831010/cuscli.git
    cd cuscli
    ```
 
-2. **Create and activate virtual environment**:
+2. **创建并激活虚拟环境**：
    ```bash
-   # Using conda (recommended)
+   # 使用 conda（推荐）
    conda create --name autocoder python=3.10.11
    conda activate autocoder
 
-   # Or using venv
+   # 或使用 venv
    python -m venv venv
    source venv/bin/activate  # Linux/macOS
    # venv\Scripts\activate   # Windows
    ```
 
-3. **Install dependencies**:
+3. **安装依赖**：
    ```bash
    pip install -r requirements.txt
    ```
 
-### Running from Source
+### 从源码运行
 
-You can run Auto-Coder directly from source code without packaging:
+您可以直接从源代码运行 Auto-Coder，无需打包：
 
-#### Option 1: Using Python Module (Recommended)
+#### 方式一：使用 Python 模块（推荐）
 
 ```bash
-# Start chat interface
+# 启动聊天界面
 python -m autocoder.chat_auto_coder
 
-# Run main CLI
+# 运行主 CLI
 python -m autocoder.auto_coder --help
 
-# Run SDK CLI
+# 运行 SDK CLI
 python -m autocoder.sdk.cli --help
 
-# Run RAG mode
+# 运行 RAG 模式
 python -m autocoder.auto_coder_rag
 ```
 
-#### Option 2: Development Mode Installation
+#### 方式二：开发模式安装
 
 ```bash
-# Install in editable/development mode (changes take effect immediately)
+# 以可编辑/开发模式安装（修改立即生效）
 pip install -e .
-# Note: Requires setup.py or pyproject.toml (to be added)
+# 注意：需要添加 setup.py 或 pyproject.toml
 
-# Then use like installed package
+# 然后像安装的包一样使用
 auto-coder.chat
 auto-coder --help
 ```
 
-#### Option 3: Direct Python Execution
+#### 方式三：直接执行 Python 文件
 
 ```bash
-# Run chat interface
+# 运行聊天界面
 python autocoder/chat_auto_coder.py
 
-# Run main CLI
+# 运行主 CLI
 python autocoder/auto_coder.py --help
 ```
 
-## 📁 Directory Structure
+## 📁 目录结构
 
 ```
 cuscli/
-├── .git/                   # Git repository
-├── .gitignore              # Git ignore rules
-├── README.md               # This file
-├── CLAUDE.md               # Claude Code documentation
-├── requirements.txt        # Python dependencies
-├── autocoder/              # Complete source code (761 Python files)
+├── .git/                   # Git 仓库
+├── .gitignore              # Git 忽略规则
+├── README.md               # 本文件
+├── CLAUDE.md               # Claude Code 开发文档
+├── requirements.txt        # Python 依赖列表
+├── autocoder/              # 完整源代码（761 个 Python 文件）
 │   ├── __init__.py
-│   ├── auto_coder.py       # Main CLI entry
-│   ├── chat_auto_coder.py  # Chat interface entry
-│   ├── auto_coder_rag.py   # RAG mode entry
-│   ├── agent/              # Agent system
-│   ├── common/             # Common utilities
-│   ├── rag/                # RAG system
-│   ├── index/              # Code indexing
-│   ├── sdk/                # SDK interface
-│   ├── plugins/            # Plugin system
-│   └── ...                 # Other modules
-├── dist-info/              # Package metadata
-│   ├── METADATA            # Package information
-│   ├── entry_points.txt    # CLI entry points
-│   └── LICENSE             # License file
-└── original/               # Original files
+│   ├── auto_coder.py       # 主 CLI 入口
+│   ├── chat_auto_coder.py  # 聊天界面入口
+│   ├── auto_coder_rag.py   # RAG 模式入口
+│   ├── agent/              # 智能代理系统
+│   ├── common/             # 通用工具
+│   ├── rag/                # RAG 系统
+│   ├── index/              # 代码索引
+│   ├── sdk/                # SDK 接口
+│   ├── plugins/            # 插件系统
+│   └── ...                 # 其他模块
+├── dist-info/              # 包元数据
+│   ├── METADATA            # 包信息
+│   ├── entry_points.txt    # CLI 入口点
+│   └── LICENSE             # 许可证文件
+└── original/               # 原始文件
     └── auto_coder-1.0.39-py3-none-any.whl
 ```
 
-## 🔧 Configuration
+## 🔧 配置说明
 
-### Environment Variables
+### 环境变量
 
-Configure your API keys and settings:
+配置您的 API 密钥和设置：
 
 ```bash
-# LLM API Keys
+# LLM API 密钥
 export OPENAI_API_KEY="your-openai-key"
 export ANTHROPIC_API_KEY="your-anthropic-key"
 export GOOGLE_API_KEY="your-google-key"
 
-# Model configuration
+# 模型配置
 export AUTOCODER_MODEL="gpt-4"
 export AUTOCODER_BASE_URL="https://api.openai.com/v1"
 ```
 
-### Product Modes
+### 产品模式
 
-Auto-Coder supports two product modes:
+Auto-Coder 支持两种产品模式：
 
-- **lite mode**: Direct API calls without Ray cluster (default)
-  - Uses `SimpleByzerLLM`
-  - Simpler setup, suitable for local development
+- **lite 模式**：直接 API 调用，无需 Ray 集群（默认）
+  - 使用 `SimpleByzerLLM`
+  - 设置简单，适合本地开发
 
-- **pro mode**: Ray cluster support for distributed computing
-  - Uses `ByzerLLM`
-  - Better performance for large-scale operations
+- **pro 模式**：支持 Ray 集群的分布式计算
+  - 使用 `ByzerLLM`
+  - 大规模操作性能更好
 
-## 📚 Documentation
+## 📚 文档资源
 
-- **[CLAUDE.md](CLAUDE.md)**: Detailed architecture and development guide for Claude Code
-- **[dist-info/METADATA](dist-info/METADATA)**: Package metadata and dependencies
-- **Official Docs**: https://uelng8wukz.feishu.cn/wiki/QIpkwpQo2iSdkwk9nP6cNSPlnPc
+- **[CLAUDE.md](CLAUDE.md)**：详细的架构和 Claude Code 开发指南
+- **[dist-info/METADATA](dist-info/METADATA)**：包元数据和依赖信息
+- **官方文档**：https://uelng8wukz.feishu.cn/wiki/QIpkwpQo2iSdkwk9nP6cNSPlnPc
 
-## 🛠️ Development
+## 🛠️ 开发指南
 
-### Entry Points
+### 入口点
 
-The package provides multiple CLI entry points (defined in `dist-info/entry_points.txt`):
+包提供多个 CLI 入口点（在 `dist-info/entry_points.txt` 中定义）：
 
 - `auto-coder` / `auto-coder.core` → `autocoder.auto_coder:main`
 - `auto-coder.chat` / `chat-auto-coder` → `autocoder.chat_auto_coder:main`
 - `auto-coder.run` / `auto-coder.cli` → `autocoder.sdk.cli:main`
 - `auto-coder.rag` → `autocoder.auto_coder_rag:main`
 
-### Modifying Source Code
+### 修改源代码
 
-Since you're running from source:
+由于直接从源码运行：
 
-1. Edit any `.py` file in the `autocoder/` directory
-2. Changes take effect immediately when you run the code again
-3. No need to rebuild or reinstall
+1. 编辑 `autocoder/` 目录中的任何 `.py` 文件
+2. 再次运行代码时修改立即生效
+3. 无需重新构建或重新安装
 
-### Adding Features
+### 添加新功能
 
-1. Create new modules in `autocoder/` directory
-2. Import and use them in existing code
-3. Update `requirements.txt` if adding new dependencies
+1. 在 `autocoder/` 目录中创建新模块
+2. 在现有代码中导入并使用
+3. 如果添加新依赖，更新 `requirements.txt`
 
-## 🐛 Troubleshooting
+## 🐛 故障排除
 
-### Common Issues
+### 常见问题
 
-1. **Import errors**: Make sure you're in the project root directory
-2. **Missing dependencies**: Run `pip install -r requirements.txt`
-3. **Python version**: Ensure you're using Python 3.10-3.12
-4. **Permission issues**: Use virtual environment
+1. **导入错误**：确保在项目根目录中运行
+2. **缺少依赖**：运行 `pip install -r requirements.txt`
+3. **Python 版本**：确保使用 Python 3.10-3.12
+4. **权限问题**：使用虚拟环境
 
-### Logs
+### 日志文件
 
-Logs are stored in:
+日志存储位置：
 ```
 .auto-coder/logs/auto-coder.log
 ```
 
-## 📞 Contact
+## 📞 联系方式
 
-- **Repository Owner**: superfm831010@gmail.com
-- **Original Project**: https://github.com/allwefantasy/auto-coder
+- **仓库所有者**：superfm831010@gmail.com
+- **原始项目**：https://github.com/allwefantasy/auto-coder
 
-## 📄 License
+## 📄 许可证
 
-This software is proprietary and subject to commercial use restrictions. See [dist-info/LICENSE](dist-info/LICENSE) for details.
+本软件为专有软件，受商业使用限制约束。详见 [dist-info/LICENSE](dist-info/LICENSE)。
 
-**Copyright (c) 2024 auto-coder Project Owner. All Rights Reserved.**
+**版权所有 (c) 2024 auto-coder 项目所有者。保留所有权利。**
 
 ---
 
-**Note**: This is a private repository for secondary development purposes. Do not distribute or share without proper authorization.
+**注意**：这是一个用于二次开发的私有仓库。未经适当授权，请勿分发或共享。
