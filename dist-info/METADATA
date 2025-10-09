@@ -1,0 +1,558 @@
+Metadata-Version: 2.1
+Name: auto-coder
+Version: 1.0.39
+Summary: AutoCoder: AutoCoder
+Author: allwefantasy
+Author-email: allwefantasy <allwefantasy@gmail.com>
+License: 
+        专有软件许可协议
+        PROPRIETARY SOFTWARE LICENSE AGREEMENT
+        
+        版权所有 (c) 2024 auto-coder 项目所有者。保留所有权利。
+        
+        重要提示：本软件受版权法和国际条约保护。未经授权的复制或分发本程序或其任何部分，可能导致严重的民事和刑事处罚，并将在法律允许的最大范围内受到起诉。
+        
+        许可条款和条件
+        
+        1. 定义
+           "软件"是指 auto-coder 项目的所有源代码、目标代码、文档、数据和相关材料。
+           "许可方"是指本软件的版权所有者。
+           "被许可方"是指获得本许可的个人或法人实体。
+        
+        2. 许可限制
+           
+           2.1 禁止商业使用
+               本软件严格禁止用于任何商业目的，包括但不限于：
+               - 直接或间接的商业销售
+               - 作为商业服务的一部分提供
+               - 用于商业产品开发
+               - 用于为第三方提供有偿服务
+               - 任何形式的商业化运营
+           
+           2.2 源代码访问限制
+               - 未经许可方书面授权，严禁查看、访问、复制或分发本软件的源代码
+               - 禁止对本软件进行反向工程、反编译或反汇编
+               - 禁止尝试从目标代码推导源代码
+               - 仅授权用户可在获得特殊书面许可后访问源代码
+           
+           2.3 使用限制
+               - 本软件仅供个人学习和研究使用
+               - 必须在封闭的、非公开的环境中使用
+               - 禁止将本软件或其任何部分公开发布或共享
+               - 禁止创建衍生作品
+        
+        3. 知识产权
+           - 本软件的所有权利、所有权和利益均归许可方所有
+           - 本许可不授予被许可方任何知识产权
+           - 被许可方不得删除或修改任何版权声明
+        
+        4. 保密义务
+           被许可方同意：
+           - 对本软件的所有信息严格保密
+           - 不向任何第三方披露本软件的任何内容
+           - 采取合理的安全措施保护本软件
+        
+        5. 终止
+           - 违反本许可的任何条款将自动终止许可
+           - 许可终止后，被许可方必须立即销毁所有软件副本
+        
+        6. 免责声明
+           本软件按"原样"提供，不提供任何形式的保证，无论是明示的还是暗示的。
+           许可方不对因使用或无法使用本软件而造成的任何损害承担责任。
+        
+        7. 法律责任
+           违反本许可协议可能导致：
+           - 民事诉讼和损害赔偿
+           - 刑事起诉
+           - 禁令救济
+           - 律师费和诉讼费用的赔偿
+        
+        8. 管辖法律
+           本许可受中华人民共和国法律管辖，并按其解释。
+        
+        9. 完整协议
+           本许可构成双方之间关于本软件的完整协议，取代所有先前的协议或谅解。
+        
+        10. 联系方式
+            如需获得特殊许可或有任何问题，请联系许可方。
+        
+        严正声明：
+        任何未经授权的使用、复制、分发或查看本软件源代码的行为都将被视为侵权，
+        并将受到法律追究。
+        
+        ---
+        
+        PROPRIETARY SOFTWARE LICENSE AGREEMENT
+        
+        Copyright (c) 2024 auto-coder Project Owner. All Rights Reserved.
+        
+        IMPORTANT: This software is protected by copyright laws and international treaties. 
+        Unauthorized reproduction or distribution of this program, or any portion of it, 
+        may result in severe civil and criminal penalties, and will be prosecuted to the 
+        maximum extent possible under the law.
+        
+        LICENSE TERMS AND CONDITIONS
+        
+        1. DEFINITIONS
+           "Software" means all source code, object code, documentation, data, and 
+           related materials of the auto-coder project.
+           "Licensor" means the copyright owner of this Software.
+           "Licensee" means the individual or legal entity receiving this license.
+        
+        2. LICENSE RESTRICTIONS
+           
+           2.1 NO COMMERCIAL USE
+               This Software is strictly prohibited for any commercial purposes, including but not limited to:
+               - Direct or indirect commercial sale
+               - Provision as part of commercial services
+               - Use in commercial product development
+               - Use in providing paid services to third parties
+               - Any form of commercial operation
+           
+           2.2 SOURCE CODE ACCESS RESTRICTIONS
+               - Viewing, accessing, copying, or distributing the source code is strictly 
+                 prohibited without written authorization from the Licensor
+               - Reverse engineering, decompilation, or disassembly of this Software is prohibited
+               - Attempting to derive source code from object code is prohibited
+               - Only authorized users may access source code with special written permission
+           
+           2.3 USE RESTRICTIONS
+               - This Software is for personal learning and research only
+               - Must be used in a closed, non-public environment
+               - Publishing or sharing this Software or any part thereof is prohibited
+               - Creating derivative works is prohibited
+        
+        3. INTELLECTUAL PROPERTY
+           - All rights, title, and interest in the Software remain with the Licensor
+           - This license grants no intellectual property rights to the Licensee
+           - Licensee may not remove or modify any copyright notices
+        
+        4. CONFIDENTIALITY
+           The Licensee agrees to:
+           - Keep all information about the Software strictly confidential
+           - Not disclose any content of the Software to third parties
+           - Take reasonable security measures to protect the Software
+        
+        5. TERMINATION
+           - Violation of any terms of this license automatically terminates the license
+           - Upon termination, Licensee must immediately destroy all copies of the Software
+        
+        6. DISCLAIMER
+           This Software is provided "AS IS" without warranty of any kind, express or implied.
+           The Licensor is not liable for any damages arising from use or inability to use the Software.
+        
+        7. LEGAL LIABILITY
+           Violation of this license agreement may result in:
+           - Civil litigation and damages
+           - Criminal prosecution
+           - Injunctive relief
+           - Compensation for attorney fees and litigation costs
+        
+        8. GOVERNING LAW
+           This license is governed by and construed in accordance with the laws of the 
+           People's Republic of China.
+        
+        9. ENTIRE AGREEMENT
+           This license constitutes the entire agreement between the parties regarding 
+           the Software and supersedes all prior agreements or understandings.
+        
+        10. CONTACT
+            For special licensing or any questions, please contact the Licensor.
+        
+        STRICT NOTICE:
+        Any unauthorized use, copying, distribution, or viewing of the source code of this 
+        Software will be considered infringement and will be prosecuted under the law.
+        
+Project-URL: Homepage, https://github.com/allwefantasy/auto-coder
+Keywords: autocoder,ai,coding,automation
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: <=3.12,>=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: contextlib2
+Requires-Dist: ninja
+Requires-Dist: jinja2
+Requires-Dist: rich
+Requires-Dist: paramiko
+Requires-Dist: tqdm
+Requires-Dist: loguru
+Requires-Dist: pyjava >=0.6.21
+Requires-Dist: fastapi
+Requires-Dist: uvicorn
+Requires-Dist: retrying
+Requires-Dist: zhipuai
+Requires-Dist: dashscope
+Requires-Dist: tiktoken
+Requires-Dist: tabulate
+Requires-Dist: jupyter-client
+Requires-Dist: prompt-toolkit
+Requires-Dist: tokenizers
+Requires-Dist: aiofiles
+Requires-Dist: readerwriterlock
+Requires-Dist: byzerllm[saas] >=0.1.196
+Requires-Dist: patch
+Requires-Dist: diff-match-patch
+Requires-Dist: GitPython
+Requires-Dist: openai >=1.14.3
+Requires-Dist: anthropic
+Requires-Dist: google-generativeai
+Requires-Dist: protobuf
+Requires-Dist: azure-cognitiveservices-speech
+Requires-Dist: real-agent
+Requires-Dist: duckdb
+Requires-Dist: python-docx
+Requires-Dist: docx2txt
+Requires-Dist: pdf2image
+Requires-Dist: docx2pdf
+Requires-Dist: pypdf
+Requires-Dist: pyperclip
+Requires-Dist: colorama
+Requires-Dist: pylint
+Requires-Dist: reportlab
+Requires-Dist: pathspec
+Requires-Dist: openpyxl
+Requires-Dist: python-pptx
+Requires-Dist: watchfiles
+Requires-Dist: cairosvg
+Requires-Dist: matplotlib
+Requires-Dist: mammoth
+Requires-Dist: markdownify
+Requires-Dist: pdfminer.six
+Requires-Dist: puremagic
+Requires-Dist: pydub
+Requires-Dist: youtube-transcript-api
+Requires-Dist: SpeechRecognition
+Requires-Dist: pathvalidate
+Requires-Dist: pexpect
+Requires-Dist: setuptools
+Requires-Dist: filelock
+Requires-Dist: argcomplete
+Requires-Dist: psutil
+Requires-Dist: patch-ng
+Requires-Dist: firecrawl
+Requires-Dist: mcp ; python_version >= "3.10"
+
+<p align="center">
+  <picture>    
+    <img alt="auto-coder" src="./logo/auto-coder.jpeg" width=55%>
+  </picture>
+</p>
+
+<h3 align="center">
+Auto-Coder (powered by Byzer-LLM)
+</h3>
+
+<p align="center">
+<a href="https://uelng8wukz.feishu.cn/wiki/QIpkwpQo2iSdkwk9nP6cNSPlnPc"><b>中文</b></a> |
+
+</p>
+
+---
+
+*Latest News* 🔥
+- [2025/01] Release Auto-Coder 0.1.208
+- [2024/09] Release Auto-Coder 0.1.163
+- [2024/08] Release Auto-Coder 0.1.143
+- [2024/07] Release Auto-Coder 0.1.115
+- [2024/06] Release Auto-Coder 0.1.82
+- [2024/05] Release Auto-Coder 0.1.73
+- [2024/04] Release Auto-Coder 0.1.46
+- [2024/03] Release Auto-Coder 0.1.25
+- [2024/03] Release Auto-Coder 0.1.24
+
+---
+
+## 安装
+
+### 方法一：使用 pip 安装（推荐）
+
+```shell
+# 创建虚拟环境（推荐）
+conda create --name autocoder python=3.10.11
+conda activate autocoder
+
+# 或者使用 venv
+python -m venv autocoder
+source autocoder/bin/activate  # Linux/macOS
+# autocoder\Scripts\activate  # Windows
+
+# 安装 auto-coder
+pip install -U auto-coder
+```
+
+### 方法二：从源码安装
+
+```shell
+# 克隆仓库
+git clone https://github.com/allwefantasy/auto-coder.git
+cd auto-coder
+
+# 创建虚拟环境
+conda create --name autocoder python=3.10.11
+conda activate autocoder
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 安装项目
+pip install -e .
+```
+
+### 系统要求
+
+- Python 3.10, 3.11 或 3.12
+- 操作系统：Windows、macOS、Linux
+- 内存：建议 4GB 以上
+- 磁盘空间：建议 2GB 以上
+
+### 验证安装
+
+安装完成后，可以通过以下命令验证安装是否成功：
+
+```shell
+# 检查版本
+auto-coder --version
+
+# 启动聊天模式
+auto-coder.chat
+
+# 运行单次命令
+auto-coder.run -p "Hello, Auto-Coder!"
+```
+
+## 使用指南
+
+### 1. 聊天模式（推荐新手使用）
+
+```shell
+# 启动交互式聊天界面
+auto-coder.chat
+
+# 或者使用别名
+chat-auto-coder
+```
+
+聊天模式提供友好的交互界面，支持：
+- 实时对话
+- 代码生成和修改
+- 文件操作
+- 项目管理
+
+### 2. 命令行模式
+
+#### 单次运行模式
+
+```shell
+# 基本用法
+auto-coder.run -p "编写一个计算斐波那契数列的函数"
+
+# 从管道读取输入
+echo "解释这段代码的功能" | auto-coder.run -p
+
+# 指定输出格式
+auto-coder.run -p "生成一个 Hello World 函数" --output-format json
+
+# 使用详细输出
+auto-coder.run -p "创建一个简单的网页" --verbose
+```
+
+#### 会话模式
+
+```shell
+# 继续最近的对话
+auto-coder.run --continue
+
+# 恢复特定会话
+auto-coder.run --resume 550e8400-e29b-41d4-a716-446655440000
+```
+
+#### 高级选项
+
+```shell
+# 限制对话轮数
+auto-coder.run -p "优化这个算法" --max-turns 5
+
+# 指定系统提示
+auto-coder.run -p "写代码" --system-prompt "你是一个专业的Python开发者"
+
+# 限制可用工具
+auto-coder.run -p "读取文件内容" --allowed-tools read_file write_to_file
+
+# 设置权限模式
+auto-coder.run -p "修改代码" --permission-mode acceptEdits
+```
+
+### 3. 核心模式
+
+```shell
+# 启动核心模式（传统命令行界面）
+auto-coder
+
+# 或者使用别名
+auto-coder.core
+```
+
+### 4. 服务器模式
+
+```shell
+# 启动 Web 服务器
+auto-coder.serve
+
+# 或者使用别名
+auto-coder-serve
+```
+
+### 5. RAG 模式
+
+```shell
+# 启动 RAG（检索增强生成）模式
+auto-coder.rag
+```
+
+### 常用命令示例
+
+```shell
+# 代码生成
+auto-coder.run -p "创建一个 Flask Web 应用"
+
+# 代码解释
+auto-coder.run -p "解释这个函数的作用" < code.py
+
+# 代码重构
+auto-coder.run -p "重构这段代码，提高可读性"
+
+# 错误修复
+auto-coder.run -p "修复这个 bug" --verbose
+
+# 文档生成
+auto-coder.run -p "为这个项目生成 README 文档"
+
+# 测试生成
+auto-coder.run -p "为这个函数编写单元测试"
+```
+
+### 自动补全
+
+Auto-Coder 支持命令行自动补全功能：
+
+```shell
+# 安装自动补全（bash）
+echo 'eval "$(register-python-argcomplete auto-coder.run)"' >> ~/.bashrc
+source ~/.bashrc
+
+# 安装自动补全（zsh）
+echo 'eval "$(register-python-argcomplete auto-coder.run)"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+## 卸载
+
+### 完全卸载
+
+```shell
+# 卸载 auto-coder
+pip uninstall auto-coder
+
+# 删除虚拟环境（如果使用了虚拟环境）
+conda remove --name autocoder --all
+# 或者
+rm -rf autocoder  # 如果使用 venv 创建的环境
+
+# 清理缓存文件（可选）
+rm -rf ~/.autocoder  # 用户配置和缓存目录
+```
+
+### 重新安装
+
+```shell
+# 卸载旧版本
+pip uninstall auto-coder
+
+# 清理缓存
+pip cache purge
+
+# 安装最新版本
+pip install -U auto-coder
+```
+
+## 配置
+
+### 环境变量
+
+```shell
+# 设置 API 密钥
+export OPENAI_API_KEY="your-api-key"
+export ANTHROPIC_API_KEY="your-api-key"
+
+# 设置模型配置
+export AUTOCODER_MODEL="gpt-4"
+export AUTOCODER_BASE_URL="https://api.openai.com/v1"
+```
+
+### 配置文件
+
+Auto-Coder 支持多种配置方式：
+
+- `.autocoderrc`：项目级配置
+- `~/.autocoder/config.yaml`：用户级配置
+- 环境变量：系统级配置
+
+## 故障排除
+
+### 常见问题
+
+1. **安装失败**
+   ```shell
+   # 升级 pip
+   pip install --upgrade pip
+   
+   # 清理缓存重新安装
+   pip cache purge
+   pip install auto-coder
+   ```
+
+2. **权限错误**
+   ```shell
+   # 使用用户安装
+   pip install --user auto-coder
+   ```
+
+3. **依赖冲突**
+   ```shell
+   # 使用虚拟环境
+   python -m venv autocoder_env
+   source autocoder_env/bin/activate
+   pip install auto-coder
+   ```
+
+4. **命令未找到**
+   ```shell
+   # 检查 PATH
+   echo $PATH
+   
+   # 重新安装
+   pip uninstall auto-coder
+   pip install auto-coder
+   ```
+
+### 获取帮助
+
+```shell
+# 查看帮助信息
+auto-coder.run --help
+
+# 查看版本信息
+auto-coder --version
+
+# 启用详细输出进行调试
+auto-coder.run -p "test" --verbose
+```
+
+## 教程
+
+0. [Auto-Coder.Chat: 通向智能编程之路](https://uelng8wukz.feishu.cn/wiki/QIpkwpQo2iSdkwk9nP6cNSPlnPc)
+
+
+

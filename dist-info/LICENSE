@@ -1,0 +1,158 @@
+
+专有软件许可协议
+PROPRIETARY SOFTWARE LICENSE AGREEMENT
+
+版权所有 (c) 2024 auto-coder 项目所有者。保留所有权利。
+
+重要提示：本软件受版权法和国际条约保护。未经授权的复制或分发本程序或其任何部分，可能导致严重的民事和刑事处罚，并将在法律允许的最大范围内受到起诉。
+
+许可条款和条件
+
+1. 定义
+   "软件"是指 auto-coder 项目的所有源代码、目标代码、文档、数据和相关材料。
+   "许可方"是指本软件的版权所有者。
+   "被许可方"是指获得本许可的个人或法人实体。
+
+2. 许可限制
+   
+   2.1 禁止商业使用
+       本软件严格禁止用于任何商业目的，包括但不限于：
+       - 直接或间接的商业销售
+       - 作为商业服务的一部分提供
+       - 用于商业产品开发
+       - 用于为第三方提供有偿服务
+       - 任何形式的商业化运营
+   
+   2.2 源代码访问限制
+       - 未经许可方书面授权，严禁查看、访问、复制或分发本软件的源代码
+       - 禁止对本软件进行反向工程、反编译或反汇编
+       - 禁止尝试从目标代码推导源代码
+       - 仅授权用户可在获得特殊书面许可后访问源代码
+   
+   2.3 使用限制
+       - 本软件仅供个人学习和研究使用
+       - 必须在封闭的、非公开的环境中使用
+       - 禁止将本软件或其任何部分公开发布或共享
+       - 禁止创建衍生作品
+
+3. 知识产权
+   - 本软件的所有权利、所有权和利益均归许可方所有
+   - 本许可不授予被许可方任何知识产权
+   - 被许可方不得删除或修改任何版权声明
+
+4. 保密义务
+   被许可方同意：
+   - 对本软件的所有信息严格保密
+   - 不向任何第三方披露本软件的任何内容
+   - 采取合理的安全措施保护本软件
+
+5. 终止
+   - 违反本许可的任何条款将自动终止许可
+   - 许可终止后，被许可方必须立即销毁所有软件副本
+
+6. 免责声明
+   本软件按"原样"提供，不提供任何形式的保证，无论是明示的还是暗示的。
+   许可方不对因使用或无法使用本软件而造成的任何损害承担责任。
+
+7. 法律责任
+   违反本许可协议可能导致：
+   - 民事诉讼和损害赔偿
+   - 刑事起诉
+   - 禁令救济
+   - 律师费和诉讼费用的赔偿
+
+8. 管辖法律
+   本许可受中华人民共和国法律管辖，并按其解释。
+
+9. 完整协议
+   本许可构成双方之间关于本软件的完整协议，取代所有先前的协议或谅解。
+
+10. 联系方式
+    如需获得特殊许可或有任何问题，请联系许可方。
+
+严正声明：
+任何未经授权的使用、复制、分发或查看本软件源代码的行为都将被视为侵权，
+并将受到法律追究。
+
+---
+
+PROPRIETARY SOFTWARE LICENSE AGREEMENT
+
+Copyright (c) 2024 auto-coder Project Owner. All Rights Reserved.
+
+IMPORTANT: This software is protected by copyright laws and international treaties. 
+Unauthorized reproduction or distribution of this program, or any portion of it, 
+may result in severe civil and criminal penalties, and will be prosecuted to the 
+maximum extent possible under the law.
+
+LICENSE TERMS AND CONDITIONS
+
+1. DEFINITIONS
+   "Software" means all source code, object code, documentation, data, and 
+   related materials of the auto-coder project.
+   "Licensor" means the copyright owner of this Software.
+   "Licensee" means the individual or legal entity receiving this license.
+
+2. LICENSE RESTRICTIONS
+   
+   2.1 NO COMMERCIAL USE
+       This Software is strictly prohibited for any commercial purposes, including but not limited to:
+       - Direct or indirect commercial sale
+       - Provision as part of commercial services
+       - Use in commercial product development
+       - Use in providing paid services to third parties
+       - Any form of commercial operation
+   
+   2.2 SOURCE CODE ACCESS RESTRICTIONS
+       - Viewing, accessing, copying, or distributing the source code is strictly 
+         prohibited without written authorization from the Licensor
+       - Reverse engineering, decompilation, or disassembly of this Software is prohibited
+       - Attempting to derive source code from object code is prohibited
+       - Only authorized users may access source code with special written permission
+   
+   2.3 USE RESTRICTIONS
+       - This Software is for personal learning and research only
+       - Must be used in a closed, non-public environment
+       - Publishing or sharing this Software or any part thereof is prohibited
+       - Creating derivative works is prohibited
+
+3. INTELLECTUAL PROPERTY
+   - All rights, title, and interest in the Software remain with the Licensor
+   - This license grants no intellectual property rights to the Licensee
+   - Licensee may not remove or modify any copyright notices
+
+4. CONFIDENTIALITY
+   The Licensee agrees to:
+   - Keep all information about the Software strictly confidential
+   - Not disclose any content of the Software to third parties
+   - Take reasonable security measures to protect the Software
+
+5. TERMINATION
+   - Violation of any terms of this license automatically terminates the license
+   - Upon termination, Licensee must immediately destroy all copies of the Software
+
+6. DISCLAIMER
+   This Software is provided "AS IS" without warranty of any kind, express or implied.
+   The Licensor is not liable for any damages arising from use or inability to use the Software.
+
+7. LEGAL LIABILITY
+   Violation of this license agreement may result in:
+   - Civil litigation and damages
+   - Criminal prosecution
+   - Injunctive relief
+   - Compensation for attorney fees and litigation costs
+
+8. GOVERNING LAW
+   This license is governed by and construed in accordance with the laws of the 
+   People's Republic of China.
+
+9. ENTIRE AGREEMENT
+   This license constitutes the entire agreement between the parties regarding 
+   the Software and supersedes all prior agreements or understandings.
+
+10. CONTACT
+    For special licensing or any questions, please contact the Licensor.
+
+STRICT NOTICE:
+Any unauthorized use, copying, distribution, or viewing of the source code of this 
+Software will be considered infringement and will be prosecuted under the law.
