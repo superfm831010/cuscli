@@ -359,6 +359,7 @@ def stop():
 def initialize_system(args: InitializeSystemRequest):
     from autocoder.utils.model_provider_selector import ModelProviderSelector
     from autocoder.common.llms import LLMManager
+    from autocoder.common.llms.guided_setup import guide_first_model_setup
 
     print(f"\n\033[1;34m{get_message('initializing')}\033[0m")
 
@@ -375,17 +376,25 @@ def initialize_system(args: InitializeSystemRequest):
         else:
             print(f"  {message}")
 
-        if not os.path.exists(base_persist_dir):
-            os.makedirs(base_persist_dir, exist_ok=True)
-            print_status(
-                get_message_with_format("created_dir", path=base_persist_dir), "success"
-            )
+    if not os.path.exists(base_persist_dir):
+        os.makedirs(base_persist_dir, exist_ok=True)
+        print_status(
+            get_message_with_format("created_dir", path=base_persist_dir), "success"
+        )
 
-        if first_time[0]:
-            configure("project_type:*", skip_print=True)
-            configure_success[0] = True
+    # 新增：检查是否有模型配置，如果没有则引导用户配置
+    llm_manager = LLMManager()
+    all_models = llm_manager.get_all_models()
 
-        print_status(get_message("init_complete"), "success")
+    if not all_models:  # 没有任何模型配置
+        print_status("未检测到任何模型配置", "warning")
+        guide_first_model_setup()
+
+    if first_time[0]:
+        configure("project_type:*", skip_print=True)
+        configure_success[0] = True
+
+    print_status(get_message("init_complete"), "success")
 
     init_project_if_required(target_dir=project_root, project_type="*")
 

@@ -8,121 +8,8 @@ from filelock import FileLock
 
 from .schema import LLMModel
 
-# 默认内置模型列表
-DEFAULT_MODELS = [
-    {
-        "name": "deepseek/r1",
-        "description": "DeepSeek Reasoner is for design/review",
-        "model_name": "deepseek-reasoner",
-        "model_type": "saas/openai",
-        "base_url": "https://api.deepseek.com/v1",
-        "provider": "deepseek",
-        "api_key_path": "api.deepseek.com",
-        "is_reasoning": True,
-        "input_price": 0.0,
-        "output_price": 0.0,
-        "max_output_tokens": 8096,
-        "context_window": 32768
-    },
-    {
-        "name": "deepseek/v3",
-        "description": "DeepSeek Chat is for coding",
-        "model_name": "deepseek-chat",
-        "model_type": "saas/openai",
-        "base_url": "https://api.deepseek.com/v1",
-        "provider": "deepseek",
-        "api_key_path": "api.deepseek.com",
-        "is_reasoning": False,
-        "input_price": 0.0,
-        "output_price": 0.0,
-        "max_output_tokens": 8096,
-        "context_window": 32768
-    },
-    {
-        "name": "ark/deepseek-v3-250324",
-        "description": "DeepSeek Chat is for coding",
-        "model_name": "deepseek-v3-250324",
-        "model_type": "saas/openai",
-        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-        "provider": "volcengine",
-        "api_key_path": "",
-        "is_reasoning": False,
-        "input_price": 2.0,
-        "output_price": 8.0,
-        "max_output_tokens": 8096,
-        "context_window": 32768
-    },
-    {
-        "name": "ark/deepseek-r1-250120",
-        "description": "DeepSeek Reasoner is for design/review",
-        "model_name": "deepseek-r1-250120",
-        "model_type": "saas/openai",
-        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-        "provider": "volcengine",
-        "api_key_path": "",
-        "is_reasoning": True,
-        "input_price": 4.0,
-        "output_price": 16.0,
-        "max_output_tokens": 8096,
-        "context_window": 32768
-    },
-    {
-        "name": "openai/gpt-4.1-mini",
-        "description": "",
-        "model_name": "openai/gpt-4.1-mini",
-        "model_type": "saas/openai",
-        "base_url": "https://openrouter.ai/api/v1",
-        "provider": "openrouter",
-        "api_key_path": "",
-        "is_reasoning": False,
-        "input_price": 2.8,
-        "output_price": 11.2,
-        "max_output_tokens": 8096 * 3,
-        "context_window": 128000
-    },
-    {
-        "name": "openai/gpt-4.1",
-        "description": "",
-        "model_name": "openai/gpt-4.1",
-        "model_type": "saas/openai",
-        "base_url": "https://openrouter.ai/api/v1",
-        "provider": "openrouter",
-        "api_key_path": "",
-        "is_reasoning": False,
-        "input_price": 14.0,
-        "output_price": 42.0,
-        "max_output_tokens": 8096 * 3,
-        "context_window": 128000
-    },
-    {
-        "name": "openai/gpt-4.1-nano",
-        "description": "",
-        "model_name": "openai/gpt-4.1-nano",
-        "model_type": "saas/openai",
-        "base_url": "https://openrouter.ai/api/v1",
-        "provider": "openrouter",
-        "api_key_path": "",
-        "is_reasoning": False,
-        "input_price": 0.0,
-        "output_price": 0.0,
-        "max_output_tokens": 8096 * 3,
-        "context_window": 128000
-    },
-    {
-        "name": "openrouter/google/gemini-2.5-pro-preview-03-25",
-        "description": "",
-        "model_name": "google/gemini-2.5-pro-preview-03-25",
-        "model_type": "saas/openai",
-        "base_url": "https://openrouter.ai/api/v1",
-        "provider": "openrouter",
-        "api_key_path": "",
-        "is_reasoning": False,
-        "input_price": 0.0,
-        "output_price": 0.0,
-        "max_output_tokens": 8096 * 2,
-        "context_window": 2097152  # 2M context
-    }
-]
+# 默认内置模型列表 - 已清空，需要用户手动配置
+DEFAULT_MODELS = []
 
 
 class ModelRegistry:
@@ -280,10 +167,10 @@ class ModelRegistry:
     def remove_model(self, model_name: str) -> bool:
         """
         删除模型
-        
+
         Args:
             model_name: 要删除的模型名称
-            
+
         Returns:
             bool: 是否成功删除
         """
@@ -291,12 +178,7 @@ class ModelRegistry:
         model = self.get(model_name)
         if not model:
             return False
-        
-        # 如果是默认模型，不允许删除
-        default_model_names = [m["name"] for m in DEFAULT_MODELS]
-        if model_name in default_model_names:
-            return False
-        
+
         # 加载所有模型
         models = self.load()
         
