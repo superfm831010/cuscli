@@ -388,7 +388,12 @@ def initialize_system(args: InitializeSystemRequest):
 
     if not all_models:  # 没有任何模型配置
         print_status("未检测到任何模型配置", "warning")
-        guide_first_model_setup()
+        configured_model_name = guide_first_model_setup()
+
+        # 如果配置成功，立即激活该模型为默认模型
+        if configured_model_name:
+            configure(f"model:{configured_model_name}", skip_print=True)
+            print_status(f"已将模型 {configured_model_name} 设置为默认模型", "success")
 
     if first_time[0]:
         configure("project_type:*", skip_print=True)

@@ -12,12 +12,12 @@ from typing import Optional, Dict
 from .manager import LLMManager
 
 
-def guide_first_model_setup() -> bool:
+def guide_first_model_setup() -> Optional[str]:
     """
     引导用户配置第一个模型的交互式流程
 
     Returns:
-        bool: 是否成功配置模型
+        Optional[str]: 成功时返回模型名称，失败或取消时返回 None
     """
     console = Console()
 
@@ -37,12 +37,12 @@ def guide_first_model_setup() -> bool:
 
         if not model_config:
             console.print("[yellow]配置已取消[/yellow]")
-            return False
+            return None
 
         # 确认信息
         if not _confirm_model_config(console, model_config):
             console.print("[yellow]配置已取消[/yellow]")
-            return False
+            return None
 
         # 保存配置
         success = _save_model_config(console, model_config)
@@ -56,17 +56,17 @@ def guide_first_model_setup() -> bool:
                 title="✅ 配置成功",
                 border_style="green"
             ))
-            return True
+            return model_config['name']
         else:
             console.print("[red]配置保存失败[/red]")
-            return False
+            return None
 
     except KeyboardInterrupt:
         console.print("\n[yellow]配置已取消[/yellow]")
-        return False
+        return None
     except Exception as e:
         console.print(f"\n[red]配置过程出错: {str(e)}[/red]")
-        return False
+        return None
 
 
 def _prompt_model_info(console: Console) -> Optional[Dict]:
