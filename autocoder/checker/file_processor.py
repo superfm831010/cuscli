@@ -67,8 +67,60 @@ class FileProcessor:
             >>> len(files) > 0
             True
         """
-        # TODO: 实现文件扫描逻辑
-        pass
+        path_obj = Path(path)
+        result_files = []
+
+        # 如果是单个文件
+        if path_obj.is_file():
+            if self.is_checkable(str(path_obj)):
+                # 应用过滤条件
+                if filters:
+                    if filters.matches_extension(str(path_obj)) and not filters.should_ignore(str(path_obj)):
+                        result_files.append(str(path_obj.absolute()))
+                else:
+                    result_files.append(str(path_obj.absolute()))
+            return result_files
+
+        # 如果是目录
+        if not path_obj.is_dir():
+            logger.warning(f"Path does not exist: {path}")
+            return []
+
+        logger.info(f"Scanning directory: {path}")
+
+        # 遍历目录
+        for file_path in path_obj.rglob("*"):
+            # 只处理文件，跳过目录
+            if not file_path.is_file():
+                continue
+
+            # 转换为字符串路径
+            file_str = str(file_path)
+            relative_path = str(file_path.relative_to(path_obj))
+
+            # 应用忽略模式
+            if filters and filters.should_ignore(relative_path):
+                logger.debug(f"Ignored by filter: {relative_path}")
+                continue
+
+            # 跳过隐藏文件和目录
+            if any(part.startswith('.') for part in file_path.parts):
+                logger.debug(f"Ignored hidden file: {relative_path}")
+                continue
+
+            # 应用扩展名过滤
+            if filters and not filters.matches_extension(file_str):
+                continue
+
+            # 检查文件是否可检查
+            if not self.is_checkable(file_str):
+                logger.debug(f"Not checkable: {relative_path}")
+                continue
+
+            result_files.append(str(file_path.absolute()))
+
+        logger.info(f"Found {len(result_files)} checkable files in {path}")
+        return result_files
 
     def chunk_file(self, file_path: str) -> List[CodeChunk]:
         """
@@ -119,8 +171,40 @@ class FileProcessor:
             >>> processor.is_checkable("nonexistent.py")
             False
         """
-        # TODO: 实现文件可检查性判断
-        pass
+        # 1. 检查文件是否存在
+        if not os.path.exists(file_path):
+            return False
+
+        # 2. 检查是否为文件（非目录）
+        if not os.path.isfile(file_path):
+            return False
+
+        # 3. 检查文件大小（< 10MB）
+        file_size_mb = self._get_file_size_mb(file_path)
+        if file_size_mb > 10:
+            logger.debug(f"File too large: {file_path} ({file_size_mb:.2f}MB)")
+            return False
+
+        # 4. 检查是否为二进制文件
+        if self._is_binary_file(file_path):
+            logger.debug(f"Binary file: {file_path}")
+            return False
+
+        # 5. 检查文件是否可读且为 UTF-8 编码
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                # 尝试读取前 100 行来验证编码
+                for _ in range(100):
+                    line = f.readline()
+                    if not line:
+                        break
+            return True
+        except (UnicodeDecodeError, PermissionError) as e:
+            logger.debug(f"Cannot read file as UTF-8: {file_path}, error: {e}")
+            return False
+        except Exception as e:
+            logger.debug(f"Error checking file: {file_path}, error: {e}")
+            return False
 
     def add_line_numbers(self, content: str) -> str:
         """
