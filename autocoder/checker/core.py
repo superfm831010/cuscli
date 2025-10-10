@@ -218,6 +218,70 @@ class CodeChecker:
         # 这个方法将在 Task 5.4 中实现
         return issues
 
+    @byzerllm.prompt()
+    def check_code_prompt(self, code_with_lines: str, rules: str) -> str:
+        """
+        代码检查 Prompt
+
+        你是一个代码审查专家。请根据提供的规则检查代码，找出不符合规范的地方。
+
+        ## 检查规则
+
+        {{ rules }}
+
+        ## 待检查代码（带行号）
+
+        ```
+        {{ code_with_lines }}
+        ```
+
+        ## 输出要求
+
+        请仔细检查代码，对于每个发现的问题：
+        1. 准确定位问题的起始和结束行号（注意：代码中的行号格式为 "行号 代码内容"，请提取正确的行号）
+        2. 引用违反的规则ID
+        3. 描述问题
+        4. 提供修复建议
+
+        以 JSON 数组格式输出，每个问题包含：
+        - rule_id: 违反的规则ID（字符串）
+        - severity: 严重程度（字符串，只能是 "error"、"warning" 或 "info"）
+        - line_start: 问题起始行号（整数，从代码行号中提取）
+        - line_end: 问题结束行号（整数，从代码行号中提取）
+        - description: 问题描述（字符串）
+        - suggestion: 修复建议（字符串）
+        - code_snippet: 问题代码片段（字符串，可选）
+
+        **重要提示**：
+        1. 行号必须从代码的行号列中提取，例如 "15 def foo():" 中的行号是 15
+        2. 只返回确实违反规则的问题，不要臆测
+        3. 每个问题都必须有明确的规则依据
+
+        如果没有发现问题，返回空数组 []
+
+        ## 输出示例
+
+        ```json
+        [
+            {
+                "rule_id": "backend_006",
+                "severity": "warning",
+                "line_start": 15,
+                "line_end": 32,
+                "description": "发现复杂的 if-else 嵌套，嵌套层数为 4，超过规定的 3 层",
+                "suggestion": "建议将内层逻辑抽取为独立方法，或使用策略模式简化",
+                "code_snippet": "if condition1:\\n    if condition2:\\n        ..."
+            }
+        ]
+        ```
+
+        请严格按照上述格式输出 JSON 数组。
+        """
+        return {
+            "rules": rules,
+            "code_with_lines": code_with_lines
+        }
+
     def _format_rules_for_prompt(self, rules: List[Rule]) -> str:
         """
         将规则列表格式化为适合 LLM 的文本
@@ -228,8 +292,17 @@ class CodeChecker:
         Returns:
             str: 格式化后的规则文本
         """
-        # 这个方法将在 Task 5.2 中实现
-        return ""
+        lines = []
+        for rule in rules:
+            lines.append(f"### {rule.id}: {rule.title}")
+            lines.append(f"**严重程度**: {rule.severity}")
+            lines.append(f"**描述**: {rule.description}")
+            if rule.examples:
+                lines.append(f"**示例**:")
+                lines.append(rule.examples)
+            lines.append("")  # 空行分隔
+
+        return "\n".join(lines)
 
     def _parse_llm_response(self, response_text: str) -> List[Issue]:
         """
