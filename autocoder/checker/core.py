@@ -27,7 +27,7 @@ from autocoder.checker.rules_loader import RulesLoader
 from autocoder.checker.file_processor import FileProcessor
 from autocoder.checker.progress_tracker import ProgressTracker
 from autocoder.auto_coder import AutoCoderArgs
-from autocoder.common.tokenizer_env import BuildinTokenizer
+from autocoder.common.buildin_tokenizer import BuildinTokenizer
 
 
 class CodeChecker:
