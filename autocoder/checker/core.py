@@ -14,8 +14,9 @@
 import os
 import re
 import json
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Generator
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from loguru import logger
 import byzerllm
 
@@ -184,6 +185,74 @@ class CodeChecker:
             total_infos=total_infos,
             file_results=file_results
         )
+
+    def check_files_concurrent(
+        self, files: List[str], max_workers: int = 5
+    ) -> Generator[FileCheckResult, None, None]:
+        """
+        并发检查多个文件
+
+        使用 ThreadPoolExecutor 实现并发检查，提高大型项目的检查速度。
+        使用生成器模式按完成顺序实时返回结果，适合与进度条配合使用。
+
+        Task 9.1: 实现并发检查逻辑
+
+        Args:
+            files: 文件路径列表
+            max_workers: 最大并发数（默认: 5）
+
+        Yields:
+            FileCheckResult: 每个文件的检查结果（按完成顺序）
+
+        Example:
+            >>> checker = CodeChecker(llm, args)
+            >>> for result in checker.check_files_concurrent(files, max_workers=5):
+            ...     print(f"完成: {result.file_path}")
+        """
+        logger.info(f"开始并发检查 {len(files)} 个文件 (workers={max_workers})")
+
+        if not files:
+            logger.warning("文件列表为空，跳过检查")
+            return
+
+        # 使用 ThreadPoolExecutor 并发检查
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有任务
+            future_to_file = {
+                executor.submit(self.check_file, file_path): file_path
+                for file_path in files
+            }
+
+            logger.info(f"已提交 {len(future_to_file)} 个检查任务到线程池")
+
+            # 按完成顺序返回结果
+            for future in as_completed(future_to_file):
+                file_path = future_to_file[future]
+
+                try:
+                    # 获取结果
+                    result = future.result()
+                    logger.debug(f"文件 {file_path} 检查完成: status={result.status}")
+                    yield result
+
+                except Exception as exc:
+                    # 处理异常，返回失败结果
+                    logger.error(f"检查文件 {file_path} 时发生异常: {exc}", exc_info=True)
+
+                    # 创建失败的结果对象
+                    failed_result = FileCheckResult(
+                        file_path=file_path,
+                        check_time=datetime.now().isoformat(),
+                        issues=[],
+                        error_count=0,
+                        warning_count=0,
+                        info_count=0,
+                        status="failed",
+                        error_message=str(exc)
+                    )
+                    yield failed_result
+
+        logger.info(f"并发检查完成：已处理 {len(files)} 个文件")
 
     def check_code_chunk(
         self, code: str, rules: List[Rule]
