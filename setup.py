@@ -53,6 +53,9 @@ setup(
     # 入口点配置 - 从 dist-info/entry_points.txt 提取
     entry_points={
         'console_scripts': [
+            # CUS-CLI 主入口点
+            'cuscli=autocoder.chat_auto_coder:main',
+            # 原 auto-coder 入口点（保留以兼容旧脚本）
             'auto-coder=autocoder.auto_coder:main',
             'auto-coder.chat=autocoder.chat_auto_coder:main',
             'auto-coder.chat.beta=autocoder.auto_coder_terminal:main',

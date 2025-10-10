@@ -741,6 +741,59 @@ AUTO_CODER_LANG=ru auto-coder.chat  # 俄文
 
 ---
 
+### 2025-10-10: 添加 cuscli 主入口点命令
+
+**修改内容:**
+1. 修改 `setup.py` 第 54-68 行，在 `entry_points` 中添加新的入口点
+2. 添加 `cuscli=autocoder.chat_auto_coder:main` 作为主要命令入口
+3. 保留原有 `auto-coder.chat` 等入口点以保持向后兼容
+4. 重新安装包使新入口点生效：`pip install -e .`
+
+**修改原因:**
+- 用户希望使用更简洁的 `cuscli` 命令启动聊天界面
+- 将 `cuscli` 作为 CUS-CLI 品牌的主要命令入口点
+- 与之前修改的 ASCII 艺术字和欢迎提示保持品牌一致性
+- 简化用户使用体验，避免输入冗长的 `auto-coder.chat` 命令
+
+**技术细节:**
+```python
+# setup.py 中的修改
+entry_points={
+    'console_scripts': [
+        # CUS-CLI 主入口点（新增）
+        'cuscli=autocoder.chat_auto_coder:main',
+        # 原 auto-coder 入口点（保留以兼容旧脚本）
+        'auto-coder=autocoder.auto_coder:main',
+        'auto-coder.chat=autocoder.chat_auto_coder:main',
+        ...
+    ],
+},
+```
+
+**影响范围:**
+- 添加新的命令入口点 `cuscli`，不影响现有功能
+- 保留所有原有入口点，完全向后兼容
+- 用户可以使用 `cuscli` 或 `auto-coder.chat` 启动聊天界面
+- 需要重新安装包才能生效：`pip install -e .`
+
+**使用方式:**
+```bash
+# 新的主入口点（推荐）
+cuscli
+
+# 旧的入口点（仍然可用）
+auto-coder.chat
+chat-auto-coder
+```
+
+**测试情况:**
+- `which cuscli` 返回 `/usr/local/bin/cuscli` ✓
+- `cuscli --help` 正常显示帮助信息 ✓
+- 命令入口点已正确安装并可用 ✓
+- 保持与原有入口点相同的功能和参数支持 ✓
+
+---
+
 ## 后续开发记录模板
 
 ### YYYY-MM-DD: 修改标题
