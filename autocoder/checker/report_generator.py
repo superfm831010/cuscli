@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
+from loguru import logger
 
 from autocoder.checker.types import (
     FileCheckResult,
@@ -16,9 +17,6 @@ from autocoder.checker.types import (
     Issue,
     Severity
 )
-from autocoder.utils.log import log
-
-logger = log.get_logger(__name__)
 
 
 class ReportGenerator:
