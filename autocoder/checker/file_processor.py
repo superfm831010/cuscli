@@ -145,8 +145,94 @@ class FileProcessor:
             >>> len(chunks) == 1
             True
         """
-        # TODO: 实现文件分块逻辑
-        pass
+        # 读取文件内容
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError as e:
+            logger.error(f"Failed to read file {file_path}: {e}")
+            raise
+
+        # 分割成行
+        lines = content.split('\n')
+        total_lines = len(lines)
+
+        # 为每行添加行号
+        numbered_lines = [f"{i+1} {line}" for i, line in enumerate(lines)]
+
+        # 计算总 token 数
+        total_content = '\n'.join(numbered_lines)
+        total_tokens = self.tokenizer.count_tokens(total_content)
+
+        # 如果文件小于 chunk_size，直接返回单个 chunk
+        if total_tokens <= self.chunk_size:
+            logger.debug(
+                f"File {file_path} fits in single chunk: "
+                f"{total_lines} lines, {total_tokens} tokens"
+            )
+            return [
+                CodeChunk(
+                    content=total_content,
+                    start_line=1,
+                    end_line=total_lines,
+                    chunk_index=0,
+                    file_path=file_path
+                )
+            ]
+
+        # 文件需要分块
+        logger.info(
+            f"Chunking file {file_path}: "
+            f"{total_lines} lines, {total_tokens} tokens"
+        )
+
+        chunks = []
+        current_line = 0
+        chunk_index = 0
+
+        while current_line < len(numbered_lines):
+            # 计算当前 chunk 的结束行
+            end_line = self._calculate_chunk_end(
+                numbered_lines,
+                current_line,
+                self.chunk_size
+            )
+
+            # 创建 chunk
+            chunk_content = '\n'.join(numbered_lines[current_line:end_line])
+            chunks.append(
+                CodeChunk(
+                    content=chunk_content,
+                    start_line=current_line + 1,  # 转换为 1-based 行号
+                    end_line=end_line,
+                    chunk_index=chunk_index,
+                    file_path=file_path
+                )
+            )
+
+            logger.debug(
+                f"Created chunk {chunk_index}: "
+                f"lines {current_line + 1}-{end_line}, "
+                f"tokens {self.tokenizer.count_tokens(chunk_content)}"
+            )
+
+            # 移动到下一个 chunk（考虑重叠）
+            if end_line >= len(numbered_lines):
+                break
+
+            # 计算重叠的起始位置
+            overlap_start = max(0, end_line - self.overlap)
+            current_line = overlap_start
+            chunk_index += 1
+
+        logger.info(
+            f"File {file_path} split into {len(chunks)} chunks"
+        )
+
+        return chunks
 
     def is_checkable(self, file_path: str) -> bool:
         """
@@ -226,8 +312,9 @@ class FileProcessor:
             >>> numbered.startswith("1 def foo():")
             True
         """
-        # TODO: 实现行号添加逻辑
-        pass
+        lines = content.split('\n')
+        numbered_lines = [f"{i+1} {line}" for i, line in enumerate(lines)]
+        return '\n'.join(numbered_lines)
 
     def _calculate_chunk_end(
         self,
@@ -252,8 +339,21 @@ class FileProcessor:
         Note:
             这是内部方法，用于 chunk_file() 方法
         """
-        # TODO: 实现分块结束位置计算
-        pass
+        current_tokens = 0
+        end_index = start_index
+
+        for i in range(start_index, len(lines)):
+            line = lines[i]
+            line_tokens = self.tokenizer.count_tokens(line)
+
+            # 如果加上这一行会超过限制，则在此处结束
+            if current_tokens + line_tokens > token_limit and i > start_index:
+                break
+
+            current_tokens += line_tokens
+            end_index = i + 1
+
+        return end_index
 
     def _is_binary_file(self, file_path: str) -> bool:
         """
