@@ -42,21 +42,34 @@ fi
 echo ""
 
 # 检查是否在虚拟环境中
-printf "${YELLOW}步骤 2/5: 检查虚拟环境...${NC}\n"
+printf "${YELLOW}步骤 2/5: 检查/创建虚拟环境...${NC}\n"
 if [ -z "$VIRTUAL_ENV" ] && [ -z "$CONDA_DEFAULT_ENV" ]; then
-    printf "${RED}⚠ 警告: 未检测到虚拟环境！${NC}\n"
-    echo "建议在虚拟环境中进行开发，是否继续？(y/n)"
-    read -r answer
-    if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
-        echo "退出设置。"
-        echo ""
-        echo "创建虚拟环境的方法："
-        echo "  conda create --name autocoder-dev python=3.10"
-        echo "  conda activate autocoder-dev"
-        echo "或者："
-        echo "  python3 -m venv autocoder-dev"
-        echo "  source autocoder-dev/bin/activate"
-        exit 0
+    printf "${YELLOW}未检测到虚拟环境，将自动创建...${NC}\n"
+
+    # 定义虚拟环境目录
+    VENV_DIR=".venv"
+
+    # 检查是否已存在虚拟环境目录
+    if [ -d "$VENV_DIR" ]; then
+        echo "发现已存在的虚拟环境目录: $VENV_DIR"
+    else
+        echo "正在创建虚拟环境..."
+        $PYTHON_CMD -m venv "$VENV_DIR"
+        printf "${GREEN}✓ 虚拟环境创建成功${NC}\n"
+    fi
+
+    # 激活虚拟环境
+    echo "正在激活虚拟环境..."
+    # shellcheck source=/dev/null
+    source "$VENV_DIR/bin/activate"
+
+    if [ -n "$VIRTUAL_ENV" ]; then
+        printf "${GREEN}✓ 虚拟环境已激活: $VENV_DIR${NC}\n"
+    else
+        printf "${RED}✗ 虚拟环境激活失败${NC}\n"
+        echo "请手动激活虚拟环境："
+        echo "  source $VENV_DIR/bin/activate"
+        exit 1
     fi
 else
     if [ -n "$CONDA_DEFAULT_ENV" ]; then
@@ -102,6 +115,20 @@ echo "========================================"
 printf "${GREEN}开发环境设置完成！${NC}\n"
 echo "========================================"
 echo ""
+
+# 检查是否创建了新的虚拟环境
+if [ -d ".venv" ] && [ -z "$CONDA_DEFAULT_ENV" ]; then
+    printf "${YELLOW}重要提示：${NC}\n"
+    echo "虚拟环境已创建在 .venv/ 目录下"
+    echo ""
+    echo "下次使用前，请先激活虚拟环境："
+    printf "${GREEN}  source .venv/bin/activate${NC}\n"
+    echo ""
+    echo "或者将以下内容添加到您的 ~/.bashrc 或 ~/.zshrc："
+    echo "  alias autocoder-dev='cd /projects/cuscli && source .venv/bin/activate'"
+    echo ""
+fi
+
 echo "现在您可以："
 echo "  1. 直接修改 autocoder/ 目录下的源代码"
 echo "  2. 修改后无需重新安装，直接运行命令测试"

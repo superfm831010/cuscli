@@ -7,15 +7,21 @@
 ### 一键设置开发环境
 
 ```bash
-# 1. 激活或创建虚拟环境
-conda create --name autocoder-dev python=3.10
-conda activate autocoder-dev
-
-# 2. 运行自动化设置脚本
+# 直接运行设置脚本（会自动创建虚拟环境）
 ./dev-setup.sh
 ```
 
-完成！现在您可以修改代码并直接测试，无需重新打包。
+完成！脚本会自动创建 `.venv/` 虚拟环境并完成安装。
+
+### 后续使用
+
+```bash
+# 激活虚拟环境
+source .venv/bin/activate
+
+# 现在可以直接使用命令
+auto-coder.chat
+```
 
 ### 手动设置
 

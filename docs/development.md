@@ -17,8 +17,19 @@
 # 克隆/进入项目目录
 cd /projects/cuscli
 
-# 运行设置脚本
+# 运行设置脚本（会自动创建虚拟环境）
 ./dev-setup.sh
+```
+
+脚本会自动完成以下操作：
+- ✅ 检测 Python 版本
+- ✅ 自动创建虚拟环境（`.venv/`）
+- ✅ 激活虚拟环境
+- ✅ 安装开发模式
+
+**后续使用时激活环境：**
+```bash
+source .venv/bin/activate
 ```
 
 ### 2. 手动设置
@@ -363,6 +374,60 @@ python_version=$($PYTHON_CMD --version 2>&1 | awk '{print $2}')
 **测试情况:**
 - 在 Linux 系统（只有 python3 命令）上测试通过
 - 脚本能正确检测 Python 3.10.12 版本
+
+---
+
+### 2025-10-10: 增强脚本自动化 - 自动创建虚拟环境
+
+**修改内容:**
+1. 修改 `dev-setup.sh`，增加自动创建虚拟环境功能
+2. 当检测到未激活虚拟环境时，自动创建 `.venv` 目录
+3. 自动激活新创建的虚拟环境并继续安装
+4. 添加虚拟环境使用提示信息
+5. 更新 `.gitignore`，排除 `.venv/` 目录
+
+**修改原因:**
+- 用户希望脚本完全自动化，无需手动创建虚拟环境
+- 简化开发环境搭建流程，提升用户体验
+- 避免在系统环境中安装包导致的污染
+
+**技术细节:**
+```bash
+# 自动创建虚拟环境
+if [ -z "$VIRTUAL_ENV" ] && [ -z "$CONDA_DEFAULT_ENV" ]; then
+    VENV_DIR=".venv"
+    if [ ! -d "$VENV_DIR" ]; then
+        $PYTHON_CMD -m venv "$VENV_DIR"
+    fi
+    source "$VENV_DIR/bin/activate"
+fi
+```
+
+**影响范围:**
+- 仅影响 `dev-setup.sh` 脚本和 `.gitignore`
+- 虚拟环境统一创建在项目根目录的 `.venv/` 下
+- 不影响已有的 Conda 环境使用方式
+
+**使用说明:**
+首次运行脚本：
+```bash
+./dev-setup.sh  # 自动创建并激活虚拟环境
+```
+
+后续开发时激活环境：
+```bash
+source .venv/bin/activate
+```
+
+或添加快捷别名：
+```bash
+alias autocoder-dev='cd /projects/cuscli && source .venv/bin/activate'
+```
+
+**测试情况:**
+- 脚本能自动创建虚拟环境
+- 能够在虚拟环境中成功安装开发模式
+- 虚拟环境激活和命令可用性验证通过
 
 ---
 
