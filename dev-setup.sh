@@ -61,7 +61,7 @@ if [ -z "$VIRTUAL_ENV" ] && [ -z "$CONDA_DEFAULT_ENV" ]; then
     # 激活虚拟环境
     echo "正在激活虚拟环境..."
     # shellcheck source=/dev/null
-    source "$VENV_DIR/bin/activate"
+    . "$VENV_DIR/bin/activate"
 
     if [ -n "$VIRTUAL_ENV" ]; then
         printf "${GREEN}✓ 虚拟环境已激活: $VENV_DIR${NC}\n"

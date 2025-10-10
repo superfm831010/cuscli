@@ -399,7 +399,7 @@ if [ -z "$VIRTUAL_ENV" ] && [ -z "$CONDA_DEFAULT_ENV" ]; then
     if [ ! -d "$VENV_DIR" ]; then
         $PYTHON_CMD -m venv "$VENV_DIR"
     fi
-    source "$VENV_DIR/bin/activate"
+    . "$VENV_DIR/bin/activate"  # 使用 . 代替 source（POSIX 兼容）
 fi
 ```
 
@@ -417,6 +417,8 @@ fi
 后续开发时激活环境：
 ```bash
 source .venv/bin/activate
+# 或使用 POSIX 兼容写法
+. .venv/bin/activate
 ```
 
 或添加快捷别名：
@@ -428,6 +430,48 @@ alias autocoder-dev='cd /projects/cuscli && source .venv/bin/activate'
 - 脚本能自动创建虚拟环境
 - 能够在虚拟环境中成功安装开发模式
 - 虚拟环境激活和命令可用性验证通过
+
+---
+
+### 2025-10-10: 修复 source 命令的 Shell 兼容性问题
+
+**修改内容:**
+修改 `dev-setup.sh` 中的 `source` 命令为 `.` 命令
+
+**问题描述:**
+用户运行脚本时遇到错误：
+```
+dev-setup.sh: 64: source: not found
+```
+
+**原因分析:**
+- 系统 `/bin/sh` 链接到 `dash` 而不是 `bash`
+- `source` 是 bash 的内置命令，不是 POSIX 标准
+- `dash` 等 POSIX shell 不支持 `source` 命令
+- POSIX 标准使用 `.` 命令来实现相同功能
+
+**技术修改:**
+```bash
+# 修改前
+source "$VENV_DIR/bin/activate"
+
+# 修改后（POSIX 兼容）
+. "$VENV_DIR/bin/activate"
+```
+
+**影响范围:**
+- 仅影响 `dev-setup.sh` 脚本的虚拟环境激活部分
+- 提高脚本在不同 shell 环境下的兼容性
+- 功能完全相同，只是使用 POSIX 标准写法
+
+**兼容性说明:**
+- `.` 命令在所有 POSIX 兼容 shell 中都可用（bash、dash、sh、zsh 等）
+- `source` 命令仅在 bash、zsh 等扩展 shell 中可用
+- 使用 `.` 提高了脚本的可移植性
+
+**测试情况:**
+- 在 dash shell 环境下测试通过
+- 虚拟环境创建和激活成功
 
 ---
 
