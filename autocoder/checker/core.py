@@ -242,8 +242,39 @@ class CodeChecker:
         Returns:
             List[Issue]: 合并后的问题列表
         """
-        # 这个方法将在 Task 5.4 中实现
-        return issues
+        if not issues:
+            return []
+
+        logger.debug(f"开始合并 {len(issues)} 个问题")
+
+        # 按 (rule_id, line_start, line_end) 分组
+        merged = {}
+        for issue in issues:
+            key = (issue.rule_id, issue.line_start, issue.line_end)
+
+            if key not in merged:
+                # 首次出现，直接保存
+                merged[key] = issue
+            else:
+                # 重复问题，保留描述更详细的
+                existing_issue = merged[key]
+
+                # 比较描述长度
+                if len(issue.description) > len(existing_issue.description):
+                    logger.debug(f"替换问题 {key}，新描述更详细")
+                    merged[key] = issue
+                elif len(issue.description) == len(existing_issue.description):
+                    # 描述长度相同，比较建议长度
+                    if len(issue.suggestion) > len(existing_issue.suggestion):
+                        logger.debug(f"替换问题 {key}，新建议更详细")
+                        merged[key] = issue
+
+        # 转换为列表并按行号排序
+        sorted_issues = sorted(merged.values(), key=lambda x: (x.line_start, x.line_end))
+
+        logger.info(f"合并完成：{len(issues)} -> {len(sorted_issues)} 个问题")
+
+        return sorted_issues
 
     @byzerllm.prompt()
     def check_code_prompt(self, code_with_lines: str, rules: str) -> str:
