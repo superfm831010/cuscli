@@ -370,15 +370,24 @@ class FileProcessor:
         try:
             with open(file_path, 'rb') as f:
                 chunk = f.read(1024)
+                if not chunk:
+                    return False
+
                 # 检查是否包含 NULL 字节
                 if b'\x00' in chunk:
                     return True
+
                 # 检查文本字符的比例
-                text_characters = sum(
-                    1 for byte in chunk
-                    if byte in b'\t\n\r\x20-\x7e' or byte >= 0x80
-                )
-                return text_characters / len(chunk) < 0.85 if chunk else False
+                # 文本字符包括：制表符(9)、换行(10)、回车(13)、
+                # 可打印 ASCII (32-126)、以及高位字节(128-255, UTF-8)
+                text_characters = 0
+                for byte in chunk:
+                    if byte in (9, 10, 13) or (32 <= byte <= 126) or byte >= 128:
+                        text_characters += 1
+
+                text_ratio = text_characters / len(chunk)
+                # 如果文本字符比例低于 85%，认为是二进制文件
+                return text_ratio < 0.85
         except Exception:
             return True
 
