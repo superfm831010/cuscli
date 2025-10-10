@@ -9,32 +9,34 @@
 
 ## 语言设置
 
-Auto-Coder 支持多语言界面（中文、英文等），通过系统 `LANG` 环境变量自动检测。
+Auto-Coder 支持多语言界面（中文、英文等），**默认显示中文界面**。
 
-### 使用中文界面
+### 默认行为
 
-**方法1：使用中文启动脚本（推荐）**
+直接启动即为中文界面（无需任何配置）：
 ```bash
-./auto-coder-zh.sh
+auto-coder.chat  # 默认中文界面
 ```
 
-**方法2：临时设置环境变量**
+### 切换到英文界面
+
+**方法1：临时设置环境变量**
 ```bash
-LANG=zh_CN.UTF-8 auto-coder.chat
+LANG=en_US.UTF-8 auto-coder.chat
 ```
 
-**方法3：永久设置（添加到 ~/.bashrc 或 ~/.zshrc）**
+**方法2：永久设置（添加到 ~/.bashrc 或 ~/.zshrc）**
 ```bash
-export LANG=zh_CN.UTF-8
-export LC_ALL=zh_CN.UTF-8
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
 ```
 
 ### 技术说明
 
-- 语言检测代码位于：`autocoder/common/international/message_manager.py:31`
+- 语言检测代码位于：`autocoder/common/international/message_manager.py:23`
 - 使用 `locale.getdefaultlocale()` 读取系统 locale
 - 支持的语言：en（英文）、zh（中文）、ja（日文）、ar（阿拉伯文）、ru（俄文）
-- 未支持的语言会回退到英文
+- **未支持的语言会回退到中文**（二次开发版本的默认设置）
 
 ## 开发环境搭建
 
@@ -553,6 +555,77 @@ export LC_ALL=zh_CN.UTF-8
 **测试情况:**
 - 使用中文启动脚本可正常显示中文界面
 - 环境变量设置方法测试通过
+
+---
+
+### 2025-10-10: 修改默认语言为中文
+
+**修改内容:**
+修改 `autocoder/common/international/message_manager.py` 中的语言检测逻辑，将默认语言从英文改为中文
+
+**修改原因:**
+- 用户希望直接启动就是中文界面，无需额外设置
+- 简化使用流程，提升中文用户体验
+- 保持与原始安装版本的一致性
+
+**技术修改:**
+```python
+# 修改前：默认回退到英文
+def get_system_language(self) -> str:
+    try:
+        lang_code, _ = locale.getdefaultlocale()
+        if lang_code:
+            detected_lang = lang_code[:2]
+            supported_languages = ['en', 'zh', 'ja', 'ar', 'ru']
+            if detected_lang in supported_languages:
+                return detected_lang
+            else:
+                return "en"  # 回退到英文
+        return "en"  # 回退到英文
+    except:
+        return "en"  # 回退到英文
+
+# 修改后：默认回退到中文
+def get_system_language(self) -> str:
+    try:
+        lang_code, _ = locale.getdefaultlocale()
+        if lang_code:
+            detected_lang = lang_code[:2]
+            supported_languages = ['en', 'zh', 'ja', 'ar', 'ru']
+            if detected_lang in supported_languages:
+                return detected_lang
+            else:
+                return "zh"  # 默认使用中文
+        return "zh"  # 默认使用中文
+    except:
+        return "zh"  # 默认使用中文
+```
+
+**行为变化:**
+- **修改前**: 系统 locale 为 en_US 或未设置时，显示英文界面
+- **修改后**: 系统 locale 为 en_US 或未设置时，显示中文界面
+- **检测到其他支持语言**: 仍然按检测结果显示（如日文系统显示日文）
+- **需要英文界面**: 设置 `LANG=en_US.UTF-8 auto-coder.chat`
+
+**影响范围:**
+- 仅影响语言检测的默认回退行为
+- 对于明确设置了支持语言的系统，行为不变
+- 所有入口点（auto-coder, auto-coder.chat 等）都受影响
+
+**使用说明:**
+现在直接启动就是中文界面：
+```bash
+auto-coder.chat  # 默认中文界面
+```
+
+如需切换到英文界面：
+```bash
+LANG=en_US.UTF-8 auto-coder.chat
+```
+
+**测试情况:**
+- 在 LANG=en_US.UTF-8 的系统上启动，显示中文界面 ✓
+- 仍然可以通过环境变量切换到其他语言 ✓
 
 ---
 
