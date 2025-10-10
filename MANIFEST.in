@@ -1,0 +1,26 @@
+# 包含非Python文件的配置
+# 用于确保这些文件在安装时也被包含
+
+# 包含所有的文本和配置文件
+include *.txt
+include *.md
+include *.yml
+include *.yaml
+include LICENSE
+
+# 包含 autocoder 目录下的所有资源文件
+recursive-include autocoder *.txt
+recursive-include autocoder *.md
+recursive-include autocoder *.yml
+recursive-include autocoder *.yaml
+recursive-include autocoder *.json
+recursive-include autocoder *.toml
+recursive-include autocoder *.conf
+
+# 排除不需要的文件
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store
+recursive-exclude * *.swp
+recursive-exclude * *.swo
+exclude .gitignore
