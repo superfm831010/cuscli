@@ -368,10 +368,210 @@ class CodeCheckerPlugin(Plugin):
 
         Args:
             args: 选项参数
+                /path <dir> - 指定目录
+                /ext <.py,.js> - 指定扩展名
+                /ignore <tests,__pycache__> - 忽略目录/文件
+                /workers <5> - 并发数
         """
-        # TODO: Task 7.3 - 实现目录检查
-        print("⚠️  /check /folder 功能即将在 Task 7.3 实现")
-        print(f"   参数: {args}")
+        # 解析参数
+        options = self._parse_folder_options(args)
+
+        path = options.get("path", ".")
+        extensions = options.get("extensions", None)
+        ignored = options.get("ignored", None)
+        workers = options.get("workers", 5)
+
+        print(f"🔍 正在检查目录: {path}")
+        print()
+
+        # 检查目录是否存在
+        if not os.path.exists(path):
+            print(f"❌ 目录不存在: {path}")
+            return
+
+        if not os.path.isdir(path):
+            print(f"❌ 不是目录: {path}")
+            return
+
+        try:
+            # 导入所需模块
+            from autocoder.checker.types import FileFilters
+            from rich.progress import (
+                Progress,
+                SpinnerColumn,
+                TextColumn,
+                BarColumn,
+                TaskProgressColumn,
+                TimeRemainingColumn,
+            )
+
+            # 扫描文件
+            filters = FileFilters(
+                extensions=extensions if extensions else None,
+                ignored=ignored if ignored else None
+            )
+
+            print("📂 扫描文件...")
+            files = self.file_processor.scan_files(path, filters)
+
+            if not files:
+                print("⚠️  未找到符合条件的文件")
+                return
+
+            print(f"✅ 找到 {len(files)} 个文件")
+            print()
+
+            # 确保 checker 已初始化
+            self._ensure_checker()
+
+            # 批量检查（带进度显示）
+            results = []
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeRemainingColumn(),
+            ) as progress:
+                task = progress.add_task(
+                    "正在检查文件...",
+                    total=len(files)
+                )
+
+                for file_path in files:
+                    result = self.checker.check_file(file_path)
+                    results.append(result)
+                    progress.update(
+                        task,
+                        advance=1,
+                        description=f"检查 {os.path.basename(file_path)}"
+                    )
+
+            # 生成报告
+            check_id = self._create_check_id()
+            report_dir = self._create_report_dir(check_id)
+
+            # 生成单文件报告
+            for result in results:
+                self.report_generator.generate_file_report(result, report_dir)
+
+            # 生成汇总报告
+            self.report_generator.generate_summary_report(results, report_dir)
+
+            # 显示汇总
+            self._show_batch_summary(results, report_dir)
+
+        except Exception as e:
+            print(f"❌ 检查过程出错: {e}")
+            logger.error(f"检查目录失败: {e}", exc_info=True)
+
+    def _parse_folder_options(self, args: str) -> Dict[str, Any]:
+        """
+        解析 /check /folder 的选项参数
+
+        Args:
+            args: 参数字符串
+
+        Returns:
+            选项字典
+        """
+        options = {
+            "path": ".",
+            "extensions": None,
+            "ignored": None,
+            "workers": 5
+        }
+
+        if not args.strip():
+            return options
+
+        # 简单的参数解析（/key value 格式）
+        parts = args.split()
+        i = 0
+        while i < len(parts):
+            part = parts[i]
+
+            if part == "/path" and i + 1 < len(parts):
+                options["path"] = parts[i + 1]
+                i += 2
+            elif part == "/ext" and i + 1 < len(parts):
+                # 扩展名列表，逗号分隔
+                exts = parts[i + 1].split(",")
+                options["extensions"] = [ext.strip() for ext in exts]
+                i += 2
+            elif part == "/ignore" and i + 1 < len(parts):
+                # 忽略列表，逗号分隔
+                ignores = parts[i + 1].split(",")
+                options["ignored"] = [ign.strip() for ign in ignores]
+                i += 2
+            elif part == "/workers" and i + 1 < len(parts):
+                try:
+                    options["workers"] = int(parts[i + 1])
+                except ValueError:
+                    print(f"⚠️  无效的并发数: {parts[i + 1]}，使用默认值 5")
+                i += 2
+            else:
+                # 跳过未知选项
+                i += 1
+
+        return options
+
+    def _show_batch_summary(self, results: List, report_dir: str) -> None:
+        """
+        显示批量检查汇总
+
+        Args:
+            results: 检查结果列表
+            report_dir: 报告目录
+        """
+        print()
+        print("=" * 60)
+        print("📊 检查完成！")
+        print("=" * 60)
+        print()
+
+        # 统计
+        total_files = len(results)
+        checked_files = len([r for r in results if r.status == "success"])
+        skipped_files = len([r for r in results if r.status == "skipped"])
+        failed_files = len([r for r in results if r.status == "failed"])
+
+        total_issues = sum(len(r.issues) for r in results)
+        total_errors = sum(r.error_count for r in results)
+        total_warnings = sum(r.warning_count for r in results)
+        total_infos = sum(r.info_count for r in results)
+
+        print(f"检查文件: {total_files}")
+        print(f"├─ ✅ 成功: {checked_files}")
+        print(f"├─ ⏭️  跳过: {skipped_files}")
+        print(f"└─ ❌ 失败: {failed_files}")
+        print()
+
+        print(f"总问题数: {total_issues}")
+        print(f"├─ ❌ 错误: {total_errors}")
+        print(f"├─ ⚠️  警告: {total_warnings}")
+        print(f"└─ ℹ️  提示: {total_infos}")
+        print()
+
+        # 显示问题最多的文件（前5个）
+        if total_issues > 0:
+            files_with_issues = [(r.file_path, len(r.issues)) for r in results if len(r.issues) > 0]
+            files_with_issues.sort(key=lambda x: x[1], reverse=True)
+
+            print("问题最多的文件:")
+            for i, (file_path, count) in enumerate(files_with_issues[:5], 1):
+                # 截断过长的路径
+                display_path = file_path
+                if len(display_path) > 50:
+                    display_path = "..." + display_path[-47:]
+                print(f"{i}. {display_path} ({count} 个问题)")
+            print()
+
+        print(f"📄 详细报告: {report_dir}/")
+        print(f"   - 汇总报告: {os.path.join(report_dir, 'summary.md')}")
+        print(f"   - 单文件报告: {os.path.join(report_dir, 'files/')} (共 {total_files} 个)")
+        print()
+        print("=" * 60)
 
     def _resume_check(self, args: str) -> None:
         """
