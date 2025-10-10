@@ -445,7 +445,7 @@ class CodeCheckerPlugin(Plugin):
             print(f"📝 检查任务 ID: {check_id}")
             print()
 
-            # 批量检查（带进度显示和状态保存）
+            # 批量检查（Task 9.2: 使用并发检查）
             results = []
             try:
                 with Progress(
@@ -455,22 +455,23 @@ class CodeCheckerPlugin(Plugin):
                     TaskProgressColumn(),
                     TimeRemainingColumn(),
                 ) as progress:
+                    # 显示并发数
                     task = progress.add_task(
-                        "正在检查文件...",
+                        f"正在检查文件... (并发: {workers})",
                         total=len(files)
                     )
 
-                    for file_path in files:
-                        result = self.checker.check_file(file_path)
+                    # Task 9.2: 使用并发检查
+                    for result in self.checker.check_files_concurrent(files, max_workers=workers):
                         results.append(result)
 
                         # Task 8.1: 标记文件完成，保存进度
-                        self.progress_tracker.mark_completed(check_id, file_path)
+                        self.progress_tracker.mark_completed(check_id, result.file_path)
 
                         progress.update(
                             task,
                             advance=1,
-                            description=f"检查 {os.path.basename(file_path)}"
+                            description=f"检查 {os.path.basename(result.file_path)} (并发: {workers})"
                         )
 
             except KeyboardInterrupt:
@@ -691,7 +692,10 @@ class CodeCheckerPlugin(Plugin):
                 TimeRemainingColumn,
             )
 
-            # 恢复检查（带进度显示）
+            # 恢复检查（Task 9.2: 使用并发检查）
+            # 获取原配置的并发数，如果没有则使用默认值5
+            workers = state.config.get("workers", 5)
+
             results = []
             with Progress(
                 SpinnerColumn(),
@@ -701,21 +705,21 @@ class CodeCheckerPlugin(Plugin):
                 TimeRemainingColumn(),
             ) as progress:
                 task = progress.add_task(
-                    "恢复检查中...",
+                    f"恢复检查中... (并发: {workers})",
                     total=remaining
                 )
 
-                for file_path in state.remaining_files:
-                    result = self.checker.check_file(file_path)
+                # Task 9.2: 使用并发检查
+                for result in self.checker.check_files_concurrent(state.remaining_files, max_workers=workers):
                     results.append(result)
 
                     # 更新进度
-                    self.progress_tracker.mark_completed(check_id, file_path)
+                    self.progress_tracker.mark_completed(check_id, result.file_path)
 
                     progress.update(
                         task,
                         advance=1,
-                        description=f"检查 {os.path.basename(file_path)}"
+                        description=f"检查 {os.path.basename(result.file_path)} (并发: {workers})"
                     )
 
             # 标记检查完成
