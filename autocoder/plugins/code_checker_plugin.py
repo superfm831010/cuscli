@@ -393,6 +393,8 @@ class CodeCheckerPlugin(Plugin):
             print(f"❌ 不是目录: {path}")
             return
 
+        check_id = None
+
         try:
             # 导入所需模块
             from autocoder.checker.types import FileFilters
@@ -424,31 +426,81 @@ class CodeCheckerPlugin(Plugin):
             # 确保 checker 已初始化
             self._ensure_checker()
 
-            # 批量检查（带进度显示）
-            results = []
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold blue]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                TimeRemainingColumn(),
-            ) as progress:
-                task = progress.add_task(
-                    "正在检查文件...",
-                    total=len(files)
-                )
+            # 创建检查任务并保存状态（Task 8.1: 进度持久化）
+            project_name = os.path.basename(os.getcwd())
+            # 清理项目名称
+            project_name = "".join(c if c.isalnum() or c == "_" else "_" for c in project_name)
 
-                for file_path in files:
-                    result = self.checker.check_file(file_path)
-                    results.append(result)
-                    progress.update(
-                        task,
-                        advance=1,
-                        description=f"检查 {os.path.basename(file_path)}"
+            check_id = self.progress_tracker.start_check(
+                files=files,
+                config={
+                    "path": path,
+                    "extensions": extensions,
+                    "ignored": ignored,
+                    "workers": workers
+                },
+                project_name=project_name
+            )
+
+            print(f"📝 检查任务 ID: {check_id}")
+            print()
+
+            # 批量检查（带进度显示和状态保存）
+            results = []
+            try:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[bold blue]{task.description}"),
+                    BarColumn(),
+                    TaskProgressColumn(),
+                    TimeRemainingColumn(),
+                ) as progress:
+                    task = progress.add_task(
+                        "正在检查文件...",
+                        total=len(files)
                     )
 
+                    for file_path in files:
+                        result = self.checker.check_file(file_path)
+                        results.append(result)
+
+                        # Task 8.1: 标记文件完成，保存进度
+                        self.progress_tracker.mark_completed(check_id, file_path)
+
+                        progress.update(
+                            task,
+                            advance=1,
+                            description=f"检查 {os.path.basename(file_path)}"
+                        )
+
+            except KeyboardInterrupt:
+                # Task 8.1: 处理中断
+                print()
+                print()
+                state = self.progress_tracker.load_state(check_id)
+                if state:
+                    state.status = "interrupted"
+                    self.progress_tracker.save_state(check_id, state)
+
+                print("⚠️  检查已中断")
+                print(f"   检查 ID: {check_id}")
+                print(f"   已完成: {len(results)}/{len(files)} 个文件")
+                print(f"   剩余: {len(files) - len(results)} 个文件")
+                print()
+                print(f"💡 使用以下命令恢复检查:")
+                print(f"   /check /resume {check_id}")
+                print()
+
+                logger.info(f"检查已中断: {check_id}, 已完成 {len(results)}/{len(files)}")
+                return
+
+            # Task 8.1: 标记检查完成
+            state = self.progress_tracker.load_state(check_id)
+            if state:
+                state.status = "completed"
+                self.progress_tracker.save_state(check_id, state)
+
             # 生成报告
-            check_id = self._create_check_id()
             report_dir = self._create_report_dir(check_id)
 
             # 生成单文件报告
@@ -464,6 +516,16 @@ class CodeCheckerPlugin(Plugin):
         except Exception as e:
             print(f"❌ 检查过程出错: {e}")
             logger.error(f"检查目录失败: {e}", exc_info=True)
+
+            # 如果创建了检查记录，标记为失败
+            if check_id:
+                try:
+                    state = self.progress_tracker.load_state(check_id)
+                    if state and state.status != "completed":
+                        state.status = "failed"
+                        self.progress_tracker.save_state(check_id, state)
+                except Exception:
+                    pass
 
     def _parse_folder_options(self, args: str) -> Dict[str, Any]:
         """
