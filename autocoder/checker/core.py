@@ -198,8 +198,35 @@ class CodeChecker:
         Returns:
             List[Issue]: 发现的问题列表
         """
-        # 这个方法将在 Task 5.3 中实现
-        return []
+        try:
+            logger.debug(f"开始检查代码块，规则数量: {len(rules)}")
+
+            # 1. 格式化规则
+            rules_text = self._format_rules_for_prompt(rules)
+
+            # 2. 构造 prompt
+            prompt = self.check_code_prompt.prompt(code, rules_text)
+
+            # 3. 调用 LLM
+            conversations = [{"role": "user", "content": prompt}]
+            logger.debug("调用 LLM 进行代码检查")
+
+            response = self.llm.chat_oai(conversations=conversations)
+
+            # 4. 解析响应
+            if response and len(response) > 0:
+                response_text = response[0].output
+                logger.debug(f"LLM 响应: {response_text[:200]}...")
+                issues = self._parse_llm_response(response_text)
+                logger.debug(f"解析出 {len(issues)} 个问题")
+                return issues
+            else:
+                logger.warning("LLM 返回空响应")
+                return []
+
+        except Exception as e:
+            logger.error(f"检查代码块失败: {e}", exc_info=True)
+            return []
 
     def _merge_duplicate_issues(self, issues: List[Issue]) -> List[Issue]:
         """
@@ -314,5 +341,65 @@ class CodeChecker:
         Returns:
             List[Issue]: 解析出的问题列表
         """
-        # 这个方法将在 Task 5.3 中实现
-        return []
+        try:
+            # 尝试提取 JSON 内容（可能包含在 ```json...``` 中）
+            json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+                logger.debug("从 JSON 代码块中提取内容")
+            else:
+                # 尝试直接解析整个响应
+                json_str = response_text
+                logger.debug("直接解析响应内容")
+
+            # 去除可能的前后空白
+            json_str = json_str.strip()
+
+            # 解析 JSON
+            issues_data = json.loads(json_str)
+
+            # 验证是否为列表
+            if not isinstance(issues_data, list):
+                logger.warning(f"LLM 响应不是数组格式: {type(issues_data)}")
+                return []
+
+            # 转换为 Issue 对象
+            issues = []
+            for i, issue_dict in enumerate(issues_data):
+                try:
+                    # 确保所有必需字段存在
+                    if not all(key in issue_dict for key in ['rule_id', 'severity', 'line_start', 'line_end', 'description', 'suggestion']):
+                        logger.warning(f"问题 {i} 缺少必需字段: {issue_dict}")
+                        continue
+
+                    # 转换 severity 为 Severity 枚举
+                    severity_str = issue_dict['severity'].lower()
+                    if severity_str not in ['error', 'warning', 'info']:
+                        logger.warning(f"无效的 severity 值: {severity_str}，默认为 info")
+                        severity_str = 'info'
+
+                    # 创建 Issue 对象
+                    issue = Issue(
+                        rule_id=issue_dict['rule_id'],
+                        severity=Severity(severity_str),
+                        line_start=int(issue_dict['line_start']),
+                        line_end=int(issue_dict['line_end']),
+                        description=issue_dict['description'],
+                        suggestion=issue_dict['suggestion'],
+                        code_snippet=issue_dict.get('code_snippet')
+                    )
+                    issues.append(issue)
+
+                except Exception as e:
+                    logger.warning(f"解析问题 {i} 失败: {e}, 数据: {issue_dict}")
+                    continue
+
+            logger.info(f"成功解析 {len(issues)} 个问题")
+            return issues
+
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON 解析失败: {e}\n响应内容: {response_text[:500]}...")
+            return []
+        except Exception as e:
+            logger.error(f"解析 LLM 响应失败: {e}\n响应内容: {response_text[:500]}...", exc_info=True)
+            return []
