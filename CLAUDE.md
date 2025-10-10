@@ -48,12 +48,26 @@ The package provides multiple command-line interfaces via [entry_points.txt](ext
    - Token counting and request interception
    - Support for multiple model providers (OpenAI, Anthropic, Google, Azure, etc.)
 
+5. **Checker System** ([checker/](autocoder/checker/)) - Custom Development
+   - LLM-based intelligent code quality checking
+   - Plugin integration via [code_checker_plugin.py](autocoder/plugins/code_checker_plugin.py)
+   - Commands: `/check /file`, `/check /folder`, `/check /resume`
+   - Core modules:
+     - [core.py](autocoder/checker/core.py): Main checker logic with concurrent processing
+     - [rules_loader.py](autocoder/checker/rules_loader.py): Rule file parsing and management
+     - [file_processor.py](autocoder/checker/file_processor.py): File scanning and chunking
+     - [progress_tracker.py](autocoder/checker/progress_tracker.py): Progress tracking and resume support
+     - [report_generator.py](autocoder/checker/report_generator.py): Report generation (JSON/Markdown)
+   - Features: Large file chunking, concurrent checking, interrupt/resume, detailed reports
+   - Documentation: [Usage Guide](docs/code_checker_usage.md), [Development Guide](docs/code_checker_development.md)
+
 ### Key Subsystems
 
 - **RAG System** ([rag/](extracted/autocoder/rag/)): Document indexing, retrieval, and serving
 - **Index System** ([index/](extracted/autocoder/index/)): Code indexing and querying
 - **Command System** ([commands/](extracted/autocoder/commands/)): Auto-command and web tools
 - **Common Utilities** ([common/](extracted/autocoder/common/)): File operations, git utils, code generation/merging, shell/Jupyter clients
+- **Checker System** ([checker/](autocoder/checker/)): LLM-based code quality and compliance checking (custom development)
 
 ## Development Commands
 
