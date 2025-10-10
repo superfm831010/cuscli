@@ -80,7 +80,13 @@ auto-coder.chat  # 默认中文界面
 
 如需切换到英文界面：
 ```bash
-LANG=en_US.UTF-8 auto-coder.chat
+AUTO_CODER_LANG=en auto-coder.chat
+```
+
+或切换到其他语言：
+```bash
+AUTO_CODER_LANG=ja auto-coder.chat  # 日文
+AUTO_CODER_LANG=ru auto-coder.chat  # 俄文
 ```
 
 ## 📚 文档

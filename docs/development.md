@@ -20,23 +20,31 @@ auto-coder.chat  # 默认中文界面
 
 ### 切换到英文界面
 
-**方法1：临时设置环境变量**
+**方法1：使用自定义环境变量（推荐）**
 ```bash
-LANG=en_US.UTF-8 auto-coder.chat
+AUTO_CODER_LANG=en auto-coder.chat
 ```
 
-**方法2：永久设置（添加到 ~/.bashrc 或 ~/.zshrc）**
+**方法2：设置 LANG 环境变量**
 ```bash
-export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
+LANG=zh_CN.UTF-8 auto-coder.chat  # 注意：en_US 会被忽略，默认显示中文
+```
+
+**方法3：永久设置自定义语言**
+```bash
+# 添加到 ~/.bashrc 或 ~/.zshrc
+export AUTO_CODER_LANG=en
 ```
 
 ### 技术说明
 
 - 语言检测代码位于：`autocoder/common/international/message_manager.py:23`
-- 使用 `locale.getdefaultlocale()` 读取系统 locale
+- 检测优先级：
+  1. `AUTO_CODER_LANG` 环境变量（最高优先级）
+  2. `LANG` 环境变量（仅支持 zh/ja/ar/ru，忽略 en）
+  3. 默认：zh（中文）
 - 支持的语言：en（英文）、zh（中文）、ja（日文）、ar（阿拉伯文）、ru（俄文）
-- **未支持的语言会回退到中文**（二次开发版本的默认设置）
+- **英文 locale（如 en_US）会被忽略，默认显示中文**（二次开发版本的定制行为）
 
 ## 开发环境搭建
 
@@ -558,74 +566,83 @@ export LC_ALL=zh_CN.UTF-8
 
 ---
 
-### 2025-10-10: 修改默认语言为中文
+### 2025-10-10: 修改默认语言为中文（第二版 - 忽略英文 locale）
 
 **修改内容:**
-修改 `autocoder/common/international/message_manager.py` 中的语言检测逻辑，将默认语言从英文改为中文
+重新设计语言检测逻辑，忽略英文 locale，强制默认中文，并支持通过环境变量切换
 
 **修改原因:**
-- 用户希望直接启动就是中文界面，无需额外设置
-- 简化使用流程，提升中文用户体验
-- 保持与原始安装版本的一致性
+- 第一版修改存在逻辑问题：系统 LANG=en_US 时仍然返回 en
+- 用户希望在开发模式下直接启动就是中文，无需任何设置
+- 需要保留切换到其他语言的能力
 
 **技术修改:**
 ```python
-# 修改前：默认回退到英文
 def get_system_language(self) -> str:
+    """优先级：AUTO_CODER_LANG > LANG(非en) > 默认zh"""
     try:
-        lang_code, _ = locale.getdefaultlocale()
-        if lang_code:
-            detected_lang = lang_code[:2]
-            supported_languages = ['en', 'zh', 'ja', 'ar', 'ru']
-            if detected_lang in supported_languages:
-                return detected_lang
-            else:
-                return "en"  # 回退到英文
-        return "en"  # 回退到英文
-    except:
-        return "en"  # 回退到英文
+        import os
 
-# 修改后：默认回退到中文
-def get_system_language(self) -> str:
-    try:
-        lang_code, _ = locale.getdefaultlocale()
-        if lang_code:
-            detected_lang = lang_code[:2]
-            supported_languages = ['en', 'zh', 'ja', 'ar', 'ru']
-            if detected_lang in supported_languages:
+        # 1. 检查自定义环境变量（最高优先级）
+        custom_lang = os.environ.get('AUTO_CODER_LANG', '').strip().lower()
+        if custom_lang in ['en', 'zh', 'ja', 'ar', 'ru']:
+            return custom_lang
+
+        # 2. 检查 LANG 环境变量（忽略英文）
+        lang_env = os.environ.get('LANG', '')
+        if lang_env:
+            detected_lang = lang_env.split('.')[0].split('_')[0].lower()
+            # 只接受中文和其他非英文语言
+            if detected_lang in ['zh', 'ja', 'ar', 'ru']:
                 return detected_lang
-            else:
-                return "zh"  # 默认使用中文
-        return "zh"  # 默认使用中文
+
+        # 3. 默认中文（忽略 en_US 等英文 locale）
+        return "zh"
     except:
-        return "zh"  # 默认使用中文
+        return "zh"
 ```
 
 **行为变化:**
-- **修改前**: 系统 locale 为 en_US 或未设置时，显示英文界面
-- **修改后**: 系统 locale 为 en_US 或未设置时，显示中文界面
-- **检测到其他支持语言**: 仍然按检测结果显示（如日文系统显示日文）
-- **需要英文界面**: 设置 `LANG=en_US.UTF-8 auto-coder.chat`
-
-**影响范围:**
-- 仅影响语言检测的默认回退行为
-- 对于明确设置了支持语言的系统，行为不变
-- 所有入口点（auto-coder, auto-coder.chat 等）都受影响
+| 场景 | 修改前 | 修改后（第二版） |
+|------|--------|------------------|
+| 系统 `LANG=en_US.UTF-8` | 显示英文 | 显示中文 ✓ |
+| 系统 `LANG=zh_CN.UTF-8` | 显示中文 | 显示中文 ✓ |
+| `AUTO_CODER_LANG=en` | 不支持 | 显示英文 ✓ |
+| 未设置任何环境变量 | 显示中文 | 显示中文 ✓ |
 
 **使用说明:**
-现在直接启动就是中文界面：
+
+默认中文（不管系统 LANG 是什么）：
 ```bash
-auto-coder.chat  # 默认中文界面
+auto-coder.chat  # 始终显示中文
 ```
 
-如需切换到英文界面：
+切换到英文：
 ```bash
-LANG=en_US.UTF-8 auto-coder.chat
+AUTO_CODER_LANG=en auto-coder.chat
 ```
+
+切换到其他语言：
+```bash
+AUTO_CODER_LANG=ja auto-coder.chat  # 日文
+AUTO_CODER_LANG=ru auto-coder.chat  # 俄文
+```
+
+**影响范围:**
+- 彻底忽略英文 locale（en_US、en_GB 等）
+- 通过 `AUTO_CODER_LANG` 环境变量支持语言切换
+- 所有入口点生效
+- 开发模式下修改代码立即生效（需要清理缓存）
+
+**问题修复:**
+- ✓ 解决了第一版中 LANG=en_US 仍显示英文的问题
+- ✓ 开发模式下修改代码后需要清理 Python 缓存：`find autocoder -name "*.pyc" -delete`
+- ✓ 提供了明确的语言切换机制
 
 **测试情况:**
-- 在 LANG=en_US.UTF-8 的系统上启动，显示中文界面 ✓
-- 仍然可以通过环境变量切换到其他语言 ✓
+- 在 LANG=en_US.UTF-8 的系统上启动，显示中文 ✓
+- AUTO_CODER_LANG=en 可以切换到英文 ✓
+- 修改代码后清理缓存，立即生效 ✓
 
 ---
 
