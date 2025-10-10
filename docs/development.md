@@ -844,6 +844,49 @@ chat-auto-coder
 
 ---
 
+### 2025-10-10: 完全移除官方文档链接
+
+**修改内容:**
+1. 删除 `autocoder/common/international/messages/chat_auto_coder_messages.py` 第 1009-1015 行
+   - 移除整个 `official_doc` 国际化消息条目（包含所有语言版本）
+2. 删除 `autocoder/chat_auto_coder.py` 第 173-174 行
+   - 移除 `show_help()` 函数中显示官方文档链接的代码
+3. 删除 `autocoder/terminal/help.py` 第 8-9 行
+   - 移除 `show_help()` 函数中显示官方文档链接的代码
+
+**修改原因:**
+- 用户要求删除原始项目的官方文档链接（飞书文档）
+- 作为二次开发项目，不再需要显示原始项目的官方文档
+- 简化帮助信息界面
+
+**技术细节:**
+```python
+# 删除的国际化消息条目
+"official_doc": {
+    "en": "Official Documentation: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI",
+    "zh": "官方文档: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI",
+    "ja": "公式ドキュメント: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI",
+    "ar": "الوثائق الرسمية: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI",
+    "ru": "Официальная документация: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI"
+}
+
+# 删除的显示代码（两处相同）
+print(f"\033[1m{get_message('official_doc')}\033[0m")
+print()
+```
+
+**影响范围:**
+- 启动帮助信息不再显示官方文档链接
+- `/help` 命令显示的帮助信息也不再包含官方文档链接
+- 不影响其他任何功能
+- 已确认没有其他地方引用 `official_doc` 消息键
+
+**测试情况:**
+- 使用 `grep` 搜索确认所有 `official_doc` 引用已删除 ✓
+- 删除后代码结构完整，不会出现引用错误 ✓
+
+---
+
 ## 后续开发记录模板
 
 ### YYYY-MM-DD: 修改标题

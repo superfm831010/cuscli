@@ -1006,13 +1006,6 @@ Available subcommands:
         "ar": "هل تريد تنفيذ هذا السكريبت؟",
         "ru": "Хотите выполнить этот скрипт?"
     },
-    "official_doc": {
-        "en": "Official Documentation: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI",
-        "zh": "官方文档: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI",
-        "ja": "公式ドキュメント: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI",
-        "ar": "الوثائق الرسمية: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI",
-        "ru": "Официальная документация: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI"
-    },
     "plugins_desc": {
         "en": "Manage plugins",
         "zh": "管理插件",

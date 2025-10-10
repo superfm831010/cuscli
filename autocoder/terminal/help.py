@@ -5,8 +5,6 @@ from autocoder.chat_auto_coder_lang import get_message
 
 def show_help(plugin_manager):
     """显示帮助信息"""
-    print(f"\033[1m{get_message('official_doc')}\033[0m")
-    print()
     print(f"\033[1m{get_message('supported_commands')}\033[0m")
     print()
     print(
