@@ -1490,7 +1490,7 @@ Rules file usage:
     },
     "type_help_to_see_commands": {
         "en": "Type /help to see available commands.",
-        "zh": "输入 /help 查看可用命令。",
+        "zh": "欢迎使用中国海关智能编码助手，输入 /help 查看可用命令。",
         "ja": "/help と入力して利用可能なコマンドを表示してください。",
         "ar": "اكتب /help لرؤية الأوامر المتاحة.",
         "ru": "Введите /help, чтобы увидеть доступные команды."

@@ -695,6 +695,52 @@ AUTO_CODER_LANG=ru auto-coder.chat  # 俄文
 
 ---
 
+### 2025-10-10: 修改启动界面欢迎提示文字
+
+**修改内容:**
+1. 修改文件 `autocoder/common/international/messages/chat_auto_coder_messages.py` 第 1493 行
+2. 将启动提示从"输入 /help 查看可用命令。"改为"欢迎使用中国海关智能编码助手，输入 /help 查看可用命令。"
+3. 修改的是 `type_help_to_see_commands` 消息键的中文（zh）翻译
+
+**修改原因:**
+- 需要在启动界面添加欢迎语，体现"中国海关智能编码助手"的品牌标识
+- 提升用户体验，让用户一启动就知道这是定制化的海关智能助手
+- 与 CUS-CLI 品牌形象保持一致
+
+**技术细节:**
+```python
+# 修改前
+"type_help_to_see_commands": {
+    "en": "Type /help to see available commands.",
+    "zh": "输入 /help 查看可用命令。",
+    ...
+}
+
+# 修改后
+"type_help_to_see_commands": {
+    "en": "Type /help to see available commands.",
+    "zh": "欢迎使用中国海关智能编码助手，输入 /help 查看可用命令。",
+    ...
+}
+```
+
+**使用位置:**
+- `chat_auto_coder.py:1144` - 主聊天界面启动时
+- `terminal/app.py:333` - 终端应用启动时
+
+**影响范围:**
+- 仅影响启动界面的中文提示文字
+- 英文和其他语言界面不受影响
+- 不影响任何功能逻辑
+- 用户启动 `auto-coder.chat` 时会看到新的欢迎提示
+
+**测试情况:**
+- 修改后启动界面会显示："欢迎使用中国海关智能编码助手，输入 /help 查看可用命令。"
+- 保持蓝色配色显示（`\033[1;34m`）
+- 不影响后续的插件加载和其他提示信息
+
+---
+
 ## 后续开发记录模板
 
 ### YYYY-MM-DD: 修改标题
