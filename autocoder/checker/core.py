@@ -434,3 +434,101 @@ class CodeChecker:
         except Exception as e:
             logger.error(f"解析 LLM 响应失败: {e}\n响应内容: {response_text[:500]}...", exc_info=True)
             return []
+
+    def resume_check(self, check_id: str) -> BatchCheckResult:
+        """
+        恢复中断的检查
+
+        Task 8.2: 实现中断恢复逻辑
+
+        Args:
+            check_id: 检查任务ID
+
+        Returns:
+            BatchCheckResult: 完整的批量检查结果
+
+        Raises:
+            ValueError: 如果检查记录不存在或已完成
+        """
+        logger.info(f"恢复检查任务: {check_id}")
+
+        # 1. 加载检查状态
+        state = self.progress_tracker.load_state(check_id)
+        if not state:
+            error_msg = f"检查记录不存在: {check_id}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        # 2. 检查状态
+        if state.status == "completed":
+            error_msg = f"检查任务已完成，无需恢复: {check_id}"
+            logger.warning(error_msg)
+            raise ValueError(error_msg)
+
+        # 3. 获取剩余文件
+        remaining_files = state.remaining_files
+        total_files = len(state.total_files)
+        completed_count = len(state.completed_files)
+        remaining_count = len(remaining_files)
+
+        logger.info(
+            f"检查进度: {completed_count}/{total_files}, "
+            f"剩余 {remaining_count} 个文件"
+        )
+
+        # 4. 继续检查剩余文件
+        file_results = []
+        for file_path in remaining_files:
+            try:
+                logger.debug(f"检查文件: {file_path}")
+                result = self.check_file(file_path)
+                file_results.append(result)
+
+                # 更新进度
+                self.progress_tracker.mark_completed(check_id, file_path)
+
+            except Exception as e:
+                logger.error(f"检查文件 {file_path} 时出错: {e}", exc_info=True)
+                # 创建失败结果
+                file_results.append(FileCheckResult(
+                    file_path=file_path,
+                    check_time=datetime.now().isoformat(),
+                    issues=[],
+                    error_count=0,
+                    warning_count=0,
+                    info_count=0,
+                    status="failed",
+                    error_message=str(e)
+                ))
+                # 仍然标记为完成（避免重复检查）
+                self.progress_tracker.mark_completed(check_id, file_path)
+
+        # 5. 构造返回结果
+        end_time = datetime.now()
+
+        # 统计当前批次的结果
+        total_issues = sum(len(r.issues) for r in file_results)
+        total_errors = sum(r.error_count for r in file_results)
+        total_warnings = sum(r.warning_count for r in file_results)
+        total_infos = sum(r.info_count for r in file_results)
+
+        logger.info(
+            f"恢复检查完成: check_id={check_id}, "
+            f"本批次检查 {remaining_count} 个文件, "
+            f"发现 {total_issues} 个问题"
+        )
+
+        # 注意：这里返回的是当前恢复批次的结果
+        # 如果需要完整结果（包含之前已检查的文件），需要在插件层合并
+        return BatchCheckResult(
+            check_id=check_id,
+            start_time=state.start_time,
+            end_time=end_time.isoformat(),
+            total_files=total_files,
+            checked_files=total_files,  # 全部完成
+            total_issues=total_issues,
+            total_errors=total_errors,
+            total_warnings=total_warnings,
+            total_infos=total_infos,
+            file_results=file_results  # 仅包含本次恢复的文件结果
+        )
