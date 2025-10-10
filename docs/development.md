@@ -7,6 +7,35 @@
 - **开发版本**: 1.0.39.dev
 - **Python 要求**: 3.10 - 3.12
 
+## 语言设置
+
+Auto-Coder 支持多语言界面（中文、英文等），通过系统 `LANG` 环境变量自动检测。
+
+### 使用中文界面
+
+**方法1：使用中文启动脚本（推荐）**
+```bash
+./auto-coder-zh.sh
+```
+
+**方法2：临时设置环境变量**
+```bash
+LANG=zh_CN.UTF-8 auto-coder.chat
+```
+
+**方法3：永久设置（添加到 ~/.bashrc 或 ~/.zshrc）**
+```bash
+export LANG=zh_CN.UTF-8
+export LC_ALL=zh_CN.UTF-8
+```
+
+### 技术说明
+
+- 语言检测代码位于：`autocoder/common/international/message_manager.py:31`
+- 使用 `locale.getdefaultlocale()` 读取系统 locale
+- 支持的语言：en（英文）、zh（中文）、ja（日文）、ar（阿拉伯文）、ru（俄文）
+- 未支持的语言会回退到英文
+
 ## 开发环境搭建
 
 ### 1. 快速开始（推荐）
@@ -472,6 +501,58 @@ source "$VENV_DIR/bin/activate"
 **测试情况:**
 - 在 dash shell 环境下测试通过
 - 虚拟环境创建和激活成功
+
+---
+
+### 2025-10-10: 添加中文界面支持
+
+**修改内容:**
+1. 创建 `auto-coder-zh.sh` - 中文界面启动脚本
+2. 更新开发文档，添加语言设置说明
+3. 更新 DEV-README.md，添加中文界面使用方法
+
+**问题描述:**
+用户反馈开发模式安装后，启动的界面是英文的，而直接安装的版本是中文界面
+
+**原因分析:**
+- Auto-Coder 使用 `locale.getdefaultlocale()` 检测系统语言
+- 系统的 `LANG` 环境变量设置为 `en_US.UTF-8`
+- 代码位置：`autocoder/common/international/message_manager.py:31`
+- 系统自动根据 locale 的前两个字符判断语言（如 zh_CN -> zh）
+
+**解决方案:**
+提供三种方式切换到中文界面：
+
+1. **使用中文启动脚本（最简单）**
+```bash
+./auto-coder-zh.sh
+```
+
+2. **临时设置环境变量**
+```bash
+LANG=zh_CN.UTF-8 auto-coder.chat
+```
+
+3. **永久设置（修改 ~/.bashrc 或 ~/.zshrc）**
+```bash
+export LANG=zh_CN.UTF-8
+export LC_ALL=zh_CN.UTF-8
+```
+
+**技术细节:**
+- 支持的语言：en、zh、ja、ar、ru
+- 不支持的语言自动回退到英文
+- 语言配置在 `autocoder/lang.py` 中定义
+- 消息文件在 `autocoder/common/international/messages/` 目录
+
+**影响范围:**
+- 新增中文启动脚本
+- 不影响现有功能
+- 提供更好的中文用户体验
+
+**测试情况:**
+- 使用中文启动脚本可正常显示中文界面
+- 环境变量设置方法测试通过
 
 ---
 

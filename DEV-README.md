@@ -71,6 +71,26 @@ auto-coder.rag          # RAG模式
 chat-auto-coder         # 聊天模式别名
 ```
 
+### 🌏 使用中文界面
+
+系统默认根据您的 `LANG` 环境变量决定显示语言。如果显示英文界面，可以：
+
+**方法1：使用中文启动脚本（推荐）**
+```bash
+./auto-coder-zh.sh
+```
+
+**方法2：临时设置中文环境变量**
+```bash
+LANG=zh_CN.UTF-8 auto-coder.chat
+```
+
+**方法3：永久设置中文（添加到 ~/.bashrc 或 ~/.zshrc）**
+```bash
+export LANG=zh_CN.UTF-8
+export LC_ALL=zh_CN.UTF-8
+```
+
 ## 📚 文档
 
 详细开发文档请查看: [docs/development.md](docs/development.md)
