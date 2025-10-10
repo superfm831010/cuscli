@@ -267,13 +267,54 @@ class RulesLoader:
 
             patterns = config.get("file_patterns", [])
             for pattern in patterns:
-                if fnmatch.fnmatch(file_path, pattern) or fnmatch.fnmatch(os.path.basename(file_path), pattern):
+                if self._match_pattern(file_path, pattern):
                     self._file_pattern_cache[file_path] = rule_type
                     return rule_type
 
         # 无法确定类型
         self._file_pattern_cache[file_path] = None
         return None
+
+    def _match_pattern(self, file_path: str, pattern: str) -> bool:
+        """
+        匹配文件路径和模式
+
+        支持 glob 模式，包括 ** 通配符
+
+        Args:
+            file_path: 文件路径
+            pattern: glob 模式
+
+        Returns:
+            是否匹配
+        """
+        from pathlib import PurePosixPath
+
+        # 标准化文件路径（确保有路径前缀）
+        normalized_path = file_path if ('/' in file_path or '\\' in file_path) else f"a/{file_path}"
+        file_obj = PurePosixPath(normalized_path)
+
+        # 尝试使用 pathlib 的 match 方法
+        try:
+            if file_obj.match(pattern):
+                return True
+        except Exception:
+            pass
+
+        # 对于 **/*.ext 这样的模式，也匹配 *.ext
+        if pattern.startswith('**/'):
+            simple_pattern = pattern[3:]  # 去掉 **/
+            if fnmatch.fnmatch(os.path.basename(file_path), simple_pattern):
+                return True
+
+        # 尝试 fnmatch
+        if fnmatch.fnmatch(file_path, pattern):
+            return True
+
+        if fnmatch.fnmatch(os.path.basename(file_path), pattern):
+            return True
+
+        return False
 
     def _determine_by_extension(self, file_path: str) -> Optional[str]:
         """
@@ -334,7 +375,9 @@ class RulesLoader:
                 continue
 
             # 跳过低于阈值的规则
-            rule_level = severity_order.get(rule.severity.value, 3)
+            # Severity 是继承自 str 的 Enum，直接转换为字符串
+            severity_str = str(rule.severity) if hasattr(rule.severity, 'value') else rule.severity
+            rule_level = severity_order.get(severity_str, 3)
             if rule_level > threshold_level:
                 continue
 
