@@ -141,9 +141,102 @@ class RulesLoader:
         Returns:
             解析出的规则列表
         """
-        # 此方法将在 Task 3.2 中实现
-        # 这里先返回空列表作为占位
-        return []
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        rules = []
+        current_category = "未分类"
+
+        # 按行分割处理
+        lines = content.split('\n')
+        i = 0
+
+        while i < len(lines):
+            line = lines[i].strip()
+
+            # 检测类别标题（## 开头）
+            if line.startswith('## ') and not line.startswith('###'):
+                current_category = line[3:].strip()
+                i += 1
+                continue
+
+            # 检测规则开始（### 规则ID:）
+            if line.startswith('### 规则ID:'):
+                rule_id = line.split(':', 1)[1].strip()
+
+                # 初始化规则字段
+                title = ""
+                severity = Severity.INFO
+                description = ""
+                explanation = ""
+                examples = ""
+
+                # 解析规则字段
+                i += 1
+                while i < len(lines):
+                    line = lines[i].strip()
+
+                    # 遇到下一个规则或类别，停止
+                    if line.startswith('###') or (line.startswith('##') and not line.startswith('###')):
+                        break
+
+                    # 提取字段
+                    if line.startswith('**标题**:'):
+                        title = line.split(':', 1)[1].strip()
+                    elif line.startswith('**严重程度**:'):
+                        severity_str = line.split(':', 1)[1].strip().lower()
+                        severity = Severity(severity_str)
+                    elif line.startswith('**描述**:'):
+                        description = line.split(':', 1)[1].strip()
+                    elif line.startswith('**说明**:'):
+                        explanation = line.split(':', 1)[1].strip()
+                    elif line.startswith('**错误示例**:') or line.startswith('**正确示例**:'):
+                        # 收集示例代码块
+                        example_lines = [line]
+                        i += 1
+                        in_code_block = False
+                        while i < len(lines):
+                            example_line = lines[i]
+                            if example_line.strip().startswith('```'):
+                                in_code_block = not in_code_block
+                                example_lines.append(example_line)
+                                if not in_code_block:
+                                    # 代码块结束
+                                    i += 1
+                                    break
+                            elif in_code_block or example_line.strip():
+                                example_lines.append(example_line)
+                            else:
+                                # 空行且不在代码块中，示例结束
+                                break
+                            i += 1
+                        examples += '\n'.join(example_lines) + '\n\n'
+                        continue
+
+                    i += 1
+
+                # 合并描述和说明
+                full_description = description
+                if explanation:
+                    full_description = f"{description}\n\n{explanation}"
+
+                # 创建规则对象
+                rule = Rule(
+                    id=rule_id,
+                    category=current_category,
+                    title=title,
+                    description=full_description,
+                    severity=severity,
+                    enabled=True,
+                    examples=examples.strip() if examples else None
+                )
+
+                rules.append(rule)
+                continue
+
+            i += 1
+
+        return rules
 
     def _determine_rule_type(self, file_path: str) -> Optional[str]:
         """
