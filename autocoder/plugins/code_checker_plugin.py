@@ -639,12 +639,170 @@ class CodeCheckerPlugin(Plugin):
         """
         恢复中断的检查
 
+        Task 8.3: 实现 /check /resume 命令
+
         Args:
-            args: check_id
+            args: check_id（可选）
         """
-        # TODO: Task 7.x - 实现检查恢复
-        print("⚠️  /check /resume 功能即将实现")
-        print(f"   参数: {args}")
+        check_id = args.strip()
+
+        # 如果没有提供 check_id，列出可恢复的检查
+        if not check_id:
+            self._list_resumable_checks()
+            return
+
+        print(f"🔄 恢复检查: {check_id}")
+        print()
+
+        try:
+            # 确保 checker 已初始化
+            self._ensure_checker()
+
+            # 加载状态
+            state = self.progress_tracker.load_state(check_id)
+            if not state:
+                print(f"❌ 检查记录不存在: {check_id}")
+                print()
+                print("💡 使用 /check /resume 查看可恢复的检查")
+                return
+
+            if state.status == "completed":
+                print(f"⚠️  检查任务已完成，无需恢复")
+                return
+
+            # 显示进度信息
+            remaining = len(state.remaining_files)
+            total = len(state.total_files)
+            completed = len(state.completed_files)
+
+            print(f"📊 检查进度:")
+            print(f"   总文件数: {total}")
+            print(f"   已完成: {completed}")
+            print(f"   剩余: {remaining}")
+            print()
+
+            # 导入 rich 进度条
+            from rich.progress import (
+                Progress,
+                SpinnerColumn,
+                TextColumn,
+                BarColumn,
+                TaskProgressColumn,
+                TimeRemainingColumn,
+            )
+
+            # 恢复检查（带进度显示）
+            results = []
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeRemainingColumn(),
+            ) as progress:
+                task = progress.add_task(
+                    "恢复检查中...",
+                    total=remaining
+                )
+
+                for file_path in state.remaining_files:
+                    result = self.checker.check_file(file_path)
+                    results.append(result)
+
+                    # 更新进度
+                    self.progress_tracker.mark_completed(check_id, file_path)
+
+                    progress.update(
+                        task,
+                        advance=1,
+                        description=f"检查 {os.path.basename(file_path)}"
+                    )
+
+            # 标记检查完成
+            state = self.progress_tracker.load_state(check_id)
+            if state:
+                state.status = "completed"
+                self.progress_tracker.save_state(check_id, state)
+
+            # 生成/更新报告
+            report_dir = os.path.join("codecheck", check_id)
+
+            # 生成单文件报告
+            for result in results:
+                self.report_generator.generate_file_report(result, report_dir)
+
+            # 生成汇总报告（注意：这里只包含本次恢复的结果）
+            # TODO: 如果需要完整汇总，需要加载之前的结果并合并
+            self.report_generator.generate_summary_report(results, report_dir)
+
+            # 显示汇总
+            print()
+            print("=" * 60)
+            print("✅ 恢复完成！")
+            print("=" * 60)
+            print()
+            print(f"本次检查文件: {remaining}")
+            total_issues = sum(len(r.issues) for r in results)
+            print(f"发现问题: {total_issues}")
+            print()
+            print(f"📄 详细报告: {report_dir}/")
+            print()
+
+        except ValueError as e:
+            # 检查记录不存在或已完成
+            print(f"❌ {e}")
+        except Exception as e:
+            print(f"❌ 恢复检查失败: {e}")
+            logger.error(f"恢复检查失败: {e}", exc_info=True)
+
+    def _list_resumable_checks(self) -> None:
+        """
+        列出可恢复的检查任务
+
+        Task 8.3: 实现可恢复检查列表
+        """
+        checks = self.progress_tracker.list_checks()
+
+        # 过滤出未完成的检查（interrupted 或 running 状态）
+        incomplete = [
+            c for c in checks
+            if c.get("status") not in ["completed"]
+        ]
+
+        if not incomplete:
+            print("📭 没有可恢复的检查任务")
+            print()
+            print("💡 使用 /check /folder 开始新的检查")
+            return
+
+        print("📋 可恢复的检查任务:")
+        print()
+
+        for i, check in enumerate(incomplete, 1):
+            check_id = check.get("check_id", "")
+            start_time = check.get("start_time", "")
+            status = check.get("status", "")
+            completed = check.get("completed", 0)
+            total = check.get("total", 0)
+            remaining = check.get("remaining", 0)
+            progress_pct = check.get("progress", 0.0)
+
+            # 格式化状态显示
+            status_icon = {
+                "running": "🔄",
+                "interrupted": "⏸️",
+                "failed": "❌"
+            }.get(status, "❓")
+
+            print(f"{i}. {status_icon} {check_id}")
+            print(f"   时间: {start_time}")
+            print(f"   状态: {status}")
+            print(f"   进度: {completed}/{total} ({progress_pct:.1f}%)")
+            print(f"   剩余: {remaining} 个文件")
+            print()
+
+        print("💡 使用 /check /resume <check_id> 恢复检查")
+        print()
 
     def _show_report(self, args: str) -> None:
         """
