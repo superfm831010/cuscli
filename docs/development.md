@@ -794,6 +794,56 @@ chat-auto-coder
 
 ---
 
+### 2025-10-10: 统一修改显示文本中的 auto-coder 为 cuscli
+
+**修改内容:**
+1. 修改聊天界面提示符（2处）：
+   - `autocoder/chat_auto_coder.py:1171` - `"auto-coder.chat"` → `"cuscli.chat"`
+   - `autocoder/terminal/app.py:365` - `"auto-coder.chat"` → `"cuscli.chat"`
+
+2. 修改问答对话标题（4处）：
+   - `autocoder/agent/base_agentic/tools/ask_followup_question_tool_resolver.py:51` - `"auto-coder.chat's Question"` → `"cuscli.chat's Question"`
+   - `autocoder/agent/project_reader.py:186` - `"auto-coder.chat's Question"` → `"cuscli.chat's Question"`
+   - `autocoder/commands/tools.py:137` - `"auto-coder.chat's Question"` → `"cuscli.chat's Question"`
+   - `autocoder/common/v2/agent/agentic_edit_tools/ask_followup_question_tool_resolver.py:60` - `"auto-coder.chat's Question"` → `"cuscli.chat's Question"`
+
+3. 修改AI系统提示和自我介绍（3处）：
+   - `autocoder/agent/coder.py:845` - `"You are auto-coder"` → `"You are cuscli"`
+   - `autocoder/commands/auto_command.py:131` - `"你是 auto-coder.chat 软件"` → `"你是 cuscli.chat 软件"`
+   - `autocoder/commands/auto_command.py:1406` - `"你好，我是 auto-coder"` → `"你好，我是 cuscli"`
+
+4. 修改提示词文档中的软件名称（2处）：
+   - `autocoder/commands/auto_command.py:202` - `"auto-coder.chat 自动感知的一些文件列表"` → `"cuscli.chat 自动感知的一些文件列表"`
+   - `autocoder/commands/auto_command.py:283` - `"是否根据需求动态修改auto-coder软件配置"` → `"是否根据需求动态修改cuscli软件配置"`
+
+**修改原因:**
+- 延续之前的品牌统一工作，将所有用户可见的显示文本中的 "auto-coder" 改为 "cuscli"
+- 确保聊天界面、AI提示、对话框等所有显示元素与 CUS-CLI 品牌保持一致
+- 提升用户体验的一致性
+
+**技术说明:**
+- **修改的内容**：仅修改用户可见的显示文本（UI提示符、对话框标题、AI自我介绍等）
+- **未修改的内容**：
+  - `.auto-coder/` 目录路径（配置目录名，属于代码逻辑）
+  - `auto-coder.log` 等文件名（日志文件名）
+  - `auto-coder.run` 等命令名（命令入口点）
+  - 技术文档中关于 auto-coder YAML 系统的说明（技术原理说明）
+
+**影响范围:**
+- 影响所有与用户交互的界面显示文本
+- 聊天界面提示符从 `coding@auto-coder.chat:~$ ` 变为 `coding@cuscli.chat:~$ `
+- AI 系统提示和自我介绍统一为 "cuscli"
+- 问答对话框标题统一为 "cuscli.chat's Question"
+- 不影响任何代码逻辑和功能
+- 不影响配置文件路径和日志文件名
+
+**测试建议:**
+- 启动聊天界面，验证提示符显示为 `coding@cuscli.chat:~$ `
+- 触发 AI 提问功能，验证对话框标题显示为 "cuscli.chat's Question"
+- 询问 AI "你是谁"，验证回答为 "你好，我是 cuscli"
+
+---
+
 ## 后续开发记录模板
 
 ### YYYY-MM-DD: 修改标题

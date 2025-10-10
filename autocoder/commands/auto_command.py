@@ -128,7 +128,7 @@ class CommandAutoTuner:
     @byzerllm.prompt()
     def _analyze(self, request: AutoCommandRequest) -> str:
         """
-        你是 auto-coder.chat 软件，帮助用户完成编程方面的需求。我们的目标是根据用户输入和当前上下文，组合多个函数来完成用户的需求。
+        你是 cuscli.chat 软件，帮助用户完成编程方面的需求。我们的目标是根据用户输入和当前上下文，组合多个函数来完成用户的需求。
         
         ====
 
@@ -199,7 +199,7 @@ class CommandAutoTuner:
         下面是一些字段的简单介绍
         - query: 用户需求
         - urls： 用户提供的上下文文件列表
-        - dynamic_urls： auto-coder.chat 自动感知的一些文件列表
+        - dynamic_urls： cuscli.chat 自动感知的一些文件列表
         - add_updated_urls: 这次需求发生变更的文件列表                        
 
         {% if conversation_history %}
@@ -280,7 +280,7 @@ class CommandAutoTuner:
         <function_combination_readme>
         如果用户是一个编码需求，你可以先简单观察当前活跃区文件列表：
 
-        ### 是否根据需求动态修改auto-coder软件配置
+        ### 是否根据需求动态修改cuscli软件配置
         关注下当前软件的配置，结合当前用户的需求，如果觉得不合理的地方，可以通过 ask_user 函数来询问用户，是否要通过 help 函数修改一些配置。
 
         ### 如何了解当前项目
@@ -1403,7 +1403,7 @@ class CommandAutoTuner:
 
          比如用户问你是谁？
          你可以通过如下方式来回答：
-         response_user(response="你好，我是 auto-coder")
+         response_user(response="你好，我是 cuscli")
         </usage>
         </function>
 

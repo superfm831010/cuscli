@@ -842,7 +842,7 @@ class Coder:
     @byzerllm.prompt()
     def _run(self, custom_instructions: str, support_computer_use: bool = True) -> str:
         '''
-        You are auto-coder, a highly skilled software engineer with extensive knowledge in many programming languages, frameworks, design patterns, and best practices.
+        You are cuscli, a highly skilled software engineer with extensive knowledge in many programming languages, frameworks, design patterns, and best practices.
 
         ====
 

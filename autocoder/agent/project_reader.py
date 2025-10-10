@@ -183,7 +183,7 @@ def get_tools(args: AutoCoderArgs, llm: byzerllm.ByzerLLM):
         question_text = Text(question, style="bold cyan")
         question_panel = Panel(
             question_text,
-            title="[bold yellow]auto-coder.chat's Question[/bold yellow]",
+            title="[bold yellow]cuscli.chat's Question[/bold yellow]",
             border_style="blue",
             expand=False
         )
