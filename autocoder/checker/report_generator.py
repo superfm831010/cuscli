@@ -193,8 +193,109 @@ class ReportGenerator:
         Returns:
             Markdown 格式的报告内容
         """
-        # 此方法将在 Task 6.3 中实现
-        return f"# 文件检查报告: {result.file_path}\n\n（待实现）"
+        # 确定状态图标
+        status_icon = {
+            "success": "✅",
+            "failed": "❌",
+            "skipped": "⏭️"
+        }.get(result.status, "❓")
+
+        # 构建 Markdown 内容
+        md = f"""# 📄 文件检查报告
+
+**文件路径**: `{result.file_path}`
+**检查时间**: {result.check_time}
+**检查状态**: {status_icon} {result.status}
+**问题总数**: {result.get_total_issues()} 个
+
+## 📊 问题统计
+
+| 严重程度 | 数量 |
+|---------|------|
+| ❌ 错误 (ERROR) | {result.error_count} |
+| ⚠️ 警告 (WARNING) | {result.warning_count} |
+| ℹ️ 提示 (INFO) | {result.info_count} |
+| **总计** | **{result.get_total_issues()}** |
+
+---
+
+"""
+
+        # 如果检查失败，显示错误信息
+        if result.status == "failed" and result.error_message:
+            md += f"""## ❌ 检查错误
+
+```
+{result.error_message}
+```
+
+---
+
+"""
+
+        # 如果没有问题
+        if not result.issues:
+            md += """## ✅ 未发现问题
+
+恭喜！此文件未发现任何代码规范问题。
+
+"""
+            return md
+
+        # 按严重程度分组
+        errors = [i for i in result.issues if i.severity == Severity.ERROR]
+        warnings = [i for i in result.issues if i.severity == Severity.WARNING]
+        infos = [i for i in result.issues if i.severity == Severity.INFO]
+
+        # 显示错误
+        if errors:
+            md += f"## ❌ 错误 ({len(errors)})\n\n"
+            md += "以下问题必须修复，可能导致系统崩溃、安全漏洞或数据丢失：\n\n"
+            for idx, issue in enumerate(errors, 1):
+                md += self._format_issue_markdown(idx, issue)
+
+        # 显示警告
+        if warnings:
+            md += f"## ⚠️ 警告 ({len(warnings)})\n\n"
+            md += "以下问题强烈建议修复，影响代码质量、性能或可维护性：\n\n"
+            for idx, issue in enumerate(warnings, 1):
+                md += self._format_issue_markdown(idx, issue)
+
+        # 显示提示
+        if infos:
+            md += f"## ℹ️ 提示 ({len(infos)})\n\n"
+            md += "以下是代码改进建议：\n\n"
+            for idx, issue in enumerate(infos, 1):
+                md += self._format_issue_markdown(idx, issue)
+
+        return md
+
+    def _format_issue_markdown(self, index: int, issue: Issue) -> str:
+        """
+        格式化单个问题为 Markdown
+
+        Args:
+            index: 问题序号
+            issue: 问题对象
+
+        Returns:
+            Markdown 格式的问题描述
+        """
+        md = f"### 问题 {index}\n\n"
+        md += f"- **位置**: 第 {issue.line_start}"
+        if issue.line_end != issue.line_start:
+            md += f"-{issue.line_end}"
+        md += " 行\n"
+        md += f"- **规则**: `{issue.rule_id}`\n"
+        md += f"- **描述**: {issue.description}\n"
+        md += f"- **建议**: {issue.suggestion}\n"
+
+        # 如果有代码片段
+        if issue.code_snippet:
+            md += f"\n**问题代码**:\n```\n{issue.code_snippet}\n```\n"
+
+        md += "\n---\n\n"
+        return md
 
     def _format_summary_markdown(self, batch_result: BatchCheckResult) -> str:
         """
@@ -206,8 +307,133 @@ class ReportGenerator:
         Returns:
             Markdown 格式的汇总报告内容
         """
-        # 此方法将在 Task 6.3 中实现
-        return f"# 批量检查汇总报告\n\n（待实现）"
+        # 计算耗时
+        duration = batch_result.get_duration_seconds()
+        duration_str = f"{duration:.2f} 秒"
+        if duration >= 60:
+            duration_str = f"{duration / 60:.2f} 分钟"
+
+        # 构建 Markdown 内容
+        md = f"""# 📊 代码检查汇总报告
+
+**检查 ID**: `{batch_result.check_id}`
+**开始时间**: {batch_result.start_time}
+**结束时间**: {batch_result.end_time}
+**总耗时**: {duration_str}
+
+## 📈 检查概览
+
+| 统计项 | 数量 |
+|--------|------|
+| 总文件数 | {batch_result.total_files} |
+| 已检查文件 | {batch_result.checked_files} |
+| 完成率 | {batch_result.get_completion_rate():.1f}% |
+| **总问题数** | **{batch_result.total_issues}** |
+
+## 🔍 问题分布
+
+| 严重程度 | 数量 | 占比 |
+|---------|------|------|
+| ❌ 错误 (ERROR) | {batch_result.total_errors} | {batch_result.total_errors / max(batch_result.total_issues, 1) * 100:.1f}% |
+| ⚠️ 警告 (WARNING) | {batch_result.total_warnings} | {batch_result.total_warnings / max(batch_result.total_issues, 1) * 100:.1f}% |
+| ℹ️ 提示 (INFO) | {batch_result.total_infos} | {batch_result.total_infos / max(batch_result.total_issues, 1) * 100:.1f}% |
+
+---
+
+## 📋 文件检查详情
+
+"""
+
+        # 按问题数量排序文件
+        sorted_results = sorted(
+            batch_result.file_results,
+            key=lambda r: r.get_total_issues(),
+            reverse=True
+        )
+
+        # 创建文件汇总表格
+        md += "| 文件路径 | 状态 | 错误 | 警告 | 提示 | 总计 |\n"
+        md += "|---------|------|------|------|------|------|\n"
+
+        for result in sorted_results:
+            status_icon = {
+                "success": "✅",
+                "failed": "❌",
+                "skipped": "⏭️"
+            }.get(result.status, "❓")
+
+            # 截断过长的路径
+            file_path = result.file_path
+            if len(file_path) > 50:
+                file_path = "..." + file_path[-47:]
+
+            md += f"| `{file_path}` | {status_icon} | "
+            md += f"{result.error_count} | {result.warning_count} | "
+            md += f"{result.info_count} | **{result.get_total_issues()}** |\n"
+
+        md += "\n---\n\n"
+
+        # 显示有问题的文件详情
+        files_with_issues = [r for r in sorted_results if r.get_total_issues() > 0]
+
+        if not files_with_issues:
+            md += """## ✅ 检查完成
+
+所有文件均未发现问题，代码质量良好！
+
+"""
+            return md
+
+        md += f"## 🔴 问题详情 (共 {len(files_with_issues)} 个文件有问题)\n\n"
+
+        for file_result in files_with_issues:
+            md += f"### 📄 {file_result.file_path}\n\n"
+            md += f"**问题数**: {file_result.get_total_issues()} 个 "
+            md += f"(❌ {file_result.error_count} ⚠️ {file_result.warning_count} "
+            md += f"ℹ️ {file_result.info_count})\n\n"
+
+            # 按严重程度分组问题
+            errors = [i for i in file_result.issues if i.severity == Severity.ERROR]
+            warnings = [i for i in file_result.issues if i.severity == Severity.WARNING]
+            infos = [i for i in file_result.issues if i.severity == Severity.INFO]
+
+            # 显示问题列表（简化版）
+            for issue in errors[:3]:  # 最多显示 3 个错误
+                md += f"- ❌ **第 {issue.line_start} 行**: {issue.description}\n"
+
+            if len(errors) > 3:
+                md += f"  _... 还有 {len(errors) - 3} 个错误_\n"
+
+            for issue in warnings[:2]:  # 最多显示 2 个警告
+                md += f"- ⚠️ **第 {issue.line_start} 行**: {issue.description}\n"
+
+            if len(warnings) > 2:
+                md += f"  _... 还有 {len(warnings) - 2} 个警告_\n"
+
+            for issue in infos[:1]:  # 最多显示 1 个提示
+                md += f"- ℹ️ **第 {issue.line_start} 行**: {issue.description}\n"
+
+            if len(infos) > 1:
+                md += f"  _... 还有 {len(infos) - 1} 个提示_\n"
+
+            md += "\n"
+
+        # 添加总结
+        md += "---\n\n"
+        md += "## 📝 建议\n\n"
+
+        if batch_result.total_errors > 0:
+            md += f"- ❌ 发现 **{batch_result.total_errors}** 个错误，请优先修复\n"
+
+        if batch_result.total_warnings > 0:
+            md += f"- ⚠️ 发现 **{batch_result.total_warnings}** 个警告，建议修复以提高代码质量\n"
+
+        if batch_result.total_infos > 0:
+            md += f"- ℹ️ 发现 **{batch_result.total_infos}** 个改进建议，可考虑优化\n"
+
+        md += "\n详细的单文件报告请查看 `files/` 目录。\n"
+
+        return md
 
     def _safe_path(self, file_path: str) -> str:
         """
