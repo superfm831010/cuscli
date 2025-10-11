@@ -372,10 +372,14 @@ class CodeCheckerPlugin(Plugin):
                 report_dir = self._create_report_dir(check_id)
                 self.report_generator.generate_file_report(result, report_dir)
 
+                # 根据是否有问题决定显示哪个目录
+                has_issues = len(result.issues) > 0
+                subdir = "with_issues" if has_issues else "no_issues"
+
                 print()
                 print(f"📄 报告已保存到: {report_dir}")
-                print(f"   - {os.path.join(report_dir, 'files', self.report_generator._safe_path(file_path) + '.md')}")
-                print(f"   - {os.path.join(report_dir, 'files', self.report_generator._safe_path(file_path) + '.json')}")
+                print(f"   - {os.path.join(report_dir, 'files', subdir, self.report_generator._safe_path(file_path) + '.md')}")
+                print(f"   - {os.path.join(report_dir, 'files', subdir, self.report_generator._safe_path(file_path) + '.json')}")
 
             elif result.status == "skipped":
                 print(f"⏭️  文件已跳过: {file_path}")
@@ -645,11 +649,11 @@ class CodeCheckerPlugin(Plugin):
 
         # 显示问题最多的文件（前5个）
         if total_issues > 0:
-            files_with_issues = [(r.file_path, len(r.issues)) for r in results if len(r.issues) > 0]
-            files_with_issues.sort(key=lambda x: x[1], reverse=True)
+            files_with_issues_list = [(r.file_path, len(r.issues)) for r in results if len(r.issues) > 0]
+            files_with_issues_list.sort(key=lambda x: x[1], reverse=True)
 
             print("问题最多的文件:")
-            for i, (file_path, count) in enumerate(files_with_issues[:5], 1):
+            for i, (file_path, count) in enumerate(files_with_issues_list[:5], 1):
                 # 截断过长的路径
                 display_path = file_path
                 if len(display_path) > 50:
@@ -657,9 +661,16 @@ class CodeCheckerPlugin(Plugin):
                 print(f"{i}. {display_path} ({count} 个问题)")
             print()
 
+        # 统计有问题和无问题的文件数量
+        files_with_issues_count = len([r for r in results if len(r.issues) > 0])
+        files_no_issues_count = len([r for r in results if len(r.issues) == 0])
+
         print(f"📄 详细报告: {report_dir}/")
         print(f"   - 汇总报告: {os.path.join(report_dir, 'summary.md')}")
-        print(f"   - 单文件报告: {os.path.join(report_dir, 'files/')} (共 {total_files} 个)")
+        print(f"   - 有问题的文件 ({files_with_issues_count} 个): {os.path.join(report_dir, 'files', 'with_issues/')}")
+        print(f"   - 无问题的文件 ({files_no_issues_count} 个): {os.path.join(report_dir, 'files', 'no_issues/')}")
+        print()
+        print("💡 提示: 优先查看 files/with_issues/ 目录中的报告进行修复")
         print()
         print("=" * 60)
 
@@ -874,7 +885,9 @@ class CodeCheckerPlugin(Plugin):
 
         report_dir = os.path.join("codecheck", check_id)
         os.makedirs(report_dir, exist_ok=True)
-        os.makedirs(os.path.join(report_dir, "files"), exist_ok=True)
+        # 创建分类子目录：有问题和无问题
+        os.makedirs(os.path.join(report_dir, "files", "with_issues"), exist_ok=True)
+        os.makedirs(os.path.join(report_dir, "files", "no_issues"), exist_ok=True)
 
         return report_dir
 

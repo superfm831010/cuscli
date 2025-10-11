@@ -31,9 +31,14 @@ class ReportGenerator:
             ├── summary.json          # 批量检查汇总（JSON）
             ├── summary.md            # 批量检查汇总（Markdown）
             └── files/
-                ├── file1_py.json     # 单文件报告（JSON）
-                ├── file1_py.md       # 单文件报告（Markdown）
-                └── ...
+                ├── with_issues/      # 有问题的文件报告
+                │   ├── file1_py.json
+                │   ├── file1_py.md
+                │   └── ...
+                └── no_issues/        # 无问题的文件报告
+                    ├── file2_py.json
+                    ├── file2_py.md
+                    └── ...
 
     Attributes:
         output_dir: 报告输出根目录
@@ -60,8 +65,12 @@ class ReportGenerator:
             report_dir: 报告输出目录
         """
         try:
-            # 创建 files 子目录
-            files_dir = os.path.join(report_dir, "files")
+            # 根据是否有问题决定保存到哪个子目录
+            has_issues = result.get_total_issues() > 0
+            subdir = "with_issues" if has_issues else "no_issues"
+
+            # 创建对应的子目录
+            files_dir = os.path.join(report_dir, "files", subdir)
             os.makedirs(files_dir, exist_ok=True)
 
             # 生成安全的文件名
@@ -76,7 +85,7 @@ class ReportGenerator:
             md_content = self._format_file_markdown(result)
             self._generate_markdown_report(md_content, md_path)
 
-            logger.info(f"已生成文件报告: {result.file_path}")
+            logger.info(f"已生成文件报告: {result.file_path} -> {subdir}")
 
         except Exception as e:
             logger.error(f"生成文件报告失败 {result.file_path}: {e}", exc_info=True)
@@ -429,7 +438,16 @@ class ReportGenerator:
         if batch_result.total_infos > 0:
             md += f"- ℹ️ 发现 **{batch_result.total_infos}** 个改进建议，可考虑优化\n"
 
-        md += "\n详细的单文件报告请查看 `files/` 目录。\n"
+        md += "\n## 📁 报告文件组织\n\n"
+        md += "为便于快速查看，报告文件已按问题分类存储：\n\n"
+
+        # 统计有问题和无问题的文件数量
+        files_with_issues = len([r for r in batch_result.file_results if r.get_total_issues() > 0])
+        files_no_issues = len([r for r in batch_result.file_results if r.get_total_issues() == 0])
+
+        md += f"- **有问题的文件** ({files_with_issues} 个): `files/with_issues/` 目录\n"
+        md += f"- **无问题的文件** ({files_no_issues} 个): `files/no_issues/` 目录\n"
+        md += "\n💡 **提示**: 优先查看 `files/with_issues/` 目录中的报告进行修复。\n"
 
         return md
 
