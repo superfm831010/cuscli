@@ -6,17 +6,21 @@
 2. 从配置文件加载规则配置
 3. 根据文件类型选择适用的规则
 4. 支持规则缓存以提高性能
+5. 自动初始化规则文件（从模板复制）
 
 作者: Claude AI
 创建时间: 2025-10-10
+修改时间: 2025-10-11
 """
 
 import os
 import re
 import json
+import shutil
 from typing import List, Dict, Optional, Set
 from pathlib import Path
 import fnmatch
+from loguru import logger
 
 from autocoder.checker.types import Rule, Severity
 
@@ -29,17 +33,28 @@ class RulesLoader:
     并根据配置文件过滤和选择规则。
     """
 
-    def __init__(self, rules_dir: str = "rules"):
+    def __init__(
+        self,
+        rules_dir: str = "rules",
+        template_rules_dir: Optional[str] = None,
+        auto_init: bool = True
+    ):
         """
         初始化规则加载器
 
         Args:
             rules_dir: 规则文件所在目录，默认为 "rules"
+            template_rules_dir: 模板规则目录路径，用于自动初始化
+                              默认为 None，会自动查找
+            auto_init: 是否自动初始化规则文件，默认为 True
         """
         self.rules_dir = rules_dir
+        self.template_rules_dir = template_rules_dir
+        self.auto_init = auto_init
         self._rule_cache: Dict[str, List[Rule]] = {}
         self._config: Optional[Dict] = None
         self._file_pattern_cache: Dict[str, str] = {}  # 文件路径 -> 规则类型映射
+        self._initialized = False  # 标记是否已尝试初始化
 
     def load_rules(self, rule_type: str) -> List[Rule]:
         """
@@ -52,7 +67,7 @@ class RulesLoader:
             规则列表
 
         Raises:
-            FileNotFoundError: 规则文件不存在
+            FileNotFoundError: 规则文件不存在且自动初始化失败
             ValueError: 规则类型不支持
         """
         # 检查缓存
@@ -62,8 +77,25 @@ class RulesLoader:
         # 确定规则文件路径
         rule_file = os.path.join(self.rules_dir, f"{rule_type}_rules.md")
 
+        # 如果规则文件不存在，尝试自动初始化
         if not os.path.exists(rule_file):
-            raise FileNotFoundError(f"规则文件不存在: {rule_file}")
+            if self.auto_init and not self._initialized:
+                logger.info(f"规则文件不存在: {rule_file}，尝试自动初始化...")
+                if self._auto_initialize_rules():
+                    # 初始化成功，继续加载
+                    logger.info("规则文件初始化成功，继续加载规则")
+                else:
+                    # 初始化失败，抛出异常
+                    raise FileNotFoundError(
+                        f"规则文件不存在: {rule_file}\n"
+                        f"自动初始化失败，请手动创建规则文件或检查模板目录配置"
+                    )
+            else:
+                # 不自动初始化或已经尝试过
+                raise FileNotFoundError(
+                    f"规则文件不存在: {rule_file}\n"
+                    f"请创建规则文件或启用自动初始化功能"
+                )
 
         # 解析规则文件
         rules = self._parse_markdown_rules(rule_file, rule_type)
@@ -449,3 +481,137 @@ class RulesLoader:
             stats[rule_type] = len(rules)
 
         return stats
+
+    def _get_template_dir(self) -> Optional[str]:
+        """
+        获取模板规则目录
+
+        优先级：
+        1. 构造函数传入的 template_rules_dir
+        2. 环境变量 CODE_CHECKER_TEMPLATE_DIR
+        3. 默认位置（当前文件所在包的 rules 目录）
+
+        Returns:
+            模板目录路径，如果不存在则返回 None
+        """
+        # 1. 使用传入的模板目录
+        if self.template_rules_dir:
+            if os.path.exists(self.template_rules_dir):
+                return self.template_rules_dir
+            else:
+                logger.warning(f"指定的模板目录不存在: {self.template_rules_dir}")
+
+        # 2. 尝试从环境变量获取
+        env_template_dir = os.environ.get("CODE_CHECKER_TEMPLATE_DIR")
+        if env_template_dir and os.path.exists(env_template_dir):
+            logger.info(f"使用环境变量指定的模板目录: {env_template_dir}")
+            return env_template_dir
+
+        # 3. 尝试默认位置
+        # 假设这个文件在 autocoder/checker/rules_loader.py
+        # 则包根目录是 autocoder/，模板目录是 <项目根>/rules
+        current_file = os.path.abspath(__file__)
+        checker_dir = os.path.dirname(current_file)  # autocoder/checker
+        autocoder_dir = os.path.dirname(checker_dir)  # autocoder
+        project_root = os.path.dirname(autocoder_dir)  # 项目根目录
+        default_template_dir = os.path.join(project_root, "rules")
+
+        if os.path.exists(default_template_dir):
+            logger.info(f"使用默认模板目录: {default_template_dir}")
+            return default_template_dir
+
+        logger.warning("未找到模板目录，自动初始化将失败")
+        return None
+
+    def _auto_initialize_rules(self) -> bool:
+        """
+        自动初始化规则文件
+
+        从模板目录复制规则文件到当前工作目录的 rules/ 文件夹
+
+        Returns:
+            True 如果初始化成功，False 如果失败
+        """
+        # 标记已尝试初始化（防止重复尝试）
+        self._initialized = True
+
+        try:
+            # 1. 获取模板目录
+            template_dir = self._get_template_dir()
+            if not template_dir:
+                logger.error("无法找到模板规则目录，自动初始化失败")
+                print("❌ 无法找到模板规则目录")
+                print("   请设置环境变量 CODE_CHECKER_TEMPLATE_DIR 或手动创建规则文件")
+                return False
+
+            # 2. 验证模板目录包含必要文件
+            required_files = [
+                "backend_rules.md",
+                "frontend_rules.md",
+                "rules_config.json"
+            ]
+
+            missing_files = []
+            for filename in required_files:
+                if not os.path.exists(os.path.join(template_dir, filename)):
+                    missing_files.append(filename)
+
+            if missing_files:
+                logger.error(f"模板目录缺少必要文件: {missing_files}")
+                print(f"❌ 模板目录缺少必要文件: {', '.join(missing_files)}")
+                return False
+
+            # 3. 创建目标目录
+            os.makedirs(self.rules_dir, exist_ok=True)
+
+            # 4. 显示提示信息
+            print()
+            print("✨ 检测到当前目录没有规则文件")
+            print("📋 正在从模板自动创建规则文件...")
+
+            # 5. 复制规则文件
+            copied_files = []
+            for filename in required_files:
+                src = os.path.join(template_dir, filename)
+                dst = os.path.join(self.rules_dir, filename)
+
+                try:
+                    shutil.copy2(src, dst)
+                    copied_files.append(filename)
+
+                    # 显示文件信息
+                    if filename == "backend_rules.md":
+                        print("   ✓ backend_rules.md (63条后端规则)")
+                    elif filename == "frontend_rules.md":
+                        print("   ✓ frontend_rules.md (105条前端规则)")
+                    elif filename == "rules_config.json":
+                        print("   ✓ rules_config.json (配置文件)")
+
+                except Exception as e:
+                    logger.error(f"复制文件失败 {filename}: {e}")
+                    print(f"   ✗ {filename} (复制失败: {e})")
+                    # 继续尝试复制其他文件
+                    continue
+
+            # 6. 检查是否成功复制了关键文件
+            if "backend_rules.md" in copied_files and "frontend_rules.md" in copied_files:
+                print()
+                print("✅ 规则文件初始化成功！")
+                print(f"   规则目录: {os.path.abspath(self.rules_dir)}")
+                print()
+                logger.info(f"成功从模板初始化规则文件到: {self.rules_dir}")
+                return True
+            else:
+                logger.error("未能成功复制所有关键文件")
+                print()
+                print("❌ 规则文件初始化未完成")
+                return False
+
+        except PermissionError as e:
+            logger.error(f"权限不足，无法创建规则目录: {e}")
+            print(f"❌ 权限不足，无法创建规则目录: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"自动初始化规则文件失败: {e}", exc_info=True)
+            print(f"❌ 自动初始化规则文件失败: {e}")
+            return False
