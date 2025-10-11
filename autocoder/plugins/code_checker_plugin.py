@@ -13,6 +13,7 @@ Code Checker Plugin for Chat Auto Coder.
 """
 
 import os
+import shlex
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from datetime import datetime
 
@@ -48,6 +49,10 @@ class CodeCheckerPlugin(Plugin):
         self.file_processor = None
         self.report_generator = None
         self.progress_tracker = None
+        self.checker_defaults = {
+            "repeat": 3,
+            "consensus": 1.0,
+        }
 
     def initialize(self) -> bool:
         """
@@ -68,6 +73,8 @@ class CodeCheckerPlugin(Plugin):
             self.file_processor = FileProcessor()
             self.report_generator = ReportGenerator()
             self.progress_tracker = ProgressTracker()
+
+            self._load_checker_defaults()
 
             logger.info(f"[{self.name}] 代码检查插件初始化成功")
             logger.info(f"[{self.name}] CodeChecker 将在首次使用时初始化")
@@ -170,6 +177,7 @@ class CodeCheckerPlugin(Plugin):
             self.checker = CodeChecker(llm, args)
 
             logger.info(f"[{self.name}] CodeChecker 初始化成功 (model={model_name})")
+            self._apply_checker_options({})
 
         except ImportError as e:
             error_msg = f"无法导入所需模块: {e}\n请确保已完成 Phase 1-6 的开发"
@@ -199,8 +207,9 @@ class CodeCheckerPlugin(Plugin):
             补全字典 {命令前缀: 补全选项列表}
         """
         return {
-            "/check": ["/file", "/folder", "/resume", "/report"],
-            "/check /folder": ["/path", "/ext", "/ignore", "/workers"],
+            "/check": ["/file", "/folder", "/resume", "/report", "/config"],
+            "/check /folder": ["/path", "/ext", "/ignore", "/workers", "/repeat", "/consensus"],
+            "/check /config": ["/repeat", "/consensus"],
         }
 
     def get_dynamic_completions(
@@ -223,6 +232,24 @@ class CodeCheckerPlugin(Plugin):
         elif command == "/check /resume":
             # check_id 补全
             return self._complete_check_id(current_input)
+
+        elif command in {"/check /config", "/check /folder"}:
+            tokens = shlex.split(current_input)
+            base_tokens = command.split()
+
+            if current_input.endswith(" "):
+                prefix = ""
+            elif len(tokens) > len(base_tokens):
+                prefix = tokens[-1]
+            else:
+                prefix = ""
+
+            suggestions: List[Tuple[str, str]] = []
+            for option in ["/repeat", "/consensus"]:
+                if not prefix or option.startswith(prefix):
+                    suggestions.append((option, option))
+
+            return suggestions
 
         return []
 
@@ -311,6 +338,8 @@ class CodeCheckerPlugin(Plugin):
         # 路由到对应的处理函数
         if subcommand == "/file":
             self._check_file(sub_args)
+        elif subcommand == "/config":
+            self._config_checker(sub_args)
         elif subcommand == "/folder":
             self._check_folder(sub_args)
         elif subcommand == "/resume":
@@ -328,6 +357,7 @@ class CodeCheckerPlugin(Plugin):
 
 使用方法:
   /check /file <filepath>              - 检查单个文件
+  /check /config [/repeat <次数>] [/consensus <0-1>] - 设置默认 LLM 重试与共识阈值
   /check /folder [options]             - 检查目录
   /check /resume [check_id]            - 恢复中断的检查
   /check /report [check_id]            - 查看检查报告
@@ -337,12 +367,15 @@ class CodeCheckerPlugin(Plugin):
   /ext <.py,.js>                       - 指定文件扩展名（逗号分隔）
   /ignore <tests,__pycache__>          - 忽略目录/文件（逗号分隔）
   /workers <5>                         - 并发数（默认: 5）
+  /repeat <3>                          - LLM 调用次数（默认: 3）
+  /consensus <1.0>                     - 共识阈值 0~1（默认: 1.0）
 
 示例:
   /check /file autocoder/auto_coder.py
+  /check /file autocoder/auto_coder.py /repeat 3 /consensus 0.8
   /check /folder
   /check /folder /path src /ext .py
-  /check /folder /path src /ext .py /ignore tests,__pycache__
+  /check /folder /path src /ext .py /ignore tests,__pycache__ /repeat 3
   /check /resume check_20250110_143022
   /check /report check_20250110_143022
         """
@@ -355,11 +388,19 @@ class CodeCheckerPlugin(Plugin):
         Args:
             args: 文件路径
         """
-        file_path = args.strip()
+        tokens = shlex.split(args)
+        if not tokens:
+            print("❌ 请指定文件路径")
+            print("用法: /check /file <filepath> [/repeat <次数>] [/consensus <0-1>]")
+            return
+
+        file_path = tokens[0]
+        option_tokens = tokens[1:]
+        common_options = self._parse_common_options(option_tokens)
 
         if not file_path:
             print("❌ 请指定文件路径")
-            print("用法: /check /file <filepath>")
+            print("用法: /check /file <filepath> [/repeat <次数>] [/consensus <0-1>]")
             return
 
         # 检查文件是否存在
@@ -377,6 +418,13 @@ class CodeCheckerPlugin(Plugin):
         try:
             # 确保 checker 已初始化
             self._ensure_checker()
+            self._apply_checker_options({
+                "repeat": options.get("repeat"),
+                "consensus": options.get("consensus"),
+            })
+
+            # 应用共识参数
+            self._apply_checker_options(common_options)
 
             # 导入 rich 进度条组件
             from rich.progress import (
@@ -680,14 +728,16 @@ class CodeCheckerPlugin(Plugin):
             "path": ".",
             "extensions": None,
             "ignored": None,
-            "workers": 5
+            "workers": 5,
+            "repeat": None,
+            "consensus": None,
         }
 
         if not args.strip():
             return options
 
         # 简单的参数解析（/key value 格式）
-        parts = args.split()
+        parts = shlex.split(args)
         i = 0
         while i < len(parts):
             part = parts[i]
@@ -711,11 +761,170 @@ class CodeCheckerPlugin(Plugin):
                 except ValueError:
                     print(f"⚠️  无效的并发数: {parts[i + 1]}，使用默认值 5")
                 i += 2
+            elif part == "/repeat" and i + 1 < len(parts):
+                try:
+                    options["repeat"] = int(parts[i + 1])
+                except ValueError:
+                    print(f"⚠️  无效的重复次数: {parts[i + 1]}，使用默认值 3")
+                i += 2
+            elif part == "/consensus" and i + 1 < len(parts):
+                try:
+                    options["consensus"] = float(parts[i + 1])
+                except ValueError:
+                    print(f"⚠️  无效的共识阈值: {parts[i + 1]}，使用默认值 1.0")
+                i += 2
             else:
                 # 跳过未知选项
                 i += 1
 
         return options
+
+    def _load_checker_defaults(self) -> None:
+        """从配置中加载默认的 repeat/consensus 设置"""
+        checker_conf = {}
+        if isinstance(self.config, dict):
+            checker_conf = self.config.get("checker", {}) or {}
+
+        defaults = checker_conf.get("defaults", {}) if isinstance(checker_conf, dict) else {}
+
+        repeat = defaults.get("repeat")
+        consensus = defaults.get("consensus")
+
+        if isinstance(repeat, (int, float)):
+            self.checker_defaults["repeat"] = max(1, int(repeat))
+
+        if isinstance(consensus, (int, float)) and 0 < float(consensus) <= 1:
+            self.checker_defaults["consensus"] = float(consensus)
+
+        logger.info(
+            f"[{self.name}] 默认 LLM repeat={self.checker_defaults['repeat']}, "
+            f"consensus={self.checker_defaults['consensus']}"
+        )
+
+    def _config_checker(self, args: str) -> None:
+        """处理 /check /config 命令"""
+        tokens = shlex.split(args)
+
+        if not tokens:
+            print("当前默认设置：")
+            print(f"  repeat = {self.checker_defaults['repeat']}")
+            print(f"  consensus = {self.checker_defaults['consensus']}")
+            print("用法: /check /config [/repeat <次数>] [/consensus <0-1>]")
+            return
+
+        options = self._parse_common_options(tokens)
+
+        updated = False
+
+        if options.get("repeat") is not None:
+            try:
+                self.checker_defaults["repeat"] = max(1, int(options["repeat"]))
+                updated = True
+            except (TypeError, ValueError):
+                print(f"⚠️  无效的重复次数: {options['repeat']}，保持原值")
+
+        if options.get("consensus") is not None:
+            try:
+                value = float(options["consensus"])
+                if 0 < value <= 1:
+                    self.checker_defaults["consensus"] = value
+                    updated = True
+                else:
+                    print("⚠️  共识阈值需在 (0,1] 区间，保持原值")
+            except (TypeError, ValueError):
+                print(f"⚠️  无效的共识阈值: {options['consensus']}，保持原值")
+
+        if updated:
+            if not isinstance(self.config, dict):
+                self.config = {}
+
+            checker_conf = self.config.setdefault("checker", {})
+            defaults_conf = checker_conf.setdefault("defaults", {})
+            defaults_conf["repeat"] = self.checker_defaults["repeat"]
+            defaults_conf["consensus"] = self.checker_defaults["consensus"]
+
+            # 持久化配置
+            self.export_config()
+
+            if self.checker:
+                self._apply_checker_options({})
+
+            print("✅ 默认配置已更新：")
+            print(f"  repeat = {self.checker_defaults['repeat']}")
+            print(f"  consensus = {self.checker_defaults['consensus']}")
+        else:
+            print("未修改配置。当前默认值：")
+            print(f"  repeat = {self.checker_defaults['repeat']}")
+            print(f"  consensus = {self.checker_defaults['consensus']}")
+
+    def _parse_common_options(self, tokens: List[str]) -> Dict[str, Optional[Any]]:
+        """解析通用的 LLM 共识相关选项"""
+        options: Dict[str, Optional[Any]] = {"repeat": None, "consensus": None}
+
+        if not tokens:
+            return options
+
+        i = 0
+        while i < len(tokens):
+            token = tokens[i]
+            if token == "/repeat" and i + 1 < len(tokens):
+                try:
+                    options["repeat"] = int(tokens[i + 1])
+                except ValueError:
+                    print(
+                        f"⚠️  无效的重复次数: {tokens[i + 1]}，保持当前默认值"
+                    )
+                i += 2
+            elif token == "/consensus" and i + 1 < len(tokens):
+                try:
+                    options["consensus"] = float(tokens[i + 1])
+                except ValueError:
+                    print(
+                        f"⚠️  无效的共识阈值: {tokens[i + 1]}，保持当前默认值"
+                    )
+                i += 2
+            else:
+                i += 1
+
+        return options
+
+    def _apply_checker_options(self, options: Dict[str, Optional[Any]]) -> None:
+        """将解析后的共识参数应用到 CodeChecker"""
+        if not self.checker:
+            return
+
+        repeat = options.get("repeat")
+        consensus = options.get("consensus")
+
+        repeat_value = self.checker_defaults["repeat"]
+        if repeat is not None:
+            try:
+                repeat_value = max(1, int(repeat))
+            except (TypeError, ValueError):
+                print(
+                    f"⚠️  重复次数无效({repeat})，继续使用默认值 {self.checker_defaults['repeat']}"
+                )
+
+        consensus_value = self.checker_defaults["consensus"]
+        if consensus is not None:
+            try:
+                consensus_value = float(consensus)
+            except (TypeError, ValueError):
+                print(
+                    f"⚠️  共识阈值无效({consensus})，继续使用默认值 {self.checker_defaults['consensus']}"
+                )
+
+        if consensus_value <= 0 or consensus_value > 1:
+            print(
+                f"⚠️  共识阈值需在 (0,1] 区间，已回退到默认值 {self.checker_defaults['consensus']}"
+            )
+            consensus_value = self.checker_defaults["consensus"]
+
+        self.checker.llm_repeat = repeat_value
+        self.checker.llm_consensus_ratio = consensus_value
+        logger.info(
+            f"[{self.name}] 使用 LLM repeat={repeat_value}, consensus={consensus_value}"
+        )
 
     def _show_batch_summary(self, results: List, report_dir: str) -> None:
         """
