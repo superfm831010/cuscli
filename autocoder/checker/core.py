@@ -157,15 +157,9 @@ class CodeChecker:
                     if not issues:
                         logger.debug(f"Chunk {chunk.chunk_index} 未发现问题（或检查失败）")
 
-                    # 调整行号（chunk 的行号需要加上 chunk 的起始行偏移）
-                    # 注意：chunk.content 中的行号是从 1 开始的，需要映射到实际文件行号
-                    for issue in issues:
-                        # issue.line_start 是相对于 chunk 的行号，需要转换为文件的实际行号
-                        # chunk.start_line 是这个 chunk 在文件中的起始行号
-                        actual_line_start = issue.line_start + chunk.start_line - 1
-                        actual_line_end = issue.line_end + chunk.start_line - 1
-                        issue.line_start = actual_line_start
-                        issue.line_end = actual_line_end
+                    # 注意：LLM 返回的行号已经是文件的实际行号（从 chunk 内容的行号前缀中提取）
+                    # 因为 file_processor.py 中为每行添加的就是文件的实际行号（如 "41 第41行代码"）
+                    # 所以这里无需再进行行号转换，直接使用即可
 
                     all_issues.extend(issues)
                     logger.info(f"Chunk {chunk.chunk_index + 1} 完成，发现 {len(issues)} 个问题")
@@ -494,8 +488,11 @@ class CodeChecker:
 
         **重要提示**：
         1. 行号必须从代码的行号列中提取，例如 "15 def foo():" 中的行号是 15
-        2. 只返回确实违反规则的问题，不要臆测
-        3. 每个问题都必须有明确的规则依据
+        2. line_start 和 line_end 都是包含性的（inclusive），即从 line_start 到 line_end 的所有行都包含在内
+        3. **行数计算公式**：实际行数 = line_end - line_start + 1
+        4. 对于涉及行数判断的规则（如方法行数限制），请先计算实际行数，确认**确实超过阈值**后再报告问题
+        5. 只返回确实违反规则的问题，不要臆测或误判
+        6. 每个问题都必须有明确的规则依据
 
         如果没有发现问题，返回空数组 []
 
@@ -543,6 +540,37 @@ class CodeChecker:
             lines.append("")  # 空行分隔
 
         return "\n".join(lines)
+
+    def _validate_issue(self, issue: Issue) -> bool:
+        """
+        验证问题是否有效
+
+        对于涉及行数判断的规则，验证行数是否确实超过阈值，防止 LLM 误判。
+
+        Args:
+            issue: 问题对象
+
+        Returns:
+            True 表示问题有效，False 表示可能是误判
+        """
+        # backend_009: 方法行数限制（应控制在30行以内）
+        if issue.rule_id == "backend_009":
+            # 计算实际行数（包含性：line_end - line_start + 1）
+            line_count = issue.line_end - issue.line_start + 1
+            if line_count <= 30:
+                logger.warning(
+                    f"过滤 LLM 误判：规则 {issue.rule_id}，"
+                    f"行号范围 {issue.line_start}-{issue.line_end}（共 {line_count} 行），"
+                    f"未超过30行阈值"
+                )
+                return False
+
+        # backend_006: 避免复杂的嵌套结构（语句块逻辑除注释外大于20行）
+        # 注意：这个规则检查的是语句块行数，不是整个方法的行数
+        # 暂时不在这里验证，因为 LLM 可能检查的是嵌套块的行数
+
+        # 其他规则暂时不需要特殊验证
+        return True
 
     def _parse_llm_response(self, response_text: str) -> List[Issue]:
         """
@@ -601,6 +629,12 @@ class CodeChecker:
                         suggestion=issue_dict['suggestion'],
                         code_snippet=issue_dict.get('code_snippet')
                     )
+
+                    # 验证问题有效性，过滤 LLM 可能的误判
+                    if not self._validate_issue(issue):
+                        logger.debug(f"问题 {i} 未通过验证，已过滤")
+                        continue
+
                     issues.append(issue)
 
                 except Exception as e:
