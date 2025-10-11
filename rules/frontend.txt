@@ -1,0 +1,105 @@
+﻿/review/add_rule 应用开发架构使用:frontend:项目必须集成到统一入口（主要采用“大中台+微应用”的技术架构，建设基于岗位的应用协同平台、基于微应用的应用管理平台、基于服务聚合的数据展示平台）
+/review/add_rule 应用开发架构使用:frontend:项目应使用平台提供的技术栈进行开发（基于NodeJS开发，采用Vue、Vite、TypeScript、 ElementPlus、Pinia、Axios、VueRouter、JavaScript作为技术栈）
+/review/add_rule 应用开发架构使用:frontend:项目包/目录结构符合脚手架生成项目的基本结构（根据业务模块命名与/views/*一一对应）
+/review/add_rule 应用开发架构使用:frontend:项目应用按照"应用编码-功能描述-web"规则命名
+/review/add_rule 代码结构:frontend:慎用css中的!important关键字（禁止需要根据框架切换主题样式地方使用）
+/review/add_rule 代码结构:frontend:禁止使用三个及以上三元运算符嵌套使用
+/review/add_rule 代码结构:frontend:合理拆分大型组件为可复用的子组件（组件行数超过300行，应进行拆分）
+/review/add_rule 代码结构:frontend:避免在模板中编写复杂逻辑，应抽离到计算属性或方法中（方法行数超过50行，应抽离到计算属性或方法中）
+/review/add_rule 代码结构:frontend:组件遵循单一职责原则，避免功能冗余
+/review/add_rule 代码结构:frontend:使用TypeScript时，需明确定义组件Props、状态和方法的类型
+/review/add_rule 代码结构:frontend:避免在全局作用域中直接修改Vue原型
+/review/add_rule 代码结构:frontend:消除“魔数”，多处相同字符串或数字，应抽取为常量
+/review/add_rule 代码结构:frontend:类名、变量名、方法名等命名要规范（驼峰命名，见名知意）
+/review/add_rule 代码结构:frontend:注释，准确编写注释内容，无用代码删除
+/review/add_rule 代码结构:frontend:一行代码不超过100字符
+/review/add_rule 异常处理:frontend:API请求需统一错误处理，避免裸抛异常：1. 禁止直接使用原生axios或fetch；2. 避免硬编码错误信息，提示文案应与接口错误码映射表一致
+/review/add_rule 异常处理:frontend:异步操作需添加Loading状态，防止重复提交
+/review/add_rule 其他:frontend:遵循ESLint规则，禁止提交存在警告或错误的代码
+/review/add_rule 其他:frontend:注释需清晰描述组件功能、Props和事件
+/review/add_rule 其他:frontend:loading应使用cacploading效果（即组件库内cacploading组件，该组件的展示效果为一个动态的关徽加载效果，通常使用v-cacploading='true'设置）
+/review/add_rule 其他:frontend:小圆角:3px
+/review/add_rule 其他:frontend:阴影:0px 0px 12px rgba(0, 0, 0, 0.12)
+/review/add_rule 布局规范:frontend:列表查询区布局：1. 查询条件4个以下的时候按钮放在同一行；2. 查询条件4个及以上的时候，按钮放在最下面一行居中位置。每列放置4个条件向下排序；同时超过两行可增加高级查询，点击高级查询可展开全部查询条件；收起时候只展示一行查询条件即可；3. 查询条件有多个按钮的时候，按钮行始终在查询区域最下面一行居中的位置；4. 查询区应有圆角边框效果。
+/review/add_rule 布局规范:frontend:列表按钮区规范：左边放主按钮，右边放辅按钮
+/review/add_rule 布局规范:frontend:列表表格区规范：操作列居于表格右侧（悬浮），悬浮列（主信息如单号、名称等）居于表格左侧。表格和分页应该被同一个圆角边框包裹。
+/review/add_rule 布局规范:frontend:详情悬浮按钮区：应悬浮于页面顶层，超过一行时应用展开图标收起
+/review/add_rule 字体设置:frontend:字体设置：body{font-family:Arial, system-ui, -apple-system, "BlinkMacSystemFont", "Helvetica Neue", "Segoe UI", "Helvetica", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;}
+/review/add_rule 字体大小-标准版:frontend:正文内容、小标题:13px
+/review/add_rule 字体大小-标准版:frontend:弹出框标题:15px
+/review/add_rule 字体大小-标准版:frontend:Message、Alert 提示文字:14px
+/review/add_rule 字体大小-标准版:frontend:Popover 提示标题:16px
+/review/add_rule 字体大小-标准版:frontend:辅助信息、错误提示:12px
+/review/add_rule 字体大小-关怀版:frontend:正文内容、小标题:15px
+/review/add_rule 字体大小-关怀版:frontend:弹出框标题:17px
+/review/add_rule 字体大小-关怀版:frontend:Message、Alert 提示文字:16px
+/review/add_rule 字体大小-关怀版:frontend:Popover 提示标题:18px
+/review/add_rule 字体大小-关怀版:frontend:辅助信息、错误提示:14px
+/review/add_rule 颜色-海关蓝:frontend:主色:#0f7edf
+/review/add_rule 颜色-海关蓝:frontend:辅助色成功:#1ebcaf
+/review/add_rule 颜色-海关蓝:frontend:辅助色警告:#fa5e45
+/review/add_rule 颜色-海关蓝:frontend:辅助色信息:#999999
+/review/add_rule 颜色-海关蓝:frontend:输入框禁用/下拉浮层/表格列悬停背景颜色:#f5f7fa
+/review/add_rule 颜色-海关蓝:frontend:下拉浮层选中、表格列选中背景颜色:#e7f2fc
+/review/add_rule 颜色-海关蓝:frontend:表格灰色表头背景颜色:#f1f2f7
+/review/add_rule 颜色-海关蓝:frontend:表格灰色内容区背景颜色:#f7f8fb
+/review/add_rule 颜色-海关蓝:frontend:表格黄色表头背景颜色:#fef9e5
+/review/add_rule 颜色-海关蓝:frontend:表格黄色内容区背景颜色:#fefbef
+/review/add_rule 颜色-海关蓝:frontend:按钮加载中背景颜色:#ffffff4d
+/review/add_rule 颜色-海关蓝:frontend:表单元素的必填背景颜色:#fef7de
+/review/add_rule 颜色-海关蓝:frontend:输入框、下拉浮层边框颜色:#dcdfe6
+/review/add_rule 颜色-海关蓝:frontend:输入框边框悬停边框颜色:#c0c4cc
+/review/add_rule 颜色-海关蓝:frontend:滑块默认边框颜色:#e4e7ed
+/review/add_rule 颜色-海关蓝:frontend:进度条默认边框颜色:#ebeef5
+/review/add_rule 颜色-海关蓝:frontend:按钮禁用边框颜色:#cfe5f9
+/review/add_rule 颜色-海关蓝:frontend:小标题、输入框输入后文字颜色:#000000
+/review/add_rule 颜色-海关蓝:frontend:主按钮文字颜色:#ffffff
+/review/add_rule 颜色-海关蓝:frontend:弹出框标题文字颜色:#333333
+/review/add_rule 颜色-海关蓝:frontend:表格标题、表格内容区文字颜色:#666666
+/review/add_rule 颜色-海关蓝:frontend:提示文字颜色:#999999
+/review/add_rule 颜色-海关蓝:frontend:辅助信息文字颜色:#a8abb2
+/review/add_rule 颜色-海关蓝:frontend:输入框、表格之上图标颜色:#999999
+/review/add_rule 颜色-政务红:frontend:主题色:#e6261a
+/review/add_rule 颜色-政务红:frontend:文字按钮悬浮背景色:#e6281a0f
+/review/add_rule 颜色-政务红:frontend:输入框边框颜色:#c0c4cc
+/review/add_rule 颜色-政务红:frontend:下拉选中背景色:#0f7edf1a
+/review/add_rule 颜色-政务红:frontend:下拉选中字体颜色:#0f7edf
+/review/add_rule 颜色-政务红:frontend:提示Message背景颜色:#edf6ff
+/review/add_rule 颜色-政务红:frontend:提示Message边框颜色:#cfe5f9
+/review/add_rule 颜色-政务红:frontend:提示Message字体颜色:#0f7edf
+/review/add_rule 颜色-政务红:frontend:提示alert字体颜色:#0f7edf
+/review/add_rule 边距:frontend:外边距应满足4的倍数
+/review/add_rule 边距:frontend:内边距应满足5的倍数
+/review/add_rule 边距:frontend:模块间距:16px
+/review/add_rule 边距:frontend:查询条件4个以下时与查询按钮条间距:30px
+/review/add_rule 边距:frontend:相邻输入框上下间距:16px
+/review/add_rule 边距:frontend:相邻输入框左右间距:30px
+/review/add_rule 按钮:frontend:相邻按钮间距:12px
+/review/add_rule 按钮:frontend:按钮文字与icon的间距:4px
+/review/add_rule 按钮:frontend:表格的左边放主按钮，右边放辅按钮；
+/review/add_rule 按钮:frontend:表格上出现2个及以上功能相似的按钮的时候，用按钮组的形式来简化按钮的显示
+/review/add_rule 按钮:frontend:表格上主按钮的数量超过6个时，应使用'更多'按钮收起其余按钮
+/review/add_rule 按钮:frontend:表格上辅按钮的数量超过6个时，应使用'更多'按钮收起其余按钮
+/review/add_rule 按钮:frontend:表格上主按钮和辅按钮的数量不超过10个
+/review/add_rule 按钮:frontend:表格操作列按钮应悬浮在右边
+/review/add_rule 按钮:frontend:详情界面的按钮条应悬浮于顶层，超过一行时应用展开图标按钮收起
+/review/add_rule 按钮:frontend:标题上按钮条和标题间距:24px
+
+/review/add_rule 业界通用:frontend:使用之前应定义变量
+/review/add_rule 业界通用:frontend:跟踪版权和许可标头的缺失
+/review/add_rule 业界通用:frontend:变量应明确声明
+/review/add_rule 业界通用:frontend:使用"var"声明的变量应在使用之前声明
+/review/add_rule 业界通用:frontend:Switch case 应该以无条件的"break"语句结束
+/review/add_rule 业界通用:frontend:数组方法的回调应该有返回语句
+/review/add_rule 业界通用:frontend:XML 解析器不应容易受到 XXE 攻击
+/review/add_rule 业界通用:frontend:不应使用八进制值
+/review/add_rule 业界通用:frontend:禁用 Angular 内置清理是安全敏感的
+/review/add_rule 业界通用:frontend:不应使用Web SQL数据库
+/review/add_rule 业界通用:frontend:测试应包括断言
+/review/add_rule 业界通用:frontend:"switch" 语句不应包含非大小写标签
+/review/add_rule 业界通用:frontend:断言应完成
+/review/add_rule 业界通用:frontend:硬编码的凭据对安全敏感
+/review/add_rule 业界通用:frontend:"future reserved words"不应用作标识符
+/review/add_rule 业界通用:frontend:禁用vue.JavaScript内置逃脱是对安全敏感的
+/review/add_rule 业界通用:frontend:函数返回不应该是不变的
+/review/add_rule 业界通用:frontend:循环不应该是无限的

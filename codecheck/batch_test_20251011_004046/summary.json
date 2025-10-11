@@ -1,0 +1,819 @@
+{
+    "check_id": "batch_test_20251011_004046",
+    "start_time": "2025-10-11T00:40:46.005981",
+    "end_time": "2025-10-11T00:40:46.005985",
+    "total_files": 7,
+    "checked_files": 7,
+    "total_issues": 81,
+    "total_errors": 27,
+    "total_warnings": 27,
+    "total_infos": 27,
+    "file_results": [
+        {
+            "file_path": "/projects/cuscli/autocoder/checker/file_processor.py",
+            "check_time": "2025-10-11T00:40:45.670730",
+            "issues": [
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 50,
+                    "line_end": 56,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 95,
+                    "line_end": 840,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 216,
+                    "line_end": 475,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                }
+            ],
+            "error_count": 1,
+            "warning_count": 1,
+            "info_count": 1,
+            "status": "success",
+            "error_message": null
+        },
+        {
+            "file_path": "/projects/cuscli/autocoder/checker/progress_tracker.py",
+            "check_time": "2025-10-11T00:40:45.677311",
+            "issues": [
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 50,
+                    "line_end": 56,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 95,
+                    "line_end": 840,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 216,
+                    "line_end": 475,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                }
+            ],
+            "error_count": 1,
+            "warning_count": 1,
+            "info_count": 1,
+            "status": "success",
+            "error_message": null
+        },
+        {
+            "file_path": "/projects/cuscli/autocoder/checker/__init__.py",
+            "check_time": "2025-10-11T00:40:45.679067",
+            "issues": [
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 50,
+                    "line_end": 56,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 95,
+                    "line_end": 840,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 216,
+                    "line_end": 475,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                }
+            ],
+            "error_count": 1,
+            "warning_count": 1,
+            "info_count": 1,
+            "status": "success",
+            "error_message": null
+        },
+        {
+            "file_path": "/projects/cuscli/autocoder/checker/report_generator.py",
+            "check_time": "2025-10-11T00:40:45.814628",
+            "issues": [
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 50,
+                    "line_end": 56,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 95,
+                    "line_end": 101,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 95,
+                    "line_end": 840,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 132,
+                    "line_end": 138,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 140,
+                    "line_end": 885,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 169,
+                    "line_end": 175,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 177,
+                    "line_end": 922,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 202,
+                    "line_end": 208,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 214,
+                    "line_end": 959,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 216,
+                    "line_end": 475,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 234,
+                    "line_end": 240,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 247,
+                    "line_end": 992,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 258,
+                    "line_end": 264,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 261,
+                    "line_end": 520,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 276,
+                    "line_end": 282,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 279,
+                    "line_end": 1024,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 293,
+                    "line_end": 299,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 298,
+                    "line_end": 557,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 303,
+                    "line_end": 1048,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 306,
+                    "line_end": 312,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 321,
+                    "line_end": 1066,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 335,
+                    "line_end": 594,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 338,
+                    "line_end": 1083,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 351,
+                    "line_end": 1096,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 368,
+                    "line_end": 627,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 400,
+                    "line_end": 659,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 424,
+                    "line_end": 683,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 442,
+                    "line_end": 701,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 459,
+                    "line_end": 718,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 472,
+                    "line_end": 731,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                }
+            ],
+            "error_count": 10,
+            "warning_count": 10,
+            "info_count": 10,
+            "status": "success",
+            "error_message": null
+        },
+        {
+            "file_path": "/projects/cuscli/autocoder/checker/rules_loader.py",
+            "check_time": "2025-10-11T00:40:45.823993",
+            "issues": [
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 50,
+                    "line_end": 56,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 95,
+                    "line_end": 840,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 216,
+                    "line_end": 475,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                }
+            ],
+            "error_count": 1,
+            "warning_count": 1,
+            "info_count": 1,
+            "status": "success",
+            "error_message": null
+        },
+        {
+            "file_path": "/projects/cuscli/autocoder/checker/types.py",
+            "check_time": "2025-10-11T00:40:45.830366",
+            "issues": [
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 50,
+                    "line_end": 56,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 95,
+                    "line_end": 840,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 216,
+                    "line_end": 475,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                }
+            ],
+            "error_count": 1,
+            "warning_count": 1,
+            "info_count": 1,
+            "status": "success",
+            "error_message": null
+        },
+        {
+            "file_path": "/projects/cuscli/autocoder/checker/core.py",
+            "check_time": "2025-10-11T00:40:46.002971",
+            "issues": [
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 50,
+                    "line_end": 56,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 84,
+                    "line_end": 90,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 95,
+                    "line_end": 840,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 118,
+                    "line_end": 124,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 129,
+                    "line_end": 874,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 148,
+                    "line_end": 154,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 163,
+                    "line_end": 908,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 181,
+                    "line_end": 187,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 193,
+                    "line_end": 938,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 216,
+                    "line_end": 475,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 221,
+                    "line_end": 227,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 226,
+                    "line_end": 971,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 250,
+                    "line_end": 509,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 255,
+                    "line_end": 261,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 266,
+                    "line_end": 1011,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 284,
+                    "line_end": 543,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 294,
+                    "line_end": 300,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 300,
+                    "line_end": 1045,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 314,
+                    "line_end": 573,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 331,
+                    "line_end": 337,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 339,
+                    "line_end": 1084,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 347,
+                    "line_end": 606,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 366,
+                    "line_end": 372,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 376,
+                    "line_end": 1121,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 387,
+                    "line_end": 646,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 400,
+                    "line_end": 406,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 411,
+                    "line_end": 1156,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 421,
+                    "line_end": 680,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 436,
+                    "line_end": 442,
+                    "description": "resolve_include_path 函数功能单一，符合规范",
+                    "suggestion": "无需修改，代码质量良好",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 445,
+                    "line_end": 1190,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 460,
+                    "line_end": 719,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 481,
+                    "line_end": 1226,
+                    "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+                    "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+                    "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 497,
+                    "line_end": 756,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 532,
+                    "line_end": 791,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 566,
+                    "line_end": 825,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "error",
+                    "line_start": 602,
+                    "line_end": 861,
+                    "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+                    "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+                    "code_snippet": null
+                }
+            ],
+            "error_count": 12,
+            "warning_count": 12,
+            "info_count": 12,
+            "status": "success",
+            "error_message": null
+        }
+    ]
+}

@@ -1,0 +1,38 @@
+{
+    "file_path": "/projects/cuscli/autocoder/checker/__init__.py",
+    "check_time": "2025-10-11T00:40:45.679067",
+    "issues": [
+        {
+            "rule_id": "backend_009",
+            "severity": "info",
+            "line_start": 50,
+            "line_end": 56,
+            "description": "resolve_include_path 函数功能单一，符合规范",
+            "suggestion": "无需修改，代码质量良好",
+            "code_snippet": null
+        },
+        {
+            "rule_id": "backend_006",
+            "severity": "warning",
+            "line_start": 95,
+            "line_end": 840,
+            "description": "main函数过长，包含大量嵌套逻辑和配置代码，超过30行标准",
+            "suggestion": "建议将main函数拆分为多个小函数，如：setup_llm_config(), setup_models(), handle_commands()等",
+            "code_snippet": "def main(input_args: Optional[List[str]] = None):\n    args, raw_args = parse_args(input_args)\n    ..."
+        },
+        {
+            "rule_id": "backend_006",
+            "severity": "error",
+            "line_start": 216,
+            "line_end": 475,
+            "description": "存在深层嵌套的if-else判断逻辑，嵌套层数超过3层",
+            "suggestion": "建议使用策略模式或字典映射来简化判断逻辑",
+            "code_snippet": null
+        }
+    ],
+    "error_count": 1,
+    "warning_count": 1,
+    "info_count": 1,
+    "status": "success",
+    "error_message": null
+}
