@@ -37,12 +37,26 @@ console = Console()
 
 
 def get_model_info_with_check(model_name: str, product_mode: str):
-    """获取模型信息并检查是否为None，如果为None则抛出友好的异常"""
-    model_info = LLMManager().get_model_info(model_name, product_mode)
+    """获取模型信息并检查是否为None，如果为None则尝试使用第一个可用模型"""
+    llm_manager = LLMManager()
+    model_info = llm_manager.get_model_info(model_name, product_mode)
+
     if model_info is None:
+        # 尝试获取第一个可用模型
+        first_model = llm_manager.get_first_available_model()
+        if first_model:
+            logger.warning(
+                f"模型 '{model_name}' 不存在，自动使用第一个可用模型: {first_model.name}"
+            )
+            print(f"\033[33m警告: 模型 '{model_name}' 不存在，自动使用第一个可用模型: {first_model.name}\033[0m")
+            model_info = llm_manager.get_model_info(first_model.name, product_mode)
+            if model_info:
+                return model_info
+
+        # 如果仍然没有可用模型，抛出异常
         from autocoder.common.international import get_message_with_format
-        error_message = get_message_with_format("model_info_not_found", 
-                                               model_name=model_name, 
+        error_message = get_message_with_format("model_info_not_found",
+                                               model_name=model_name,
                                                product_mode=product_mode)
         raise ValueError(error_message)
     return model_info

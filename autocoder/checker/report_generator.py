@@ -291,8 +291,11 @@ class ReportGenerator:
         md = f"### 问题 {index}\n\n"
         md += f"- **位置**: 第 {issue.line_start}"
         if issue.line_end != issue.line_start:
-            md += f"-{issue.line_end}"
-        md += " 行\n"
+            # 计算实际行数（包含性：line_end - line_start + 1）
+            line_count = issue.line_end - issue.line_start + 1
+            md += f"-{issue.line_end} 行（共 {line_count} 行）\n"
+        else:
+            md += " 行\n"
         md += f"- **规则**: `{issue.rule_id}`\n"
         md += f"- **描述**: {issue.description}\n"
         md += f"- **建议**: {issue.suggestion}\n"

@@ -254,11 +254,24 @@ class LLMManager:
     def remove_model(self, name: str) -> bool:
         """
         删除模型
-        
+
         Args:
             name: 模型名称
-            
+
         Returns:
             是否成功删除
         """
-        return self.registry.remove_model(name) 
+        return self.registry.remove_model(name)
+
+    def get_first_available_model(self) -> Optional[LLMModel]:
+        """
+        获取第一个可用的模型
+
+        Returns:
+            第一个可用的模型对象，如果没有模型则返回 None
+        """
+        all_models = self.get_all_models()
+        if all_models:
+            # 返回字典中的第一个模型
+            return next(iter(all_models.values()))
+        return None 

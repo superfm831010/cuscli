@@ -33,7 +33,7 @@ def read_readme():
 
 setup(
     name='cuscli',
-    version='beta-0.9',  # Beta 测试版本
+    version='0.9.0b0',  # Beta 测试版本 (PEP 440 合法格式)
     author='superfm831010 (Based on allwefantasy/auto-coder)',
     author_email='superfm831010@gmail.com',
     description='Cuscli: AI-powered coding assistant tool with custom enhancements (Beta Version)',
@@ -42,13 +42,22 @@ setup(
     url='https://github.com/superfm831010/cuscli',
 
     # 包配置
-    packages=find_packages(exclude=['tests', 'tests.*', 'dist-info']),
+    packages=find_packages(exclude=['tests', 'tests.*', 'dist-info', 'rules', 'docs', 'actions', 'codecheck']),
 
     # Python 版本要求
     python_requires='>=3.10,<=3.12',
 
     # 依赖配置
     install_requires=read_requirements(),
+
+    # 包数据 - 确保规则模板文件被打包
+    package_data={
+        'autocoder': [
+            'data/rules/*.md',
+            'data/rules/*.json',
+            'data/*.json',
+        ]
+    },
 
     # 入口点配置 - 从 dist-info/entry_points.txt 提取
     entry_points={
@@ -70,6 +79,7 @@ setup(
 
     # 分类器
     classifiers=[
+        'Development Status :: 4 - Beta',
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',

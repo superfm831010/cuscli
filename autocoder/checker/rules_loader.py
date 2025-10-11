@@ -512,6 +512,7 @@ class RulesLoader:
         1. 构造函数传入的 template_rules_dir
         2. 环境变量 CODE_CHECKER_TEMPLATE_DIR
         3. 默认位置（当前文件所在包的 rules 目录）
+        4. 包内模板（autocoder/data/rules/）- 打包后可用
 
         Returns:
             模板目录路径，如果不存在则返回 None
@@ -529,7 +530,7 @@ class RulesLoader:
             logger.info(f"使用环境变量指定的模板目录: {env_template_dir}")
             return env_template_dir
 
-        # 3. 尝试默认位置
+        # 3. 尝试默认位置（开发环境）
         # 假设这个文件在 autocoder/checker/rules_loader.py
         # 则包根目录是 autocoder/，模板目录是 <项目根>/rules
         current_file = os.path.abspath(__file__)
@@ -541,6 +542,13 @@ class RulesLoader:
         if os.path.exists(default_template_dir):
             logger.info(f"使用默认模板目录: {default_template_dir}")
             return default_template_dir
+
+        # 4. 尝试包内模板（打包后环境）
+        # autocoder/data/rules/ - 这些文件会随包一起安装
+        package_template_dir = os.path.join(autocoder_dir, "data", "rules")
+        if os.path.exists(package_template_dir):
+            logger.info(f"使用包内模板目录: {package_template_dir}")
+            return package_template_dir
 
         logger.warning("未找到模板目录，自动初始化将失败")
         return None
@@ -560,27 +568,32 @@ class RulesLoader:
         try:
             # 1. 获取模板目录
             template_dir = self._get_template_dir()
-            if not template_dir:
-                logger.error("无法找到模板规则目录，自动初始化失败")
-                print("❌ 无法找到模板规则目录")
-                print("   请设置环境变量 CODE_CHECKER_TEMPLATE_DIR 或手动创建规则文件")
-                return False
+            from importlib import resources
+            data_package = None
 
-            # 2. 验证模板目录包含必要文件
+            if not template_dir:
+                logger.warning("未找到物理模板目录，尝试使用内置规则资源")
+            else:
+                logger.info(f"使用模板目录初始化规则: {template_dir}")
+
+            # 2. 需要的文件列表
             required_files = [
                 "backend_rules.md",
                 "frontend_rules.md",
                 "rules_config.json"
             ]
 
-            missing_files = []
-            for filename in required_files:
-                if not os.path.exists(os.path.join(template_dir, filename)):
-                    missing_files.append(filename)
+            # 检查内置资源可用性
+            try:
+                data_package = resources.files("autocoder.data.rules")
+            except (ImportError, ModuleNotFoundError, AttributeError):
+                data_package = None
 
-            if missing_files:
-                logger.error(f"模板目录缺少必要文件: {missing_files}")
-                print(f"❌ 模板目录缺少必要文件: {', '.join(missing_files)}")
+            # 确保至少有一种来源
+            if not template_dir and data_package is None:
+                logger.error("无法找到模板规则目录或内置规则资源")
+                print("❌ 无法找到模板规则目录")
+                print("   请设置环境变量 CODE_CHECKER_TEMPLATE_DIR 或手动创建规则文件")
                 return False
 
             # 3. 创建目标目录
@@ -594,26 +607,43 @@ class RulesLoader:
             # 5. 复制规则文件
             copied_files = []
             for filename in required_files:
-                src = os.path.join(template_dir, filename)
                 dst = os.path.join(self.rules_dir, filename)
 
-                try:
-                    shutil.copy2(src, dst)
-                    copied_files.append(filename)
+                # 优先从物理模板目录复制
+                src_path = os.path.join(template_dir, filename) if template_dir else None
+                copied = False
 
-                    # 显示文件信息
+                if src_path and os.path.exists(src_path):
+                    try:
+                        shutil.copy2(src_path, dst)
+                        copied = True
+                    except Exception as e:
+                        logger.warning(f"从模板目录复制 {filename} 失败: {e}, 尝试使用内置资源")
+
+                if not copied and data_package is not None:
+                    resource = None
+                    try:
+                        resource = data_package / filename
+                        if resource.is_file():
+                            with resources.as_file(resource) as resource_path:
+                                shutil.copy2(str(resource_path), dst)
+                                copied = True
+                    except FileNotFoundError:
+                        resource = None
+                    except Exception as e:
+                        logger.error(f"复制内置规则资源 {filename} 失败: {e}")
+
+                if copied:
+                    copied_files.append(filename)
                     if filename == "backend_rules.md":
                         print("   ✓ backend_rules.md (63条后端规则)")
                     elif filename == "frontend_rules.md":
                         print("   ✓ frontend_rules.md (105条前端规则)")
                     elif filename == "rules_config.json":
                         print("   ✓ rules_config.json (配置文件)")
-
-                except Exception as e:
-                    logger.error(f"复制文件失败 {filename}: {e}")
-                    print(f"   ✗ {filename} (复制失败: {e})")
-                    # 继续尝试复制其他文件
-                    continue
+                else:
+                    logger.error(f"无法找到规则模板文件: {filename}")
+                    print(f"   ✗ {filename} (未能找到模板文件)")
 
             # 6. 检查是否成功复制了关键文件
             if "backend_rules.md" in copied_files and "frontend_rules.md" in copied_files:

@@ -6,6 +6,7 @@ import os
 import tempfile
 import pytest
 from pathlib import Path
+from unittest.mock import patch
 
 from autocoder.checker.file_processor import FileProcessor
 from autocoder.checker.types import FileFilters, CodeChunk
@@ -197,6 +198,30 @@ class TestFileProcessor:
             assert chunk.chunk_index == i
             assert chunk.start_line >= 1
             assert chunk.end_line > chunk.start_line
+
+    def test_chunk_file_uses_cache(self, temp_dir):
+        """第二次分块命中缓存且返回深拷贝"""
+        processor = FileProcessor(chunk_size=200, overlap=20)
+        lines = [f"line {i}" for i in range(120)]
+        file_path = self.create_test_file(temp_dir, "cached.py", "\n".join(lines))
+
+        original_fn = processor.tokenizer.count_tokens
+        call_counter = {"count": 0}
+
+        def counting(*args, **kwargs):
+            call_counter["count"] += 1
+            return original_fn(*args, **kwargs)
+
+        with patch.object(processor.tokenizer, "count_tokens", side_effect=counting):
+            first_chunks = processor.chunk_file(file_path)
+            first_calls = call_counter["count"]
+            second_chunks = processor.chunk_file(file_path)
+            second_calls = call_counter["count"]
+
+        assert second_calls == first_calls
+        assert len(first_chunks) == len(second_chunks)
+        assert first_chunks[0] is not second_chunks[0]
+        assert first_chunks[0].content == second_chunks[0].content
 
     def test_chunk_overlap(self, processor, temp_dir):
         """测试 chunk 重叠"""

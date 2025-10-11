@@ -6,7 +6,7 @@
 
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 from loguru import logger
 
 from autocoder.checker.types import CodeChunk, FileFilters
@@ -40,6 +40,7 @@ class FileProcessor:
         self.chunk_size = chunk_size
         self.overlap = overlap
         self.tokenizer = BuildinTokenizer()
+        self._chunk_cache: Dict[str, Tuple[float, int, List[CodeChunk]]] = {}
 
         logger.info(
             f"FileProcessor initialized: chunk_size={chunk_size}, overlap={overlap}"
@@ -145,9 +146,21 @@ class FileProcessor:
             >>> len(chunks) == 1
             True
         """
+        cache_key = os.path.abspath(file_path)
+
         # 读取文件内容
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
+
+        file_stat = os.stat(file_path)
+        cache_entry = self._chunk_cache.get(cache_key)
+        signature = (file_stat.st_mtime, file_stat.st_size)
+
+        if cache_entry:
+            cached_mtime, cached_size, cached_chunks = cache_entry
+            if cached_mtime == signature[0] and cached_size == signature[1]:
+                logger.debug(f"使用缓存的 chunk 分界: {file_path}")
+                return [chunk.copy(deep=True) for chunk in cached_chunks]
 
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -249,6 +262,13 @@ class FileProcessor:
 
         logger.info(
             f"File {file_path} split into {len(chunks)} chunks"
+        )
+
+        # 缓存分块结果以便后续复用
+        self._chunk_cache[cache_key] = (
+            signature[0],
+            signature[1],
+            [chunk.copy(deep=True) for chunk in chunks],
         )
 
         return chunks
