@@ -138,9 +138,33 @@ class CodeCheckerPlugin(Plugin):
                     "2. 模型不存在，请使用: /models /list 查看可用模型"
                 )
 
-            # 创建一个基础的 Args 对象（使用默认值）
-            # 如果需要更多配置，可以从 config 中读取
-            args = AutoCoderArgs()
+            # 根据插件配置构建 CodeChecker 相关参数
+            checker_config: Dict[str, Any] = self.config.get("checker", {}) if self.config else {}
+            llm_config: Dict[str, Any] = {}
+            args_kwargs: Dict[str, Any] = {}
+
+            if isinstance(checker_config, dict):
+                raw_llm_cfg = checker_config.get("llm") or checker_config.get("llm_config")
+                if isinstance(raw_llm_cfg, dict):
+                    llm_config.update(raw_llm_cfg)
+
+                if "llm_temperature" in checker_config:
+                    args_kwargs["checker_llm_temperature"] = checker_config["llm_temperature"]
+                if "llm_top_p" in checker_config:
+                    args_kwargs["checker_llm_top_p"] = checker_config["llm_top_p"]
+                if "llm_seed" in checker_config:
+                    args_kwargs["checker_llm_seed"] = checker_config["llm_seed"]
+
+                if "chunk_overlap_multiplier" in checker_config:
+                    args_kwargs["checker_chunk_overlap_multiplier"] = checker_config["chunk_overlap_multiplier"]
+                if "chunk_token_limit" in checker_config:
+                    args_kwargs["checker_chunk_token_limit"] = checker_config["chunk_token_limit"]
+
+            if llm_config:
+                args_kwargs["checker_llm_config"] = llm_config
+
+            # 创建一个基础的 Args 对象，注入检查器配置
+            args = AutoCoderArgs(**args_kwargs)
 
             # 初始化 CodeChecker
             self.checker = CodeChecker(llm, args)
@@ -354,8 +378,73 @@ class CodeCheckerPlugin(Plugin):
             # 确保 checker 已初始化
             self._ensure_checker()
 
-            # 执行检查
-            result = self.checker.check_file(file_path)
+            # 导入 rich 进度条组件
+            from rich.progress import (
+                Progress,
+                SpinnerColumn,
+                TextColumn,
+                BarColumn,
+                TaskProgressColumn,
+                TimeRemainingColumn,
+            )
+
+            # 使用进度条显示检查进度
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeRemainingColumn(),
+            ) as progress:
+                # 创建进度任务（初始不确定总量）
+                task = progress.add_task("初始化...", total=None)
+
+                # 定义进度回调函数
+                def progress_callback(step: str, **kwargs):
+                    """处理检查进度更新"""
+                    if step == "start":
+                        progress.update(task, description="开始检查...")
+
+                    elif step == "rules_loaded":
+                        total_rules = kwargs.get("total_rules", 0)
+                        progress.update(
+                            task,
+                            description=f"已加载 {total_rules} 条规则"
+                        )
+
+                    elif step == "chunked":
+                        total_chunks = kwargs.get("total_chunks", 0)
+                        # 设置进度条总量为 chunk 数量
+                        progress.update(
+                            task,
+                            total=total_chunks,
+                            completed=0,
+                            description=f"开始检查 ({total_chunks} 个代码块)"
+                        )
+
+                    elif step == "chunk_start":
+                        chunk_index = kwargs.get("chunk_index", 0)
+                        total_chunks = kwargs.get("total_chunks", 1)
+                        progress.update(
+                            task,
+                            description=f"检查代码块 {chunk_index + 1}/{total_chunks}..."
+                        )
+
+                    elif step == "chunk_done":
+                        chunk_index = kwargs.get("chunk_index", 0)
+                        total_chunks = kwargs.get("total_chunks", 1)
+                        # 更新进度
+                        progress.update(
+                            task,
+                            completed=chunk_index + 1,
+                            description=f"已完成代码块 {chunk_index + 1}/{total_chunks}"
+                        )
+
+                    elif step == "merge_done":
+                        progress.update(task, description="合并检查结果...")
+
+                # 执行检查（传入进度回调）
+                result = self.checker.check_file(file_path, progress_callback=progress_callback)
 
             # 显示结果
             if result.status == "success":

@@ -2123,3 +2123,52 @@ fix(checker): 修复文件检查超时和报告无法生成的问题
 **最后更新**：2025-10-11
 **文档版本**：1.0.4
 **作者**：Claude AI
+
+---
+
+## 2025-10-12: 提升检查稳定性与可配置能力
+
+### 更新内容概览
+
+- ✅ 默认启用确定性 LLM 配置：`temperature=0.0`、`top_p=1.0`、`seed=42`
+- ✅ 支持通过 `AutoCoderArgs`、插件配置或环境变量覆盖 LLM 相关参数
+- ✅ 文件分块结果缓存 + 默认 20000 token 分块阈值，可配置 overlap multiplier，保证多轮扫描分块一致
+- ✅ 支持多次 LLM 调用并按共识保留问题，显著提升结果稳定性
+- ✅ 合并问题时容忍 ±1 行偏差，并在信息冲突时保留描述更完整的版本
+- ✅ 新增稳定性回归测试 `tests/stability/test_deterministic_results.py`
+
+### 配置方式
+
+| 配置项 | 默认值 | 覆盖途径 | 说明 |
+|--------|--------|----------|------|
+| 温度 `temperature` | `0.0` | `AutoCoderArgs(checker_llm_temperature=...)`<br>`/plugins code_checker` 配置 `llm_temperature`<br>环境变量 `CODECHECKER_LLM_TEMPERATURE` | 控制输出随机性，推荐 `0.0~0.3` |
+| 核采样 `top_p` | `1.0` | 同上，字段名 `checker_llm_top_p` / `llm_top_p` / `CODECHECKER_LLM_TOP_P` | `1.0` 表示禁用核采样 |
+| Seed `seed` | `42` | 同上，字段名 `checker_llm_seed` / `llm_seed` / `CODECHECKER_LLM_SEED` | 设为 `-1` 可显式关闭 |
+| 额外 LLM 参数 | 空 | `checker_llm_config` / `checker.llm` 节配置字典 | 支持传入 `presence_penalty` 等模型特定参数 |
+| Chunk token limit | `20000` | `checker_chunk_token_limit` / `chunk_token_limit` / `CODECHECKER_CHUNK_TOKEN_LIMIT` | 达到阈值才拆分 chunk，避免对中小文件分块 |
+| Chunk overlap multiplier | 按 `FileProcessor.overlap` 基础值 | `checker_chunk_overlap_multiplier` / `chunk_overlap_multiplier` / `CODECHECKER_CHUNK_OVERLAP_MULTIPLIER` | 用于放大 overlap，增强分块上下文一致性 |
+| LLM repeat | `1` | `checker_llm_repeat` / `llm_repeat` / `CODECHECKER_LLM_REPEAT` | 对同一 chunk 重复检查多次以取交集或多数票 |
+| Consensus ratio | `1.0` | `checker_llm_consensus_ratio` / `llm_consensus` / `CODECHECKER_LLM_CONSENSUS` | 通过出现比例控制保留问题（1.0=全交集） |
+
+> 提示：插件配置示例
+> ```json
+> {
+>   "checker": {
+>     "llm": {
+>       "presence_penalty": 0.1
+>     },
+>     "llm_temperature": 0.1,
+>     "llm_seed": 99,
+>     "chunk_overlap_multiplier": 2.0
+>   }
+> }
+> ```
+
+### 开发注意事项
+
+- `CodeChecker.llm_config` 会在初始化时根据上述优先级构建，可通过日志查看实际生效的参数。
+- `FileProcessor` 现在会缓存分块结果（按文件 `mtime + size`），命中缓存时返回深拷贝，避免多线程下共享状态。
+- 合并问题时，`rule_id` 相同且行号差 ≤1 会视作同一问题；最终行号范围取最小起点与最大终点。
+- 稳定性测试需通过 `pytest -m stability`（或运行全量测试）确保配置调整不会破坏确定性。
+
+**版本号**：1.0.5

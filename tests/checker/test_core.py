@@ -44,6 +44,12 @@ class TestCodeChecker:
         """Mock AutoCoderArgs"""
         args = Mock()
         args.source_dir = "/test/project"
+        args.checker_llm_config = None
+        args.checker_llm_temperature = None
+        args.checker_llm_top_p = None
+        args.checker_llm_seed = None
+        args.checker_chunk_overlap_multiplier = None
+        args.checker_chunk_token_limit = None
         return args
 
     @pytest.fixture
@@ -238,6 +244,34 @@ class TestCodeChecker:
         # 第二个问题不变
         assert merged[1].rule_id == "test_002"
 
+    def test_merge_duplicate_issues_with_line_variance(self, checker):
+        """同一问题行号相差1行也应合并"""
+        issues = [
+            Issue(
+                rule_id="test_001",
+                severity=Severity.ERROR,
+                line_start=100,
+                line_end=110,
+                description="原始描述",
+                suggestion="建议1"
+            ),
+            Issue(
+                rule_id="test_001",
+                severity=Severity.ERROR,
+                line_start=101,
+                line_end=111,
+                description="更详细的描述文本",
+                suggestion="建议2"
+            ),
+        ]
+
+        merged = checker._merge_duplicate_issues(issues)
+
+        assert len(merged) == 1
+        assert merged[0].line_start == 100
+        assert merged[0].line_end == 111
+        assert merged[0].description == "更详细的描述文本"
+
     def test_merge_duplicate_issues_empty(self, checker):
         """测试合并空列表"""
         merged = checker._merge_duplicate_issues([])
@@ -322,6 +356,70 @@ class TestCodeChecker:
         # 应该返回空列表
         assert len(issues) == 0
 
+    @patch('autocoder.checker.core.CodeChecker._call_llm')
+    def test_check_code_chunk_consensus_all(self, mock_call, checker):
+        """多次调用仅保留共识问题"""
+        checker.llm_repeat = 3
+        checker.llm_consensus_ratio = 1.0
+
+        def build_response(payload):
+            response = Mock()
+            response.output = payload
+            return [response]
+
+        mock_call.side_effect = [
+            build_response("""```json\n[{\"rule_id\": \"rule_a\", \"severity\": \"error\", \"line_start\": 10, \"line_end\": 12, \"description\": \"A1\", \"suggestion\": \"Fix A1\"}]\n```"""),
+            build_response("""```json\n[{\"rule_id\": \"rule_a\", \"severity\": \"error\", \"line_start\": 10, \"line_end\": 12, \"description\": \"A2\", \"suggestion\": \"Fix A2\"}, {\"rule_id\": \"rule_b\", \"severity\": \"warning\", \"line_start\": 20, \"line_end\": 21, \"description\": \"B\", \"suggestion\": \"Fix B\"}]\n```"""),
+            build_response("""```json\n[{\"rule_id\": \"rule_a\", \"severity\": \"error\", \"line_start\": 10, \"line_end\": 12, \"description\": \"A3\", \"suggestion\": \"Fix A3\"}]\n```"""),
+        ]
+
+        rules = [
+            Rule(
+                id="rule_a",
+                category="测试",
+                title="测试规则",
+                description="描述",
+                severity=Severity.ERROR
+            )
+        ]
+
+        issues = checker.check_code_chunk("1 demo", rules)
+
+        assert len(issues) == 1
+        assert issues[0].rule_id == "rule_a"
+        assert "A" in issues[0].description
+
+    @patch('autocoder.checker.core.CodeChecker._call_llm')
+    def test_check_code_chunk_consensus_majority(self, mock_call, checker):
+        """多数票保留问题"""
+        checker.llm_repeat = 3
+        checker.llm_consensus_ratio = 0.6  # 阈值为 2/3
+
+        def build_response(payload):
+            response = Mock()
+            response.output = payload
+            return [response]
+
+        mock_call.side_effect = [
+            build_response("""```json\n[{\"rule_id\": \"rule_a\", \"severity\": \"error\", \"line_start\": 10, \"line_end\": 10, \"description\": \"A1\", \"suggestion\": \"Fix\"}]\n```"""),
+            build_response("""```json\n[{\"rule_id\": \"rule_a\", \"severity\": \"error\", \"line_start\": 10, \"line_end\": 10, \"description\": \"A2\", \"suggestion\": \"Fix\"}]\n```"""),
+            build_response("""```json\n[{\"rule_id\": \"rule_b\", \"severity\": \"warning\", \"line_start\": 20, \"line_end\": 22, \"description\": \"B\", \"suggestion\": \"Fix B\"}]\n```"""),
+        ]
+
+        rules = [
+            Rule(
+                id="rule_a",
+                category="测试",
+                title="测试规则",
+                description="描述",
+                severity=Severity.ERROR
+            )
+        ]
+
+        issues = checker.check_code_chunk("1 demo", rules)
+
+        assert len(issues) == 1
+        assert issues[0].rule_id == "rule_a"
     @patch('autocoder.checker.core.CodeChecker.check_code_chunk')
     def test_check_file_success(self, mock_check_chunk, checker):
         """测试成功检查文件"""
@@ -452,6 +550,12 @@ class TestCodeCheckerPrompt:
         mock_llm = Mock()
         mock_args = Mock()
         mock_args.source_dir = "/test"
+        mock_args.checker_llm_config = None
+        mock_args.checker_llm_temperature = None
+        mock_args.checker_llm_top_p = None
+        mock_args.checker_llm_seed = None
+        mock_args.checker_chunk_overlap_multiplier = None
+        mock_args.checker_chunk_token_limit = None
         return CodeChecker(mock_llm, mock_args)
 
     def test_check_code_prompt_structure(self, checker):
@@ -474,6 +578,108 @@ class TestCodeCheckerPrompt:
         assert "line_start" in prompt_text
 
 
+class TestProgressCallback:
+    """测试进度回调功能"""
+
+    @pytest.fixture
+    def checker(self):
+        """创建 CodeChecker 实例"""
+        mock_llm = Mock()
+        mock_args = Mock()
+        mock_args.source_dir = "/test"
+        mock_args.checker_llm_config = None
+        mock_args.checker_llm_temperature = None
+        mock_args.checker_llm_top_p = None
+        mock_args.checker_llm_seed = None
+        mock_args.checker_chunk_overlap_multiplier = None
+        mock_args.checker_chunk_token_limit = None
+
+        # Mock LLM 返回
+        mock_response = Mock()
+        mock_response.output = "[]"  # 空结果
+        mock_llm.chat_oai.return_value = [mock_response]
+
+        return CodeChecker(mock_llm, mock_args)
+
+    @patch('autocoder.checker.core.CodeChecker.check_code_chunk')
+    def test_progress_callback_called(self, mock_check_chunk, checker):
+        """测试进度回调是否被正确调用"""
+        # Mock dependencies
+        mock_check_chunk.return_value = []
+
+        with patch.object(checker.rules_loader, 'get_applicable_rules') as mock_get_rules:
+            mock_get_rules.return_value = [
+                Rule(
+                    id="test_001",
+                    category="测试",
+                    title="测试规则",
+                    description="测试",
+                    severity=Severity.ERROR
+                )
+            ]
+
+            with patch.object(checker.file_processor, 'chunk_file') as mock_chunk_file:
+                mock_chunk_file.return_value = [
+                    CodeChunk(
+                        content="1 test code",
+                        start_line=1,
+                        end_line=10,
+                        chunk_index=0
+                    ),
+                    CodeChunk(
+                        content="11 more code",
+                        start_line=11,
+                        end_line=20,
+                        chunk_index=1
+                    )
+                ]
+
+                # 记录回调调用
+                callback_steps = []
+
+                def progress_callback(step: str, **kwargs):
+                    callback_steps.append((step, kwargs))
+
+                # 执行检查
+                result = checker.check_file("test.py", progress_callback=progress_callback)
+
+                # 验证回调被调用
+                assert len(callback_steps) > 0
+
+                # 验证各个步骤都被调用
+                step_names = [s[0] for s in callback_steps]
+                assert "start" in step_names
+                assert "rules_loaded" in step_names
+                assert "chunked" in step_names
+                assert "chunk_start" in step_names
+                assert "chunk_done" in step_names
+                assert "merge_done" in step_names
+
+                # 验证 chunk 相关的回调参数
+                chunked_callbacks = [s for s in callback_steps if s[0] == "chunked"]
+                assert len(chunked_callbacks) == 1
+                assert chunked_callbacks[0][1]["total_chunks"] == 2
+
+                # 验证 chunk_start 被调用 2 次（两个 chunk）
+                chunk_start_callbacks = [s for s in callback_steps if s[0] == "chunk_start"]
+                assert len(chunk_start_callbacks) == 2
+
+                # 验证 chunk_done 被调用 2 次
+                chunk_done_callbacks = [s for s in callback_steps if s[0] == "chunk_done"]
+                assert len(chunk_done_callbacks) == 2
+
+    def test_progress_callback_optional(self, checker):
+        """测试不传递回调时也能正常工作"""
+        with patch.object(checker.rules_loader, 'get_applicable_rules') as mock_get_rules:
+            mock_get_rules.return_value = []
+
+            # 不传递回调参数
+            result = checker.check_file("test.py")
+
+            # 应该正常返回（跳过检查，因为无规则）
+            assert result.status == "skipped"
+
+
 class TestValidateIssue:
     """测试 _validate_issue 方法（用于过滤 LLM 误判）"""
 
@@ -483,6 +689,12 @@ class TestValidateIssue:
         mock_llm = Mock()
         mock_args = Mock()
         mock_args.source_dir = "/test"
+        mock_args.checker_llm_config = None
+        mock_args.checker_llm_temperature = None
+        mock_args.checker_llm_top_p = None
+        mock_args.checker_llm_seed = None
+        mock_args.checker_chunk_overlap_multiplier = None
+        mock_args.checker_chunk_token_limit = None
         return CodeChecker(mock_llm, mock_args)
 
     def test_backend_009_29_lines_should_pass(self, checker):

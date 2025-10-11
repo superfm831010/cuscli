@@ -317,6 +317,14 @@ class AutoCoderArgs(pydantic.BaseModel):
     rag_recall_max_queries: int = 5
 
     include_rules: bool = True
+    checker_llm_temperature: Optional[float] = None
+    checker_llm_top_p: Optional[float] = None
+    checker_llm_seed: Optional[int] = None
+    checker_llm_config: Optional[Dict[str, Any]] = None
+    checker_chunk_overlap_multiplier: Optional[float] = None
+    checker_chunk_token_limit: Optional[int] = None
+    checker_llm_repeat: Optional[int] = None
+    checker_llm_consensus_ratio: Optional[float] = None
 
     
     # 回答用户问题时，使用哪种对话历史策略
@@ -465,4 +473,3 @@ class AutoCoderArgs(pydantic.BaseModel):
 
     class Config:
         protected_namespaces = ()
-

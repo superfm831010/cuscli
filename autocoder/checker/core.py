@@ -14,6 +14,7 @@
 import os
 import re
 import json
+import math
 from typing import List, Dict, Optional, Any, Generator
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
@@ -49,19 +50,300 @@ class CodeChecker:
         self.llm = llm
         self.args = args
         self.rules_loader = RulesLoader()
-        self.file_processor = FileProcessor()
         self.progress_tracker = ProgressTracker()
         self.tokenizer = BuildinTokenizer()
+        self.chunk_token_limit = self._resolve_chunk_token_limit()
+        self.llm_repeat = self._resolve_llm_repeat()
+        self.llm_consensus_ratio = self._resolve_llm_consensus_ratio()
+        self.file_processor = FileProcessor(chunk_size=self.chunk_token_limit)
+        self.llm_config = self._build_llm_config()
+        self.chunk_overlap_multiplier = self._resolve_chunk_overlap_multiplier()
+
+        if self.chunk_overlap_multiplier and self.chunk_overlap_multiplier > 1:
+            base_overlap = self.file_processor.overlap
+            new_overlap = max(int(base_overlap * self.chunk_overlap_multiplier), base_overlap)
+            self.file_processor.overlap = new_overlap
+            logger.info(
+                "已根据配置调整 chunk overlap: "
+                f"base={base_overlap} -> new={self.file_processor.overlap}"
+            )
 
         logger.info("CodeChecker 初始化完成")
+        logger.debug(f"CodeChecker 使用的 LLM 配置: {self.llm_config}")
+        logger.debug(
+            "CodeChecker 参数: chunk_token_limit=%s, llm_repeat=%s, consensus_ratio=%s",
+            self.chunk_token_limit,
+            self.llm_repeat,
+            self.llm_consensus_ratio,
+        )
 
-    def check_file(self, file_path: str, file_timeout: int = 600) -> FileCheckResult:
+    DEFAULT_LLM_CONFIG: Dict[str, Any] = {
+        "temperature": 0.0,
+        "top_p": 1.0,
+    }
+
+    DEFAULT_CHUNK_TOKEN_LIMIT = 20000
+
+    DEFAULT_LLM_REPEAT = 1
+    DEFAULT_LLM_CONSENSUS_RATIO = 1.0
+
+    def _resolve_chunk_token_limit(self) -> int:
+        """
+        解析 chunk token 限制，优先级：
+        1. args.checker_chunk_token_limit
+        2. 环境变量 CODECHECKER_CHUNK_TOKEN_LIMIT
+        3. 默认 20000 tokens
+        """
+        limit = self.DEFAULT_CHUNK_TOKEN_LIMIT
+
+        env_value = os.getenv("CODECHECKER_CHUNK_TOKEN_LIMIT")
+        if env_value:
+            try:
+                limit = int(env_value)
+            except ValueError:
+                logger.warning(
+                    f"无法解析 CODECHECKER_CHUNK_TOKEN_LIMIT={env_value}，使用默认值 {self.DEFAULT_CHUNK_TOKEN_LIMIT}"
+                )
+
+        arg_value = getattr(self.args, "checker_chunk_token_limit", None)
+        if isinstance(arg_value, (int, float)):
+            limit = int(arg_value)
+        elif arg_value is not None:
+            logger.warning(
+                f"checker_chunk_token_limit 类型无效({type(arg_value)}), 使用默认值"
+            )
+
+        if limit is None or limit <= 0:
+            logger.warning(
+                f"chunk token limit 配置无效({limit})，回退到默认值 {self.DEFAULT_CHUNK_TOKEN_LIMIT}"
+            )
+            limit = self.DEFAULT_CHUNK_TOKEN_LIMIT
+
+        return limit
+
+    def _resolve_llm_repeat(self) -> int:
+        """解析 LLM 重复校验次数"""
+        repeat = self.DEFAULT_LLM_REPEAT
+
+        env_value = os.getenv("CODECHECKER_LLM_REPEAT")
+        if env_value:
+            try:
+                repeat = int(env_value)
+            except ValueError:
+                logger.warning(
+                    f"无法解析 CODECHECKER_LLM_REPEAT={env_value}，使用默认值 {self.DEFAULT_LLM_REPEAT}"
+                )
+
+        arg_value = getattr(self.args, "checker_llm_repeat", None)
+        if isinstance(arg_value, int):
+            repeat = arg_value
+        elif isinstance(arg_value, float):
+            repeat = int(arg_value)
+        elif arg_value is not None:
+            logger.warning(
+                f"checker_llm_repeat 类型无效({type(arg_value)}), 使用默认值"
+            )
+
+        if repeat is None or repeat < 1:
+            logger.warning(
+                f"llm_repeat 配置无效({repeat})，回退到默认值 {self.DEFAULT_LLM_REPEAT}"
+            )
+            repeat = self.DEFAULT_LLM_REPEAT
+
+        return repeat
+
+    def _resolve_llm_consensus_ratio(self) -> float:
+        """解析 LLM 间的共识比例"""
+        ratio = self.DEFAULT_LLM_CONSENSUS_RATIO
+
+        env_value = os.getenv("CODECHECKER_LLM_CONSENSUS")
+        if env_value:
+            try:
+                ratio = float(env_value)
+            except ValueError:
+                logger.warning(
+                    f"无法解析 CODECHECKER_LLM_CONSENSUS={env_value}，使用默认值 {self.DEFAULT_LLM_CONSENSUS_RATIO}"
+                )
+
+        arg_value = getattr(self.args, "checker_llm_consensus_ratio", None)
+        if isinstance(arg_value, (int, float)):
+            ratio = float(arg_value)
+        elif arg_value is not None:
+            logger.warning(
+                f"checker_llm_consensus_ratio 类型无效({type(arg_value)}), 使用默认值"
+            )
+
+        if ratio is None or ratio <= 0 or ratio > 1:
+            logger.warning(
+                f"llm_consensus_ratio 配置无效({ratio})，回退到默认值 {self.DEFAULT_LLM_CONSENSUS_RATIO}"
+            )
+            ratio = self.DEFAULT_LLM_CONSENSUS_RATIO
+
+        return ratio
+
+    def _aggregate_attempt_results(self, attempt_results: List[List[Issue]]) -> List[Issue]:
+        """根据多次 LLM 调用结果取交集/多数票"""
+        if not attempt_results:
+            return []
+
+        attempts = len(attempt_results)
+        threshold = max(1, math.ceil(self.llm_consensus_ratio * attempts))
+        logger.debug(
+            "聚合 LLM 结果: attempts=%s, threshold=%s", attempts, threshold
+        )
+
+        aggregated: Dict[tuple, Dict[str, Any]] = {}
+
+        for idx, issues in enumerate(attempt_results, start=1):
+            seen_keys = set()
+            for issue in issues or []:
+                key = (issue.rule_id, issue.line_start, issue.line_end)
+                entry = aggregated.setdefault(key, {"count": 0, "issue": issue})
+
+                existing = entry["issue"]
+                if len(issue.description) > len(existing.description) or (
+                    len(issue.description) == len(existing.description)
+                    and len(issue.suggestion) > len(existing.suggestion)
+                ):
+                    entry["issue"] = issue
+
+                if key not in seen_keys:
+                    entry["count"] += 1
+                    seen_keys.add(key)
+
+            logger.debug(
+                "Attempt %s/%s 包含 %s 个问题（去重后 %s）",
+                idx,
+                attempts,
+                len(issues or []),
+                len(seen_keys),
+            )
+
+        final_issues: List[Issue] = []
+        for key, data in aggregated.items():
+            if data["count"] >= threshold:
+                final_issues.append(data["issue"])
+            else:
+                logger.debug(
+                    "丢弃问题 %s：出现 %s 次 < 阈值 %s",
+                    key,
+                    data["count"],
+                    threshold,
+                )
+
+        return final_issues
+
+    def _build_llm_config(self) -> Dict[str, Any]:
+        """
+        构建 LLM 调用配置，优先级：
+        1. 传入的 args.checker_llm_config
+        2. 单独的温度、top_p、seed 配置（args 或环境变量）
+        3. 默认确定性配置（temperature=0, top_p=1, seed=42）
+        """
+        config: Dict[str, Any] = dict(self.DEFAULT_LLM_CONFIG)
+
+        # 读取环境变量
+        env_temperature = os.getenv("CODECHECKER_LLM_TEMPERATURE")
+        env_top_p = os.getenv("CODECHECKER_LLM_TOP_P")
+        env_seed = os.getenv("CODECHECKER_LLM_SEED")
+
+        def _to_float(value: Optional[str]) -> Optional[float]:
+            if value is None:
+                return None
+            try:
+                return float(value)
+            except ValueError:
+                logger.warning(f"无法解析浮点值: {value}")
+                return None
+
+        def _to_int(value: Optional[str]) -> Optional[int]:
+            if value is None:
+                return None
+            try:
+                return int(value)
+            except ValueError:
+                logger.warning(f"无法解析整数值: {value}")
+                return None
+
+        # 环境变量优先覆盖默认值
+        if env_temperature is not None:
+            parsed = _to_float(env_temperature)
+            if parsed is not None:
+                config["temperature"] = parsed
+        if env_top_p is not None:
+            parsed = _to_float(env_top_p)
+            if parsed is not None:
+                config["top_p"] = parsed
+        seed_value = _to_int(env_seed)
+
+        # 处理 args 配置
+        if getattr(self.args, "checker_llm_config", None):
+            config.update(self.args.checker_llm_config)
+
+        if getattr(self.args, "checker_llm_temperature", None) is not None:
+            config["temperature"] = self.args.checker_llm_temperature
+
+        if getattr(self.args, "checker_llm_top_p", None) is not None:
+            config["top_p"] = self.args.checker_llm_top_p
+
+        arg_seed = getattr(self.args, "checker_llm_seed", None)
+        if arg_seed is not None:
+            seed_value = arg_seed
+
+        # 默认 seed，如果显式传入 -1 则视为关闭
+        if seed_value is None:
+            seed_value = 42
+        if seed_value >= 0:
+            config["seed"] = seed_value
+        else:
+            config.pop("seed", None)
+
+        return config
+
+    def _resolve_chunk_overlap_multiplier(self) -> Optional[float]:
+        """解析 chunk overlap multiplier，用于增强上下文一致性"""
+        env_value = os.getenv("CODECHECKER_CHUNK_OVERLAP_MULTIPLIER")
+        result: Optional[float] = None
+
+        if env_value:
+            try:
+                result = float(env_value)
+            except ValueError:
+                logger.warning(
+                    f"无法解析 CODECHECKER_CHUNK_OVERLAP_MULTIPLIER={env_value}，将忽略该配置"
+                )
+
+        arg_value = getattr(self.args, "checker_chunk_overlap_multiplier", None)
+        if arg_value is not None:
+            result = arg_value
+
+        if result is not None and result <= 0:
+            logger.warning("chunk_overlap_multiplier <= 0，被忽略")
+            return None
+
+        return result
+
+    def check_file(
+        self,
+        file_path: str,
+        file_timeout: int = 600,
+        progress_callback: Optional[callable] = None
+    ) -> FileCheckResult:
         """
         检查单个文件
 
         Args:
             file_path: 文件路径
             file_timeout: 单个文件检查的最大超时时间(秒),默认 600 秒(10分钟)
+            progress_callback: 可选的进度回调函数，用于报告检查进度
+                回调参数: (step: str, **kwargs)
+                step 可能的值:
+                - "start": 开始检查
+                - "rules_loaded": 规则加载完成 (total_rules: int)
+                - "chunked": 文件分块完成 (total_chunks: int)
+                - "chunk_start": 开始检查某个 chunk (chunk_index: int, total_chunks: int)
+                - "chunk_done": 某个 chunk 检查完成 (chunk_index: int, total_chunks: int)
+                - "merge_done": 结果合并完成
 
         Returns:
             FileCheckResult: 文件检查结果
@@ -70,7 +352,7 @@ class CodeChecker:
 
         # 使用 ThreadPoolExecutor 实现文件级超时
         with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(self._check_file_impl, file_path)
+            future = executor.submit(self._check_file_impl, file_path, progress_callback)
 
             try:
                 result = future.result(timeout=file_timeout)
@@ -107,18 +389,27 @@ class CodeChecker:
                     error_message=str(exc)
                 )
 
-    def _check_file_impl(self, file_path: str) -> FileCheckResult:
+    def _check_file_impl(
+        self,
+        file_path: str,
+        progress_callback: Optional[callable] = None
+    ) -> FileCheckResult:
         """
         检查单个文件的内部实现（用于支持超时）
 
         Args:
             file_path: 文件路径
+            progress_callback: 可选的进度回调函数
 
         Returns:
             FileCheckResult: 文件检查结果
         """
         try:
             start_time = datetime.now()
+
+            # 回调：开始检查
+            if progress_callback:
+                progress_callback(step="start")
 
             # 1. 获取适用规则
             rules = self.rules_loader.get_applicable_rules(file_path)
@@ -136,9 +427,17 @@ class CodeChecker:
 
             logger.info(f"为文件 {file_path} 加载了 {len(rules)} 条规则")
 
+            # 回调：规则加载完成
+            if progress_callback:
+                progress_callback(step="rules_loaded", total_rules=len(rules))
+
             # 2. 分块处理
             chunks = self.file_processor.chunk_file(file_path)
             logger.info(f"文件 {file_path} 被分为 {len(chunks)} 个 chunk")
+
+            # 回调：文件分块完成
+            if progress_callback:
+                progress_callback(step="chunked", total_chunks=len(chunks))
 
             # 3. 检查每个 chunk
             all_issues = []
@@ -149,6 +448,14 @@ class CodeChecker:
                     f"检查 chunk {chunk.chunk_index + 1}/{len(chunks)}: "
                     f"行 {chunk.start_line}-{chunk.end_line}"
                 )
+
+                # 回调：开始检查某个 chunk
+                if progress_callback:
+                    progress_callback(
+                        step="chunk_start",
+                        chunk_index=chunk.chunk_index,
+                        total_chunks=len(chunks)
+                    )
 
                 try:
                     issues = self.check_code_chunk(chunk.content, rules)
@@ -163,6 +470,14 @@ class CodeChecker:
 
                     all_issues.extend(issues)
                     logger.info(f"Chunk {chunk.chunk_index + 1} 完成，发现 {len(issues)} 个问题")
+
+                    # 回调：某个 chunk 检查完成
+                    if progress_callback:
+                        progress_callback(
+                            step="chunk_done",
+                            chunk_index=chunk.chunk_index,
+                            total_chunks=len(chunks)
+                        )
 
                 except Exception as e:
                     logger.error(f"检查 chunk {chunk.chunk_index} 时发生异常: {e}", exc_info=True)
@@ -179,19 +494,26 @@ class CodeChecker:
 
             # 4. 合并重复问题
             merged_issues = self._merge_duplicate_issues(all_issues)
-            logger.info(f"合并后共 {len(merged_issues)} 个问题")
+            filtered_issues = self._filter_backend009_boundary(merged_issues)
+            logger.info(
+                f"合并后共 {len(merged_issues)} 个问题，过滤 backend_009 边界后剩余 {len(filtered_issues)} 个问题"
+            )
+
+            # 回调：结果合并完成
+            if progress_callback:
+                progress_callback(step="merge_done")
 
             # 5. 统计
-            error_count = sum(1 for i in merged_issues if i.severity == Severity.ERROR)
-            warning_count = sum(1 for i in merged_issues if i.severity == Severity.WARNING)
-            info_count = sum(1 for i in merged_issues if i.severity == Severity.INFO)
+            error_count = sum(1 for i in filtered_issues if i.severity == Severity.ERROR)
+            warning_count = sum(1 for i in filtered_issues if i.severity == Severity.WARNING)
+            info_count = sum(1 for i in filtered_issues if i.severity == Severity.INFO)
 
             logger.info(f"文件 {file_path} 检查完成: 错误={error_count}, 警告={warning_count}, 提示={info_count}")
 
             return FileCheckResult(
                 file_path=file_path,
                 check_time=datetime.now().isoformat(),
-                issues=merged_issues,
+                issues=filtered_issues,
                 error_count=error_count,
                 warning_count=warning_count,
                 info_count=info_count,
@@ -324,7 +646,11 @@ class CodeChecker:
         logger.info(f"并发检查完成：已处理 {len(files)} 个文件")
 
     def check_code_chunk(
-        self, code: str, rules: List[Rule], timeout: int = 180
+        self,
+        code: str,
+        rules: List[Rule],
+        timeout: int = 180,
+        llm_overrides: Optional[Dict[str, Any]] = None,
     ) -> List[Issue]:
         """
         检查代码块
@@ -333,6 +659,7 @@ class CodeChecker:
             code: 代码内容（带行号）
             rules: 适用的规则列表
             timeout: LLM 调用超时时间（秒），默认 180 秒
+            llm_overrides: 临时覆盖的 LLM 配置
 
         Returns:
             List[Issue]: 发现的问题列表
@@ -340,49 +667,105 @@ class CodeChecker:
         try:
             logger.debug(f"开始检查代码块，规则数量: {len(rules)}")
 
+            # 构建行号与代码的映射，便于结果校验
+            line_map = self._build_line_map(code)
+
             # 1. 格式化规则
             rules_text = self._format_rules_for_prompt(rules)
 
             # 2. 构造 prompt
             prompt = self.check_code_prompt.prompt(code, rules_text)
+            logger.debug(
+                "LLM prompt 长度: chars=%s, preview=%s",
+                len(prompt),
+                prompt[:200].replace("\n", " ") + ("..." if len(prompt) > 200 else ""),
+            )
 
-            # 3. 调用 LLM（使用超时机制）
+            # 3. 调用 LLM（使用超时机制，设置确定性参数以保证结果稳定）
             conversations = [{"role": "user", "content": prompt}]
-            logger.info(f"调用 LLM 进行代码检查（超时: {timeout}秒）")
+            attempts = max(1, self.llm_repeat)
+            logger.info(
+                "调用 LLM 进行代码检查（超时: %s秒，重复次数=%s，consensus=%.2f）",
+                timeout,
+                attempts,
+                self.llm_consensus_ratio,
+            )
 
-            # 使用 ThreadPoolExecutor 实现超时
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(self._call_llm, conversations)
-                try:
-                    response = future.result(timeout=timeout)
-                except TimeoutError:
-                    logger.error(f"LLM 调用超时（{timeout}秒），跳过此代码块")
-                    return []
-                except Exception as e:
-                    logger.error(f"LLM 调用失败: {e}", exc_info=True)
-                    return []
-
-            # 4. 解析响应
-            if response and len(response) > 0:
-                response_text = response[0].output
-                logger.debug(f"LLM 响应: {response_text[:200]}...")
-                issues = self._parse_llm_response(response_text)
-                logger.info(f"解析出 {len(issues)} 个问题")
-                return issues
+            effective_llm_config = dict(self.llm_config)
+            if llm_overrides:
+                effective_llm_config.update(llm_overrides)
+                logger.debug(f"使用覆盖后的 LLM 配置: {effective_llm_config}")
             else:
-                logger.warning("LLM 返回空响应")
+                logger.debug(f"使用默认 LLM 配置: {effective_llm_config}")
+
+            attempt_results: List[List[Issue]] = []
+            for attempt in range(attempts):
+                logger.debug("LLM attempt %s/%s", attempt + 1, attempts)
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(self._call_llm, conversations, effective_llm_config)
+                    try:
+                        response = future.result(timeout=timeout)
+                    except TimeoutError:
+                        logger.error(
+                            "LLM 调用超时（%s秒），attempt=%s/%s",
+                            timeout,
+                            attempt + 1,
+                            attempts,
+                        )
+                        attempt_results.append([])
+                        continue
+                    except Exception as e:
+                        logger.error(
+                            "LLM 调用失败: %s (attempt %s/%s)",
+                            e,
+                            attempt + 1,
+                            attempts,
+                            exc_info=True,
+                        )
+                        attempt_results.append([])
+                        continue
+
+                if response and len(response) > 0:
+                    response_text = response[0].output
+                    logger.debug(f"LLM 响应: {response_text[:200]}...")
+                    issues = self._parse_llm_response(response_text, line_map=line_map)
+                    logger.info(
+                        "Attempt %s/%s 解析出 %s 个问题",
+                        attempt + 1,
+                        attempts,
+                        len(issues),
+                    )
+                    attempt_results.append(issues)
+                else:
+                    logger.warning("LLM 返回空响应 (attempt %s/%s)", attempt + 1, attempts)
+                    attempt_results.append([])
+
+            if not attempt_results:
+                logger.warning("LLM 所有尝试均未返回结果")
                 return []
+
+            if attempts == 1:
+                return attempt_results[0]
+
+            aggregated = self._aggregate_attempt_results(attempt_results)
+            logger.info(
+                "多次尝试后保留 %s 个问题 (consensus >= %.2f)",
+                len(aggregated),
+                self.llm_consensus_ratio,
+            )
+            return aggregated
 
         except Exception as e:
             logger.error(f"检查代码块失败: {e}", exc_info=True)
             return []
 
-    def _call_llm(self, conversations: List[Dict[str, str]]) -> Any:
+    def _call_llm(self, conversations: List[Dict[str, str]], llm_config: Optional[Dict[str, Any]] = None) -> Any:
         """
         调用 LLM（内部方法，用于支持超时）
 
         Args:
             conversations: 对话列表
+            llm_config: LLM 配置参数（temperature, top_p 等）
 
         Returns:
             LLM 响应
@@ -391,7 +774,12 @@ class CodeChecker:
         logger.debug(f"开始 LLM 调用: {start_time.isoformat()}")
 
         try:
-            response = self.llm.chat_oai(conversations=conversations)
+            # 传递 llm_config 参数以控制输出的确定性
+            logger.debug(f"LLM 最终配置: {llm_config}")
+            response = self.llm.chat_oai(
+                conversations=conversations,
+                llm_config=llm_config if llm_config else {}
+            )
 
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
@@ -423,34 +811,104 @@ class CodeChecker:
 
         logger.debug(f"开始合并 {len(issues)} 个问题")
 
-        # 按 (rule_id, line_start, line_end) 分组
-        merged = {}
+        # 预过滤 backend_009 的边界情况，避免 30 行以内的提示残留
+        filtered_issues: List[Issue] = []
         for issue in issues:
-            key = (issue.rule_id, issue.line_start, issue.line_end)
+            if issue.rule_id == "backend_009":
+                line_count = issue.line_end - issue.line_start + 1
+                if line_count <= 30:
+                    logger.debug(
+                        f"合并前过滤 backend_009 边界问题，行号范围 "
+                        f"{issue.line_start}-{issue.line_end} (共 {line_count} 行)"
+                    )
+                    continue
+            filtered_issues.append(issue)
 
-            if key not in merged:
-                # 首次出现，直接保存
-                merged[key] = issue
+        if not filtered_issues:
+            logger.debug("过滤后无剩余问题")
+            return []
+
+        merged: List[Issue] = []
+        for issue in filtered_issues:
+            norm_start = max(1, int(round(issue.line_start)))
+            norm_end = max(norm_start, int(round(issue.line_end)))
+            normalized_issue = issue.copy(
+                update={
+                    "line_start": norm_start,
+                    "line_end": norm_end,
+                }
+            )
+
+            match_index: Optional[int] = None
+            for idx, existing_issue in enumerate(merged):
+                if existing_issue.rule_id != normalized_issue.rule_id:
+                    continue
+
+                if (
+                    abs(existing_issue.line_start - normalized_issue.line_start) <= 1
+                    and abs(existing_issue.line_end - normalized_issue.line_end) <= 1
+                ):
+                    match_index = idx
+                    break
+
+            if match_index is None:
+                merged.append(normalized_issue)
+                continue
+
+            existing_issue = merged[match_index]
+            merged_start = min(existing_issue.line_start, normalized_issue.line_start)
+            merged_end = max(existing_issue.line_end, normalized_issue.line_end)
+
+            # 比较描述和建议长度，保留信息更丰富的版本
+            should_replace = False
+            if len(normalized_issue.description) > len(existing_issue.description):
+                should_replace = True
+            elif len(normalized_issue.description) == len(existing_issue.description):
+                if len(normalized_issue.suggestion) > len(existing_issue.suggestion):
+                    should_replace = True
+
+            if should_replace:
+                logger.debug(
+                    "合并重复问题，选择描述更详细的版本: "
+                    f"rule={normalized_issue.rule_id}, "
+                    f"lines={normalized_issue.line_start}-{normalized_issue.line_end}"
+                )
+                merged[match_index] = normalized_issue.copy(update={"line_start": merged_start, "line_end": merged_end})
             else:
-                # 重复问题，保留描述更详细的
-                existing_issue = merged[key]
+                merged[match_index] = existing_issue.copy(update={"line_start": merged_start, "line_end": merged_end})
 
-                # 比较描述长度
-                if len(issue.description) > len(existing_issue.description):
-                    logger.debug(f"替换问题 {key}，新描述更详细")
-                    merged[key] = issue
-                elif len(issue.description) == len(existing_issue.description):
-                    # 描述长度相同，比较建议长度
-                    if len(issue.suggestion) > len(existing_issue.suggestion):
-                        logger.debug(f"替换问题 {key}，新建议更详细")
-                        merged[key] = issue
+        # 按行号排序
+        sorted_issues = sorted(merged, key=lambda x: (x.line_start, x.line_end))
 
-        # 转换为列表并按行号排序
-        sorted_issues = sorted(merged.values(), key=lambda x: (x.line_start, x.line_end))
-
-        logger.info(f"合并完成：{len(issues)} -> {len(sorted_issues)} 个问题")
+        logger.info(f"合并完成：{len(filtered_issues)} -> {len(sorted_issues)} 个问题")
 
         return sorted_issues
+
+    def _filter_backend009_boundary(self, issues: List[Issue]) -> List[Issue]:
+        """
+        过滤 backend_009 的 30 行以内提示，确保最终结果不含误报
+
+        Args:
+            issues: 已合并的问题列表
+
+        Returns:
+            过滤后的问题列表
+        """
+        if not issues:
+            return issues
+
+        filtered: List[Issue] = []
+        for issue in issues:
+            if issue.rule_id == "backend_009":
+                line_count = issue.line_end - issue.line_start + 1
+                if line_count <= 30:
+                    logger.debug(
+                        f"最终结果过滤 backend_009 边界问题，行号范围 "
+                        f"{issue.line_start}-{issue.line_end} (共 {line_count} 行)"
+                    )
+                    continue
+            filtered.append(issue)
+        return filtered
 
     @byzerllm.prompt()
     def check_code_prompt(self, code_with_lines: str, rules: str) -> str:
@@ -458,6 +916,8 @@ class CodeChecker:
         代码检查 Prompt
 
         你是一个代码审查专家。请根据提供的规则检查代码，找出不符合规范的地方。
+
+        **重要：请使用一致的判断标准进行检查，确保同样的代码问题每次都能被准确发现和报告。对于明显违反规则的问题，应该准确报告。**
 
         ## 检查规则
 
@@ -497,7 +957,11 @@ class CodeChecker:
              * 方法从第 10 行到第 38 行：实际行数 = 38 - 10 + 1 = 29 行，29 ≤ 30，**合规**，不应报告
              * 方法从第 10 行到第 39 行：实际行数 = 39 - 10 + 1 = 30 行，30 ≤ 30，**合规**，不应报告
              * 方法从第 10 行到第 40 行：实际行数 = 40 - 10 + 1 = 31 行，31 > 30，**违规**，应该报告
-        5. 只返回确实违反规则的问题，不要臆测或误判
+        5. **标准一致性要求**：
+           - 使用一致的判断标准，确保同样的代码每次检查得到相同的结果
+           - 对于明显违反规则的问题（如超过阈值、明确的规范冲突），应该准确报告
+           - 使用客观、可计算的标准进行判断
+           - 对于涉及数值判断的规则（如行数、嵌套层数），严格按照阈值判断
         6. 每个问题都必须有明确的规则依据
 
         如果没有发现问题，返回空数组 []
@@ -547,7 +1011,11 @@ class CodeChecker:
 
         return "\n".join(lines)
 
-    def _validate_issue(self, issue: Issue) -> bool:
+    def _validate_issue(
+        self,
+        issue: Issue,
+        line_map: Optional[Dict[int, str]] = None
+    ) -> bool:
         """
         验证问题是否有效
 
@@ -561,15 +1029,48 @@ class CodeChecker:
         """
         # backend_009: 方法行数限制（行数不应超过30行）
         if issue.rule_id == "backend_009":
-            # 计算实际行数（包含性：line_end - line_start + 1）
-            line_count = issue.line_end - issue.line_start + 1
+            if issue.line_end < issue.line_start:
+                logger.warning(
+                    f"过滤 LLM 误判：规则 {issue.rule_id}，"
+                    f"行号范围 {issue.line_start}-{issue.line_end} 非法（结束行小于起始行），"
+                    "丢弃该问题"
+                )
+                return False
+
+            # 默认按照行号差值计算
+            computed_line_count = issue.line_end - issue.line_start + 1
+
+            # 尝试根据行号映射获取真实存在的代码行数
+            actual_line_count: Optional[int] = None
+            if line_map:
+                has_start = issue.line_start in line_map
+                has_end = issue.line_end in line_map
+
+                if has_start and has_end:
+                    lines_in_range = [
+                        line_no
+                        for line_no in range(issue.line_start, issue.line_end + 1)
+                        if line_no in line_map
+                    ]
+                    actual_line_count = len(lines_in_range)
+
+                    missing_lines = computed_line_count - actual_line_count
+                    if missing_lines > 0:
+                        # 行号映射缺失部分行，无法准确计算，回退到默认值
+                        logger.debug(
+                            f"backend_009 校验时发现缺失 {missing_lines} 行，"
+                            f"范围 {issue.line_start}-{issue.line_end}，回退使用计算值 {computed_line_count}"
+                        )
+                        actual_line_count = None
+
+            line_count = actual_line_count if actual_line_count is not None else computed_line_count
 
             # 判断标准：≤ 30 行为合规，> 30 行才违规
             if line_count <= 30:
                 logger.warning(
                     f"过滤 LLM 误判：规则 {issue.rule_id}，"
                     f"行号范围 {issue.line_start}-{issue.line_end}，"
-                    f"计算行数 = {issue.line_end} - {issue.line_start} + 1 = {line_count} 行，"
+                    f"实际行数 = {line_count} 行，"
                     f"{line_count} ≤ 30（合规），不应报告"
                 )
                 return False
@@ -577,7 +1078,7 @@ class CodeChecker:
                 logger.debug(
                     f"验证通过：规则 {issue.rule_id}，"
                     f"行号范围 {issue.line_start}-{issue.line_end}，"
-                    f"计算行数 = {issue.line_end} - {issue.line_start} + 1 = {line_count} 行，"
+                    f"实际行数 = {line_count} 行，"
                     f"{line_count} > 30（违规），应报告"
                 )
 
@@ -588,7 +1089,34 @@ class CodeChecker:
         # 其他规则暂时不需要特殊验证
         return True
 
-    def _parse_llm_response(self, response_text: str) -> List[Issue]:
+    def _build_line_map(self, code_with_lines: str) -> Dict[int, str]:
+        """
+        将带行号的代码转换为 {行号: 代码内容} 的映射
+
+        Args:
+            code_with_lines: 带行号的代码文本
+
+        Returns:
+            Dict[int, str]: 行号到代码内容的映射
+        """
+        line_map: Dict[int, str] = {}
+
+        for raw_line in code_with_lines.splitlines():
+            match = re.match(r'^\s*(\d+)\s(.*)$', raw_line)
+            if not match:
+                continue
+
+            line_no = int(match.group(1))
+            line_content = match.group(2)
+            line_map[line_no] = line_content
+
+        return line_map
+
+    def _parse_llm_response(
+        self,
+        response_text: str,
+        line_map: Optional[Dict[int, str]] = None
+    ) -> List[Issue]:
         """
         解析 LLM 响应为 Issue 列表
 
@@ -647,7 +1175,7 @@ class CodeChecker:
                     )
 
                     # 验证问题有效性，过滤 LLM 可能的误判
-                    if not self._validate_issue(issue):
+                    if not self._validate_issue(issue, line_map=line_map):
                         logger.debug(f"问题 {i} 未通过验证，已过滤")
                         continue
 
