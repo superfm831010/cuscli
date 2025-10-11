@@ -1534,6 +1534,99 @@ logger.debug(f"LLM Response: {response}")
 
 ---
 
-**最后更新**：2025-10-10
-**文档版本**：1.0.0
+## 修复记录
+
+### 2025-10-11: 修复模型获取逻辑
+
+**问题描述**：
+用户在使用 `/check /folder` 命令时遇到错误：
+```
+CodeChecker 初始化失败: Failed to create LLM instance for models: deepseek/deepseek-chat
+- Model 'deepseek/deepseek-chat' not found
+```
+
+**问题原因**：
+在 `code_checker_plugin.py` 的 `_ensure_checker()` 方法中（第103行），代码硬编码了一个默认模型：
+```python
+model_name = conf.get("model", "deepseek/deepseek-chat")
+```
+
+当配置中没有 "model" 字段时，会使用这个不存在的默认模型，导致初始化失败。
+
+**修复方案**：
+1. **智能模型选择**：按优先级选择模型
+   - 优先使用 `chat_model`（chat 模式专用模型）
+   - 其次使用 `model`（通用模型）
+   - 最后从 LLMManager 中自动选择第一个有 API key 的可用模型
+
+2. **友好的错误提示**：
+   - 当完全没有可用模型时，提供清晰的配置指导
+   - 当模型无法初始化时，提示可能的原因和解决方法
+
+**修改文件**：
+- `autocoder/plugins/code_checker_plugin.py` (第82-139行)
+
+**修改内容**：
+```python
+def _ensure_checker(self):
+    # ... 省略部分代码 ...
+
+    # 智能获取模型配置
+    # 1. 优先使用 chat_model（chat 模式专用）
+    # 2. 其次使用 model（通用模型）
+    # 3. 最后尝试获取第一个可用模型
+    model_name = conf.get("chat_model") or conf.get("model")
+
+    if not model_name:
+        # 如果配置中没有模型，尝试从 LLMManager 获取第一个有 API key 的模型
+        llm_manager = LLMManager()
+        all_models = llm_manager.get_all_models()
+
+        # 查找第一个有 API key 的模型
+        for name, model in all_models.items():
+            if llm_manager.has_key(name):
+                model_name = name
+                logger.info(f"[{self.name}] 配置中未指定模型，自动选择: {model_name}")
+                break
+
+        if not model_name:
+            raise RuntimeError(
+                "未配置模型，且未找到可用的模型\n"
+                "请使用以下方式之一配置模型：\n"
+                "1. /models /add <model_name> <api_key> - 添加并激活模型\n"
+                "2. /config model <model_name> - 设置当前使用的模型"
+            )
+
+    # ... 省略后续代码 ...
+```
+
+**测试验证**：
+- 场景1：配置中有 `chat_model` → 使用 `chat_model`
+- 场景2：配置中只有 `model` → 使用 `model`
+- 场景3：配置中都没有，但有已激活的模型 → 自动选择第一个有 API key 的模型
+- 场景4：没有任何可用模型 → 显示友好的错误提示
+
+**影响范围**：
+- 仅影响 CodeChecker 的初始化逻辑
+- 不影响现有功能
+- 向后兼容
+
+**相关文件**：
+- `autocoder/plugins/code_checker_plugin.py`
+- `autocoder/checker/core.py`
+
+**提交信息**：
+```
+fix(checker): 智能获取当前激活的模型
+
+- 优先使用 chat_model，其次 model，最后自动选择
+- 移除硬编码的默认模型 "deepseek/deepseek-chat"
+- 添加友好的错误提示和配置指导
+- 修复用户使用 /check 命令时的模型初始化失败问题
+```
+
+---
+
+**最后更新**：2025-10-11
+**文档版本**：1.0.1
 **作者**：Claude AI

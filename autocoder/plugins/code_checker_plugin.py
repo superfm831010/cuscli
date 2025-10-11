@@ -94,13 +94,38 @@ class CodeCheckerPlugin(Plugin):
             from autocoder.auto_coder import AutoCoderArgs
             from autocoder.utils.llms import get_single_llm
             from autocoder.common.core_config import get_memory_manager
+            from autocoder.common.llms import LLMManager
 
             # 获取配置
             memory_manager = get_memory_manager()
             conf = memory_manager.get_all_config()
 
-            # 获取模型配置
-            model_name = conf.get("model", "deepseek/deepseek-chat")
+            # 智能获取模型配置
+            # 1. 优先使用 chat_model（chat 模式专用）
+            # 2. 其次使用 model（通用模型）
+            # 3. 最后尝试获取第一个可用模型
+            model_name = conf.get("chat_model") or conf.get("model")
+
+            if not model_name:
+                # 如果配置中没有模型，尝试从 LLMManager 获取第一个有 API key 的模型
+                llm_manager = LLMManager()
+                all_models = llm_manager.get_all_models()
+
+                # 查找第一个有 API key 的模型
+                for name, model in all_models.items():
+                    if llm_manager.has_key(name):
+                        model_name = name
+                        logger.info(f"[{self.name}] 配置中未指定模型，自动选择: {model_name}")
+                        break
+
+                if not model_name:
+                    raise RuntimeError(
+                        "未配置模型，且未找到可用的模型\n"
+                        "请使用以下方式之一配置模型：\n"
+                        "1. /models /add <model_name> <api_key> - 添加并激活模型\n"
+                        "2. /config model <model_name> - 设置当前使用的模型"
+                    )
+
             product_mode = conf.get("product_mode", "lite")
 
             # 获取 LLM 实例
@@ -108,7 +133,9 @@ class CodeCheckerPlugin(Plugin):
             if llm is None:
                 raise RuntimeError(
                     f"无法获取 LLM 实例 (model={model_name}, mode={product_mode})\n"
-                    "请确保 auto-coder 已正确初始化并配置了模型"
+                    "可能的原因：\n"
+                    "1. 模型未配置 API key，请使用: /models /add {model_name} <api_key>\n"
+                    "2. 模型不存在，请使用: /models /list 查看可用模型"
                 )
 
             # 创建一个基础的 Args 对象（使用默认值）
