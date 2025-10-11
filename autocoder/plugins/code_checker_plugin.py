@@ -32,6 +32,8 @@ class CodeCheckerPlugin(Plugin):
     dynamic_cmds = [
         "/check /file",
         "/check /resume",
+        "/check /config",
+        "/check /folder",
     ]
 
     def __init__(
