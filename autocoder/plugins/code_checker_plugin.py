@@ -385,6 +385,10 @@ class CodeCheckerPlugin(Plugin):
                 print(f"⏭️  文件已跳过: {file_path}")
                 print("   原因: 无适用的检查规则")
 
+            elif result.status == "timeout":
+                print(f"⏱️  文件检查超时: {file_path}")
+                print(f"   错误: {result.error_message}")
+
             elif result.status == "failed":
                 print(f"❌ 检查失败: {file_path}")
                 print(f"   错误: {result.error_message}")
@@ -478,6 +482,8 @@ class CodeCheckerPlugin(Plugin):
 
             # 批量检查（Task 9.2: 使用并发检查）
             results = []
+            check_interrupted = False
+
             try:
                 with Progress(
                     SpinnerColumn(),
@@ -509,6 +515,7 @@ class CodeCheckerPlugin(Plugin):
                 # Task 8.1: 处理中断
                 print()
                 print()
+                check_interrupted = True
                 state = self.progress_tracker.load_state(check_id)
                 if state:
                     state.status = "interrupted"
@@ -519,31 +526,42 @@ class CodeCheckerPlugin(Plugin):
                 print(f"   已完成: {len(results)}/{len(files)} 个文件")
                 print(f"   剩余: {len(files) - len(results)} 个文件")
                 print()
-                print(f"💡 使用以下命令恢复检查:")
-                print(f"   /check /resume {check_id}")
-                print()
 
                 logger.info(f"检查已中断: {check_id}, 已完成 {len(results)}/{len(files)}")
-                return
 
-            # Task 8.1: 标记检查完成
-            state = self.progress_tracker.load_state(check_id)
-            if state:
-                state.status = "completed"
-                self.progress_tracker.save_state(check_id, state)
+            finally:
+                # 确保即使中断或出错也生成部分报告
+                if results:
+                    logger.info(f"生成部分报告，已完成 {len(results)} 个文件")
 
-            # 生成报告
-            report_dir = self._create_report_dir(check_id)
+                    # 如果是正常完成，标记状态
+                    if not check_interrupted:
+                        state = self.progress_tracker.load_state(check_id)
+                        if state:
+                            state.status = "completed"
+                            self.progress_tracker.save_state(check_id, state)
 
-            # 生成单文件报告
-            for result in results:
-                self.report_generator.generate_file_report(result, report_dir)
+                    # 生成报告
+                    report_dir = self._create_report_dir(check_id)
 
-            # 生成汇总报告
-            self.report_generator.generate_summary_report(results, report_dir)
+                    # 生成单文件报告
+                    for result in results:
+                        self.report_generator.generate_file_report(result, report_dir)
 
-            # 显示汇总
-            self._show_batch_summary(results, report_dir)
+                    # 生成汇总报告
+                    self.report_generator.generate_summary_report(results, report_dir)
+
+                    # 显示汇总
+                    if check_interrupted:
+                        print()
+                        print(f"📄 已生成部分报告 ({len(results)}/{len(files)} 个文件)")
+                        print(f"   报告位置: {report_dir}/")
+                        print()
+                        print(f"💡 使用以下命令恢复检查:")
+                        print(f"   /check /resume {check_id}")
+                        print()
+                    else:
+                        self._show_batch_summary(results, report_dir)
 
         except Exception as e:
             print(f"❌ 检查过程出错: {e}")
@@ -629,6 +647,7 @@ class CodeCheckerPlugin(Plugin):
         checked_files = len([r for r in results if r.status == "success"])
         skipped_files = len([r for r in results if r.status == "skipped"])
         failed_files = len([r for r in results if r.status == "failed"])
+        timeout_files = len([r for r in results if r.status == "timeout"])
 
         total_issues = sum(len(r.issues) for r in results)
         total_errors = sum(r.error_count for r in results)
@@ -638,6 +657,7 @@ class CodeCheckerPlugin(Plugin):
         print(f"检查文件: {total_files}")
         print(f"├─ ✅ 成功: {checked_files}")
         print(f"├─ ⏭️  跳过: {skipped_files}")
+        print(f"├─ ⏱️  超时: {timeout_files}")
         print(f"└─ ❌ 失败: {failed_files}")
         print()
 

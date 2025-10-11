@@ -55,9 +55,61 @@ class CodeChecker:
 
         logger.info("CodeChecker 初始化完成")
 
-    def check_file(self, file_path: str) -> FileCheckResult:
+    def check_file(self, file_path: str, file_timeout: int = 600) -> FileCheckResult:
         """
         检查单个文件
+
+        Args:
+            file_path: 文件路径
+            file_timeout: 单个文件检查的最大超时时间(秒),默认 600 秒(10分钟)
+
+        Returns:
+            FileCheckResult: 文件检查结果
+        """
+        logger.info(f"开始检查文件: {file_path} (超时: {file_timeout}秒)")
+
+        # 使用 ThreadPoolExecutor 实现文件级超时
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(self._check_file_impl, file_path)
+
+            try:
+                result = future.result(timeout=file_timeout)
+                return result
+
+            except TimeoutError:
+                # 文件检查超时
+                error_msg = f"文件检查超时({file_timeout}秒)"
+                logger.error(f"文件 {file_path} 检查超时({file_timeout}秒)")
+
+                return FileCheckResult(
+                    file_path=file_path,
+                    check_time=datetime.now().isoformat(),
+                    issues=[],
+                    error_count=0,
+                    warning_count=0,
+                    info_count=0,
+                    status="timeout",
+                    error_message=error_msg
+                )
+
+            except Exception as exc:
+                # 其他异常
+                logger.error(f"检查文件 {file_path} 时发生异常: {exc}", exc_info=True)
+
+                return FileCheckResult(
+                    file_path=file_path,
+                    check_time=datetime.now().isoformat(),
+                    issues=[],
+                    error_count=0,
+                    warning_count=0,
+                    info_count=0,
+                    status="failed",
+                    error_message=str(exc)
+                )
+
+    def _check_file_impl(self, file_path: str) -> FileCheckResult:
+        """
+        检查单个文件的内部实现（用于支持超时）
 
         Args:
             file_path: 文件路径
@@ -65,8 +117,6 @@ class CodeChecker:
         Returns:
             FileCheckResult: 文件检查结果
         """
-        logger.info(f"开始检查文件: {file_path}")
-
         try:
             start_time = datetime.now()
 
@@ -211,7 +261,7 @@ class CodeChecker:
         )
 
     def check_files_concurrent(
-        self, files: List[str], max_workers: int = 5
+        self, files: List[str], max_workers: int = 5, file_timeout: int = 600
     ) -> Generator[FileCheckResult, None, None]:
         """
         并发检查多个文件
@@ -224,6 +274,7 @@ class CodeChecker:
         Args:
             files: 文件路径列表
             max_workers: 最大并发数（默认: 5）
+            file_timeout: 单个文件检查的最大超时时间(秒),默认 600 秒(10分钟)
 
         Yields:
             FileCheckResult: 每个文件的检查结果（按完成顺序）
@@ -233,7 +284,7 @@ class CodeChecker:
             >>> for result in checker.check_files_concurrent(files, max_workers=5):
             ...     print(f"完成: {result.file_path}")
         """
-        logger.info(f"开始并发检查 {len(files)} 个文件 (workers={max_workers})")
+        logger.info(f"开始并发检查 {len(files)} 个文件 (workers={max_workers}, file_timeout={file_timeout}秒)")
 
         if not files:
             logger.warning("文件列表为空，跳过检查")
@@ -241,9 +292,9 @@ class CodeChecker:
 
         # 使用 ThreadPoolExecutor 并发检查
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # 提交所有任务
+            # 提交所有任务(传递 file_timeout 参数)
             future_to_file = {
-                executor.submit(self.check_file, file_path): file_path
+                executor.submit(self.check_file, file_path, file_timeout): file_path
                 for file_path in files
             }
 
@@ -254,7 +305,7 @@ class CodeChecker:
                 file_path = future_to_file[future]
 
                 try:
-                    # 获取结果
+                    # 获取结果(这里不需要再设置 timeout,因为 check_file 内部已经有超时控制)
                     result = future.result()
                     logger.debug(f"文件 {file_path} 检查完成: status={result.status}")
                     yield result

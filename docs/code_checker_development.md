@@ -1869,6 +1869,257 @@ fix(checker): 修复 LLM 调用超时导致最后文件无法处理的问题
 
 ---
 
+### 2025-10-11: 修复文件检查超时和报告生成问题
+
+**问题描述**：
+在 `/projects/codecheck` 项目的检查中发现两个问题：
+1. **最后一个文件卡住不动**：`DictItemServiceImpl.java` (556行) 在并发检查时无法完成
+2. **没有生成检查报告**：即使已完成140个文件,也没有生成任何报告
+
+**问题分析**：
+
+1. **卡住原因**：
+   - 虽然之前添加了 chunk 级别的 180 秒超时,但**没有文件级别的超时保护**
+   - `DictItemServiceImpl.java` 虽然分成了多个 chunks,但所有 chunks 累计时间超过10分钟
+   - 并发检查时,该文件的 `check_file()` 方法一直阻塞在线程池中
+   - `check_files_concurrent()` 的 `future.result()` 调用没有超时,导致永久等待
+
+2. **报告缺失原因**：
+   - 并发检查使用生成器模式,只有当**所有文件都返回结果**时才会退出循环
+   - 由于最后一个文件卡住,生成器永远无法完成迭代
+   - 插件的 `_check_folder()` 方法在第 177 行的 `for result in ...` 循环被阻塞
+   - 报告生成代码(第 386-394 行)永远无法执行
+
+**解决方案**：
+
+#### 1. 为单个文件添加总超时保护
+
+在 `autocoder/checker/core.py` 中修改 `check_file()` 方法：
+
+```python
+def check_file(self, file_path: str, file_timeout: int = 600) -> FileCheckResult:
+    """
+    检查单个文件
+
+    Args:
+        file_path: 文件路径
+        file_timeout: 单个文件检查的最大超时时间(秒),默认 600 秒(10分钟)
+    """
+    logger.info(f"开始检查文件: {file_path} (超时: {file_timeout}秒)")
+
+    # 使用 ThreadPoolExecutor 实现文件级超时
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(self._check_file_impl, file_path)
+
+        try:
+            result = future.result(timeout=file_timeout)
+            return result
+
+        except TimeoutError:
+            logger.error(f"文件 {file_path} 检查超时({file_timeout}秒)")
+            return FileCheckResult(
+                file_path=file_path,
+                check_time=datetime.now().isoformat(),
+                issues=[],
+                error_count=0,
+                warning_count=0,
+                info_count=0,
+                status="timeout",  # 新增状态
+                error_message=f"文件检查超时({file_timeout}秒)"
+            )
+
+def _check_file_impl(self, file_path: str) -> FileCheckResult:
+    """检查单个文件的内部实现（用于支持超时）"""
+    # 原 check_file() 的实现逻辑移到这里
+    ...
+```
+
+**关键改进**：
+- 将原有的 `check_file()` 逻辑拆分为 `_check_file_impl()`
+- 用 `ThreadPoolExecutor` 包装,实现文件级超时控制
+- 默认 600 秒超时(可配置)
+- 超时时返回 `status="timeout"` 的结果,而不是阻塞
+
+#### 2. 为并发检查传递超时参数
+
+修改 `check_files_concurrent()` 方法：
+
+```python
+def check_files_concurrent(
+    self, files: List[str], max_workers: int = 5, file_timeout: int = 600
+) -> Generator[FileCheckResult, None, None]:
+    """
+    并发检查多个文件
+
+    Args:
+        file_timeout: 单个文件检查的最大超时时间(秒),默认 600 秒(10分钟)
+    """
+    logger.info(f"开始并发检查 {len(files)} 个文件 (workers={max_workers}, file_timeout={file_timeout}秒)")
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # 提交所有任务(传递 file_timeout 参数)
+        future_to_file = {
+            executor.submit(self.check_file, file_path, file_timeout): file_path
+            for file_path in files
+        }
+
+        # 按完成顺序返回结果
+        for future in as_completed(future_to_file):
+            file_path = future_to_file[future]
+            try:
+                result = future.result()  # 不需要额外 timeout,check_file 内部已有
+                yield result
+            except Exception as exc:
+                # ... 异常处理
+```
+
+**关键改进**：
+- 将 `file_timeout` 参数传递给 `check_file()`
+- 每个文件都有独立的超时控制
+- `future.result()` 不需要设置 timeout,因为 `check_file()` 内部已经有超时机制
+
+#### 3. 确保即使检查未完成也能生成报告
+
+修改 `autocoder/plugins/code_checker_plugin.py` 的 `_check_folder()` 方法：
+
+```python
+def _check_folder(self, args: str) -> None:
+    # ... 前置代码 ...
+
+    results = []
+    check_interrupted = False
+
+    try:
+        with Progress(...) as progress:
+            for result in self.checker.check_files_concurrent(files, max_workers=workers):
+                results.append(result)
+                # ... 更新进度 ...
+
+    except KeyboardInterrupt:
+        check_interrupted = True
+        # ... 处理中断 ...
+
+    finally:
+        # 确保即使中断或出错也生成部分报告
+        if results:
+            logger.info(f"生成部分报告，已完成 {len(results)} 个文件")
+
+            # 如果是正常完成，标记状态
+            if not check_interrupted:
+                state = self.progress_tracker.load_state(check_id)
+                if state:
+                    state.status = "completed"
+                    self.progress_tracker.save_state(check_id, state)
+
+            # 生成报告
+            report_dir = self._create_report_dir(check_id)
+
+            # 生成单文件报告
+            for result in results:
+                self.report_generator.generate_file_report(result, report_dir)
+
+            # 生成汇总报告
+            self.report_generator.generate_summary_report(results, report_dir)
+
+            # 显示汇总
+            if check_interrupted:
+                print(f"\n📄 已生成部分报告 ({len(results)}/{len(files)} 个文件)")
+                print(f"   报告位置: {report_dir}/")
+                print(f"\n💡 使用以下命令恢复检查:")
+                print(f"   /check /resume {check_id}\n")
+            else:
+                self._show_batch_summary(results, report_dir)
+```
+
+**关键改进**：
+- 使用 `try-finally` 结构确保报告一定会生成
+- 即使中断或超时,已完成的文件也会生成报告
+- 区分正常完成和中断两种情况的提示
+
+#### 4. 处理 timeout 状态的统计显示
+
+修改 `_show_batch_summary()` 方法：
+
+```python
+def _show_batch_summary(self, results: List, report_dir: str) -> None:
+    # 统计
+    total_files = len(results)
+    checked_files = len([r for r in results if r.status == "success"])
+    skipped_files = len([r for r in results if r.status == "skipped"])
+    failed_files = len([r for r in results if r.status == "failed"])
+    timeout_files = len([r for r in results if r.status == "timeout"])  # 新增
+
+    print(f"检查文件: {total_files}")
+    print(f"├─ ✅ 成功: {checked_files}")
+    print(f"├─ ⏭️  跳过: {skipped_files}")
+    print(f"├─ ⏱️  超时: {timeout_files}")  # 新增
+    print(f"└─ ❌ 失败: {failed_files}")
+```
+
+同时在单文件检查结果显示中添加:
+
+```python
+elif result.status == "timeout":
+    print(f"⏱️  文件检查超时: {file_path}")
+    print(f"   错误: {result.error_message}")
+```
+
+**修改文件清单**：
+1. `autocoder/checker/core.py`
+   - 修改 `check_file()` 添加文件级超时
+   - 新增 `_check_file_impl()` 实现方法
+   - 修改 `check_files_concurrent()` 传递超时参数
+
+2. `autocoder/plugins/code_checker_plugin.py`
+   - 修改 `_check_folder()` 使用 try-finally 确保报告生成
+   - 修改 `_show_batch_summary()` 统计 timeout 状态
+   - 修改 `_check_file()` 显示 timeout 状态
+
+**测试验证**：
+- ✅ 所有单元测试通过 (4/4 check_file 相关测试)
+- ✅ 代码语法验证通过
+- ✅ 向后兼容：默认超时 600 秒
+
+**预期效果**：
+1. **不再卡住**：文件超时后自动返回超时结果,继续检查下一个文件
+2. **总是生成报告**：即使有文件超时或中断,已完成的文件也会生成报告
+3. **明确的超时信息**：用户可以看到哪些文件超时,超时时间是多少
+4. **支持自定义超时**：可以根据项目大小调整 `file_timeout` 参数
+
+**配置建议**：
+- 小文件(< 200 行): 180 秒足够
+- 中等文件(200-1000 行): 300-600 秒
+- 大文件(1000+ 行): 600-900 秒
+- 特大文件(2000+ 行): 可考虑拆分或增加到 1200 秒
+
+**提交信息**：
+```
+fix(checker): 修复文件检查超时和报告无法生成的问题
+
+问题描述:
+1. 大文件(如 DictItemServiceImpl.java)在并发检查时卡住不动
+2. 由于一个文件卡住,导致整个检查无法完成,报告无法生成
+
+根本原因:
+1. 缺少文件级总超时保护(只有 chunk 级 180 秒超时)
+2. 报告生成代码在检查完成之后,被阻塞无法执行
+
+解决方案:
+1. 为单个文件添加 600 秒总超时保护
+2. 将 check_file() 拆分为带超时的外层和实现的内层
+3. 并发检查传递超时参数给每个文件
+4. 使用 try-finally 确保即使部分失败也能生成报告
+5. 添加 timeout 状态的统计和显示
+
+修改文件:
+- autocoder/checker/core.py (文件超时控制)
+- autocoder/plugins/code_checker_plugin.py (报告生成保护)
+
+测试: 所有单元测试通过, 向后兼容
+```
+
+---
+
 **最后更新**：2025-10-11
-**文档版本**：1.0.3
+**文档版本**：1.0.4
 **作者**：Claude AI
