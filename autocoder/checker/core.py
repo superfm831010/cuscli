@@ -490,7 +490,13 @@ class CodeChecker:
         1. 行号必须从代码的行号列中提取，例如 "15 def foo():" 中的行号是 15
         2. line_start 和 line_end 都是包含性的（inclusive），即从 line_start 到 line_end 的所有行都包含在内
         3. **行数计算公式**：实际行数 = line_end - line_start + 1
-        4. 对于涉及行数判断的规则（如方法行数限制），请先计算实际行数，确认**确实超过阈值**后再报告问题
+        4. 对于涉及行数判断的规则（如 backend_009 方法行数限制），请务必准确计算：
+           - **计算步骤**：先用公式计算实际行数，再与阈值比较
+           - **backend_009 判断标准**：实际行数 ≤ 30 为合规，实际行数 > 30 才违规
+           - **具体例子**：
+             * 方法从第 10 行到第 38 行：实际行数 = 38 - 10 + 1 = 29 行，29 ≤ 30，**合规**，不应报告
+             * 方法从第 10 行到第 39 行：实际行数 = 39 - 10 + 1 = 30 行，30 ≤ 30，**合规**，不应报告
+             * 方法从第 10 行到第 40 行：实际行数 = 40 - 10 + 1 = 31 行，31 > 30，**违规**，应该报告
         5. 只返回确实违反规则的问题，不要臆测或误判
         6. 每个问题都必须有明确的规则依据
 
@@ -553,17 +559,27 @@ class CodeChecker:
         Returns:
             True 表示问题有效，False 表示可能是误判
         """
-        # backend_009: 方法行数限制（应控制在30行以内）
+        # backend_009: 方法行数限制（行数不应超过30行）
         if issue.rule_id == "backend_009":
             # 计算实际行数（包含性：line_end - line_start + 1）
             line_count = issue.line_end - issue.line_start + 1
+
+            # 判断标准：≤ 30 行为合规，> 30 行才违规
             if line_count <= 30:
                 logger.warning(
                     f"过滤 LLM 误判：规则 {issue.rule_id}，"
-                    f"行号范围 {issue.line_start}-{issue.line_end}（共 {line_count} 行），"
-                    f"未超过30行阈值"
+                    f"行号范围 {issue.line_start}-{issue.line_end}，"
+                    f"计算行数 = {issue.line_end} - {issue.line_start} + 1 = {line_count} 行，"
+                    f"{line_count} ≤ 30（合规），不应报告"
                 )
                 return False
+            else:
+                logger.debug(
+                    f"验证通过：规则 {issue.rule_id}，"
+                    f"行号范围 {issue.line_start}-{issue.line_end}，"
+                    f"计算行数 = {issue.line_end} - {issue.line_start} + 1 = {line_count} 行，"
+                    f"{line_count} > 30（违规），应报告"
+                )
 
         # backend_006: 避免复杂的嵌套结构（语句块逻辑除注释外大于20行）
         # 注意：这个规则检查的是语句块行数，不是整个方法的行数

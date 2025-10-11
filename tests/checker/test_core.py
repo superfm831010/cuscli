@@ -472,3 +472,140 @@ class TestCodeCheckerPrompt:
         assert "rule_id" in prompt_text
         assert "severity" in prompt_text
         assert "line_start" in prompt_text
+
+
+class TestValidateIssue:
+    """测试 _validate_issue 方法（用于过滤 LLM 误判）"""
+
+    @pytest.fixture
+    def checker(self):
+        """创建 CodeChecker 实例"""
+        mock_llm = Mock()
+        mock_args = Mock()
+        mock_args.source_dir = "/test"
+        return CodeChecker(mock_llm, mock_args)
+
+    def test_backend_009_29_lines_should_pass(self, checker):
+        """测试 backend_009：29 行方法应该合规（不报告）"""
+        issue = Issue(
+            rule_id="backend_009",
+            severity=Severity.INFO,
+            line_start=10,
+            line_end=38,  # 38 - 10 + 1 = 29 行
+            description="方法行数过多（29行），超过推荐的30行限制",
+            suggestion="拆分方法"
+        )
+
+        # 29 行 <= 30，应该返回 False（不报告）
+        assert checker._validate_issue(issue) is False
+
+    def test_backend_009_30_lines_should_pass(self, checker):
+        """测试 backend_009：30 行方法应该合规（不报告）"""
+        issue = Issue(
+            rule_id="backend_009",
+            severity=Severity.INFO,
+            line_start=10,
+            line_end=39,  # 39 - 10 + 1 = 30 行
+            description="方法行数过多（30行），超过推荐的30行限制",
+            suggestion="拆分方法"
+        )
+
+        # 30 行 <= 30，应该返回 False（不报告）
+        assert checker._validate_issue(issue) is False
+
+    def test_backend_009_31_lines_should_fail(self, checker):
+        """测试 backend_009：31 行方法应该违规（报告）"""
+        issue = Issue(
+            rule_id="backend_009",
+            severity=Severity.INFO,
+            line_start=10,
+            line_end=40,  # 40 - 10 + 1 = 31 行
+            description="方法行数过多（31行），超过推荐的30行限制",
+            suggestion="拆分方法"
+        )
+
+        # 31 行 > 30，应该返回 True（报告）
+        assert checker._validate_issue(issue) is True
+
+    def test_backend_009_50_lines_should_fail(self, checker):
+        """测试 backend_009：50 行方法应该违规（报告）"""
+        issue = Issue(
+            rule_id="backend_009",
+            severity=Severity.INFO,
+            line_start=100,
+            line_end=149,  # 149 - 100 + 1 = 50 行
+            description="方法行数过多（50行），超过推荐的30行限制",
+            suggestion="拆分方法"
+        )
+
+        # 50 行 > 30，应该返回 True（报告）
+        assert checker._validate_issue(issue) is True
+
+    def test_other_rules_always_pass(self, checker):
+        """测试其他规则不受 _validate_issue 影响（始终返回 True）"""
+        # backend_006: 避免复杂嵌套
+        issue1 = Issue(
+            rule_id="backend_006",
+            severity=Severity.WARNING,
+            line_start=10,
+            line_end=50,
+            description="嵌套过深",
+            suggestion="重构"
+        )
+        assert checker._validate_issue(issue1) is True
+
+        # backend_001: 项目依赖规范
+        issue2 = Issue(
+            rule_id="backend_001",
+            severity=Severity.ERROR,
+            line_start=1,
+            line_end=5,
+            description="依赖不规范",
+            suggestion="修改依赖"
+        )
+        assert checker._validate_issue(issue2) is True
+
+    def test_backend_009_edge_case_1_line(self, checker):
+        """测试 backend_009 边界情况：1 行方法（合规）"""
+        issue = Issue(
+            rule_id="backend_009",
+            severity=Severity.INFO,
+            line_start=10,
+            line_end=10,  # 10 - 10 + 1 = 1 行
+            description="方法行数过多",
+            suggestion="拆分方法"
+        )
+
+        # 1 行 <= 30，应该返回 False（不报告）
+        assert checker._validate_issue(issue) is False
+
+    def test_parse_llm_response_with_backend_009_filter(self, checker):
+        """测试解析 LLM 响应时自动过滤 backend_009 误判"""
+        # 模拟 LLM 返回了一个 29 行的误报
+        response = """```json
+[
+    {
+        "rule_id": "backend_009",
+        "severity": "info",
+        "line_start": 10,
+        "line_end": 38,
+        "description": "方法行数过多（29行），超过推荐的30行限制",
+        "suggestion": "拆分方法"
+    },
+    {
+        "rule_id": "backend_009",
+        "severity": "info",
+        "line_start": 50,
+        "line_end": 81,
+        "description": "方法行数过多（32行），超过推荐的30行限制",
+        "suggestion": "拆分方法"
+    }
+]
+```"""
+        issues = checker._parse_llm_response(response)
+
+        # 29 行的应该被过滤，只保留 32 行的
+        assert len(issues) == 1
+        assert issues[0].line_start == 50
+        assert issues[0].line_end == 81
+        # 验证行数计算：81 - 50 + 1 = 32 行
