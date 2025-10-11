@@ -17,6 +17,7 @@ import os
 import re
 import json
 import shutil
+import threading
 from typing import List, Dict, Optional, Set
 from pathlib import Path
 import fnmatch
@@ -55,6 +56,7 @@ class RulesLoader:
         self._config: Optional[Dict] = None
         self._file_pattern_cache: Dict[str, str] = {}  # 文件路径 -> 规则类型映射
         self._initialized = False  # 标记是否已尝试初始化
+        self._init_lock = threading.Lock()  # 保护初始化过程的线程锁
 
     def load_rules(self, rule_type: str) -> List[Rule]:
         """
@@ -79,19 +81,39 @@ class RulesLoader:
 
         # 如果规则文件不存在，尝试自动初始化
         if not os.path.exists(rule_file):
-            if self.auto_init and not self._initialized:
-                logger.info(f"规则文件不存在: {rule_file}，尝试自动初始化...")
-                if self._auto_initialize_rules():
-                    # 初始化成功，继续加载
-                    logger.info("规则文件初始化成功，继续加载规则")
-                else:
-                    # 初始化失败，抛出异常
-                    raise FileNotFoundError(
-                        f"规则文件不存在: {rule_file}\n"
-                        f"自动初始化失败，请手动创建规则文件或检查模板目录配置"
-                    )
+            # 需要初始化
+            if self.auto_init:
+                # 使用锁保护初始化过程（防止并发重复初始化）
+                with self._init_lock:
+                    # 双重检查：其他线程可能已经完成初始化和文件创建
+                    if os.path.exists(rule_file):
+                        # 文件已存在（其他线程创建的），直接继续
+                        logger.debug(f"规则文件已由其他线程创建: {rule_file}")
+                    elif not self._initialized:
+                        # 首次初始化
+                        logger.info(f"规则文件不存在: {rule_file}，尝试自动初始化...")
+                        if not self._auto_initialize_rules():
+                            # 初始化失败，抛出异常
+                            raise FileNotFoundError(
+                                f"规则文件不存在: {rule_file}\n"
+                                f"自动初始化失败，请手动创建规则文件或检查模板目录配置"
+                            )
+                        logger.info("规则文件初始化成功，继续加载规则")
+                    else:
+                        # 已尝试初始化但文件仍不存在
+                        raise FileNotFoundError(
+                            f"规则文件不存在: {rule_file}\n"
+                            f"自动初始化已尝试但失败，请手动创建规则文件或检查模板目录配置"
+                        )
+
+                    # 最终检查文件是否存在
+                    if not os.path.exists(rule_file):
+                        raise FileNotFoundError(
+                            f"规则文件不存在: {rule_file}\n"
+                            f"初始化后文件仍不存在，请检查初始化逻辑"
+                        )
             else:
-                # 不自动初始化或已经尝试过
+                # 不自动初始化
                 raise FileNotFoundError(
                     f"规则文件不存在: {rule_file}\n"
                     f"请创建规则文件或启用自动初始化功能"
