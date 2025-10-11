@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Auto-Coder 二次开发版本 - Setup配置文件
-基于 auto-coder v1.0.39 进行二次开发
+Cuscli - Setup配置文件
+基于 auto-coder v1.0.39 进行二次开发，打造定制化的AI编程助手工具
 """
 
 from setuptools import setup, find_packages
@@ -32,14 +32,14 @@ def read_readme():
     return ''
 
 setup(
-    name='auto-coder',
-    version='1.0.39.dev',  # dev 版本标识这是开发版
-    author='allwefantasy',
-    author_email='allwefantasy@gmail.com',
-    description='AutoCoder: AI-powered coding assistant tool (Development Version)',
+    name='cuscli',
+    version='beta-0.9',  # Beta 测试版本
+    author='superfm831010 (Based on allwefantasy/auto-coder)',
+    author_email='superfm831010@gmail.com',
+    description='Cuscli: AI-powered coding assistant tool with custom enhancements (Beta Version)',
     long_description=read_readme(),
     long_description_content_type='text/markdown',
-    url='https://github.com/allwefantasy/auto-coder',
+    url='https://github.com/superfm831010/cuscli',
 
     # 包配置
     packages=find_packages(exclude=['tests', 'tests.*', 'dist-info']),
@@ -76,7 +76,7 @@ setup(
     ],
 
     # 关键词
-    keywords='autocoder,ai,coding,automation',
+    keywords='cuscli,autocoder,ai,coding,automation,assistant',
 
     # 包含非Python文件
     include_package_data=True,

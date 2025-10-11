@@ -1,14 +1,13 @@
-# 包含非Python文件的配置
+# Cuscli 包含非Python文件的配置
 # 用于确保这些文件在安装时也被包含
 
-# 包含所有的文本和配置文件
-include *.txt
-include *.md
-include *.yml
-include *.yaml
+# 包含顶层文档文件
+include README.md
+include CLAUDE.md
+include requirements.txt
 include LICENSE
 
-# 包含 autocoder 目录下的所有资源文件
+# 包含 autocoder 目录下的资源文件（配置、模板等）
 recursive-include autocoder *.txt
 recursive-include autocoder *.md
 recursive-include autocoder *.yml
@@ -17,10 +16,23 @@ recursive-include autocoder *.json
 recursive-include autocoder *.toml
 recursive-include autocoder *.conf
 
-# 排除不需要的文件
+# 排除开发和测试相关目录
+exclude .gitignore
+exclude pytest.ini
+exclude .coverage
+exclude output.txt
+recursive-exclude rules *
+recursive-exclude docs *
+recursive-exclude tests *
+recursive-exclude actions *
+recursive-exclude codecheck *
+recursive-exclude .auto-coder *
+recursive-exclude .pytest_cache *
+recursive-exclude .github *
+
+# 排除临时文件
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
 recursive-exclude * .DS_Store
 recursive-exclude * *.swp
 recursive-exclude * *.swo
-exclude .gitignore
