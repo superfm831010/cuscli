@@ -25,7 +25,7 @@ class FileProcessor:
 
     Attributes:
         chunk_size: 单个 chunk 的最大 token 数
-        overlap: chunk 之间的重叠行数
+        overlap: chunk 之间希望保留的重叠 token 数
         tokenizer: 用于计算 token 数的分词器
     """
 
@@ -35,7 +35,7 @@ class FileProcessor:
 
         Args:
             chunk_size: 单个 chunk 的最大 token 数，默认 4000
-            overlap: chunk 之间的重叠行数，默认 200
+            overlap: chunk 之间希望保留的重叠 token 数，默认 200
         """
         self.chunk_size = chunk_size
         self.overlap = overlap
@@ -203,6 +203,7 @@ class FileProcessor:
 
             # 创建 chunk
             chunk_content = '\n'.join(numbered_lines[current_line:end_line])
+            chunk_tokens = self.tokenizer.count_tokens(chunk_content)
             chunks.append(
                 CodeChunk(
                     content=chunk_content,
@@ -216,16 +217,34 @@ class FileProcessor:
             logger.debug(
                 f"Created chunk {chunk_index}: "
                 f"lines {current_line + 1}-{end_line}, "
-                f"tokens {self.tokenizer.count_tokens(chunk_content)}"
+                f"tokens {chunk_tokens}"
             )
 
             # 移动到下一个 chunk（考虑重叠）
             if end_line >= len(numbered_lines):
                 break
 
-            # 计算重叠的起始位置
-            overlap_start = max(0, end_line - self.overlap)
-            current_line = overlap_start
+            # 计算重叠的起始位置（按照 token 数量而非行数）
+            if self.overlap > 0 and (end_line - current_line) > 1:
+                overlap_tokens = 0
+                overlap_lines = 0
+                idx = end_line - 1
+
+                while idx >= current_line and overlap_tokens < self.overlap:
+                    overlap_tokens += self.tokenizer.count_tokens(numbered_lines[idx])
+                    overlap_lines += 1
+                    idx -= 1
+
+                chunk_length = end_line - current_line
+                overlap_lines = min(overlap_lines, chunk_length - 1)
+
+                next_start = end_line - overlap_lines
+                if next_start <= current_line:
+                    next_start = current_line + 1
+
+                current_line = next_start
+            else:
+                current_line = end_line
             chunk_index += 1
 
         logger.info(
