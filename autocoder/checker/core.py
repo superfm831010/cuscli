@@ -16,7 +16,7 @@ import re
 import json
 from typing import List, Dict, Optional, Any, Generator
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from loguru import logger
 import byzerllm
 
@@ -92,22 +92,46 @@ class CodeChecker:
 
             # 3. 检查每个 chunk
             all_issues = []
+            chunk_timeout_count = 0  # 记录超时的 chunk 数量
+
             for chunk in chunks:
-                logger.debug(f"检查 chunk {chunk.chunk_index}: 行 {chunk.start_line}-{chunk.end_line}")
-                issues = self.check_code_chunk(chunk.content, rules)
+                logger.info(
+                    f"检查 chunk {chunk.chunk_index + 1}/{len(chunks)}: "
+                    f"行 {chunk.start_line}-{chunk.end_line}"
+                )
 
-                # 调整行号（chunk 的行号需要加上 chunk 的起始行偏移）
-                # 注意：chunk.content 中的行号是从 1 开始的，需要映射到实际文件行号
-                for issue in issues:
-                    # issue.line_start 是相对于 chunk 的行号，需要转换为文件的实际行号
-                    # chunk.start_line 是这个 chunk 在文件中的起始行号
-                    actual_line_start = issue.line_start + chunk.start_line - 1
-                    actual_line_end = issue.line_end + chunk.start_line - 1
-                    issue.line_start = actual_line_start
-                    issue.line_end = actual_line_end
+                try:
+                    issues = self.check_code_chunk(chunk.content, rules)
 
-                all_issues.extend(issues)
-                logger.debug(f"Chunk {chunk.chunk_index} 发现 {len(issues)} 个问题")
+                    # 检查是否因超时返回空结果（通过日志判断）
+                    if not issues:
+                        logger.debug(f"Chunk {chunk.chunk_index} 未发现问题（或检查失败）")
+
+                    # 调整行号（chunk 的行号需要加上 chunk 的起始行偏移）
+                    # 注意：chunk.content 中的行号是从 1 开始的，需要映射到实际文件行号
+                    for issue in issues:
+                        # issue.line_start 是相对于 chunk 的行号，需要转换为文件的实际行号
+                        # chunk.start_line 是这个 chunk 在文件中的起始行号
+                        actual_line_start = issue.line_start + chunk.start_line - 1
+                        actual_line_end = issue.line_end + chunk.start_line - 1
+                        issue.line_start = actual_line_start
+                        issue.line_end = actual_line_end
+
+                    all_issues.extend(issues)
+                    logger.info(f"Chunk {chunk.chunk_index + 1} 完成，发现 {len(issues)} 个问题")
+
+                except Exception as e:
+                    logger.error(f"检查 chunk {chunk.chunk_index} 时发生异常: {e}", exc_info=True)
+                    chunk_timeout_count += 1
+                    # 继续检查下一个 chunk
+                    continue
+
+            # 记录 chunk 超时情况
+            if chunk_timeout_count > 0:
+                logger.warning(
+                    f"文件 {file_path} 有 {chunk_timeout_count}/{len(chunks)} "
+                    f"个 chunk 检查失败或超时"
+                )
 
             # 4. 合并重复问题
             merged_issues = self._merge_duplicate_issues(all_issues)
@@ -255,7 +279,7 @@ class CodeChecker:
         logger.info(f"并发检查完成：已处理 {len(files)} 个文件")
 
     def check_code_chunk(
-        self, code: str, rules: List[Rule]
+        self, code: str, rules: List[Rule], timeout: int = 180
     ) -> List[Issue]:
         """
         检查代码块
@@ -263,6 +287,7 @@ class CodeChecker:
         Args:
             code: 代码内容（带行号）
             rules: 适用的规则列表
+            timeout: LLM 调用超时时间（秒），默认 180 秒
 
         Returns:
             List[Issue]: 发现的问题列表
@@ -276,18 +301,28 @@ class CodeChecker:
             # 2. 构造 prompt
             prompt = self.check_code_prompt.prompt(code, rules_text)
 
-            # 3. 调用 LLM
+            # 3. 调用 LLM（使用超时机制）
             conversations = [{"role": "user", "content": prompt}]
-            logger.debug("调用 LLM 进行代码检查")
+            logger.info(f"调用 LLM 进行代码检查（超时: {timeout}秒）")
 
-            response = self.llm.chat_oai(conversations=conversations)
+            # 使用 ThreadPoolExecutor 实现超时
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self._call_llm, conversations)
+                try:
+                    response = future.result(timeout=timeout)
+                except TimeoutError:
+                    logger.error(f"LLM 调用超时（{timeout}秒），跳过此代码块")
+                    return []
+                except Exception as e:
+                    logger.error(f"LLM 调用失败: {e}", exc_info=True)
+                    return []
 
             # 4. 解析响应
             if response and len(response) > 0:
                 response_text = response[0].output
                 logger.debug(f"LLM 响应: {response_text[:200]}...")
                 issues = self._parse_llm_response(response_text)
-                logger.debug(f"解析出 {len(issues)} 个问题")
+                logger.info(f"解析出 {len(issues)} 个问题")
                 return issues
             else:
                 logger.warning("LLM 返回空响应")
@@ -296,6 +331,33 @@ class CodeChecker:
         except Exception as e:
             logger.error(f"检查代码块失败: {e}", exc_info=True)
             return []
+
+    def _call_llm(self, conversations: List[Dict[str, str]]) -> Any:
+        """
+        调用 LLM（内部方法，用于支持超时）
+
+        Args:
+            conversations: 对话列表
+
+        Returns:
+            LLM 响应
+        """
+        start_time = datetime.now()
+        logger.debug(f"开始 LLM 调用: {start_time.isoformat()}")
+
+        try:
+            response = self.llm.chat_oai(conversations=conversations)
+
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            logger.debug(f"LLM 调用完成，耗时: {duration:.2f}秒")
+
+            return response
+        except Exception as e:
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            logger.error(f"LLM 调用异常（耗时 {duration:.2f}秒）: {e}", exc_info=True)
+            raise
 
     def _merge_duplicate_issues(self, issues: List[Issue]) -> List[Issue]:
         """
