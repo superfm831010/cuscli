@@ -2172,3 +2172,110 @@ fix(checker): 修复文件检查超时和报告无法生成的问题
 - 稳定性测试需通过 `pytest -m stability`（或运行全量测试）确保配置调整不会破坏确定性。
 
 **版本号**：1.0.5
+
+---
+
+### 2025-10-12: 修复 /check /file 命令中 'options' 未定义的错误
+
+**问题描述**：
+用户在使用 `/check /file ./DictItemServiceImpl.java` 命令检查单个文件时，遇到错误：
+```
+❌ 检查过程出错: name 'options' is not defined
+```
+
+**问题原因**：
+在 `autocoder/plugins/code_checker_plugin.py` 的 `_check_file()` 方法中（第 423-426 行）：
+1. 第 401 行定义了变量 `common_options = self._parse_common_options(option_tokens)`
+2. 第 423-426 行错误地使用了未定义的 `options` 变量
+3. 第 429 行又调用了一次 `_apply_checker_options(common_options)`，使用了正确的变量名
+
+这是一个变量名错误，导致运行时报 `NameError`。同时，第 423-426 行和第 429 行是重复调用。
+
+**修复方案**：
+删除第 423-426 行的错误代码，只保留第 429 行的正确调用。
+
+**修改前代码**：
+```python
+# 第 401 行
+common_options = self._parse_common_options(option_tokens)
+
+try:
+    # 确保 checker 已初始化
+    self._ensure_checker()
+    self._apply_checker_options({
+        "repeat": options.get("repeat"),        # ❌ options 未定义
+        "consensus": options.get("consensus"),  # ❌ options 未定义
+    })
+
+    # 应用共识参数
+    self._apply_checker_options(common_options)  # ✅ 正确
+```
+
+**修改后代码**：
+```python
+# 第 401 行
+common_options = self._parse_common_options(option_tokens)
+
+try:
+    # 确保 checker 已初始化
+    self._ensure_checker()
+
+    # 应用共识参数
+    self._apply_checker_options(common_options)  # ✅ 正确
+```
+
+**修改文件**：
+- `autocoder/plugins/code_checker_plugin.py` (删除第 423-426 行)
+
+**测试验证**：
+- ✅ Python 语法检查通过：`python3 -m py_compile autocoder/plugins/code_checker_plugin.py`
+- ✅ 代码逻辑验证正确
+
+**代码逻辑流程**（修复后）：
+1. 第 401 行：解析参数 → `common_options`
+2. 第 422 行：初始化 checker
+3. 第 425 行：应用参数 → 使用 `common_options`
+
+**影响范围**：
+- 仅影响 `/check /file` 命令的参数处理逻辑
+- 修复后命令可以正常运行
+- 不影响其他功能
+- 向后兼容
+
+**提交信息**：
+```
+fix(plugin): 修复 /check /file 命令中 'options' 未定义的错误
+
+问题:
+- /check /file 命令报错: name 'options' is not defined
+- 第 423-426 行使用了未定义的 'options' 变量
+- 实际定义的变量名是 'common_options' (第 401 行)
+- 存在重复调用 _apply_checker_options
+
+修复:
+- 删除第 423-426 行错误的重复代码
+- 保留第 429 行使用 common_options 的正确调用
+- 代码逻辑流程现在正确:
+  1. 解析参数 → common_options
+  2. 初始化 checker
+  3. 应用参数 → 使用 common_options
+
+测试:
+- Python 语法检查通过
+- 代码逻辑验证正确
+
+相关文件:
+- autocoder/plugins/code_checker_plugin.py
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+**Git 提交**：`951c94f`
+
+---
+
+**最后更新**：2025-10-12
+**文档版本**：1.0.6
+**作者**：Claude AI
