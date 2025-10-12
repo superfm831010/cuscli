@@ -596,6 +596,15 @@ class CodeCheckerPlugin(Plugin):
             # 确保 checker 已初始化
             self._ensure_checker()
 
+            # 应用 repeat/consensus 参数（如果用户指定了）
+            repeat_opt = options.get("repeat")
+            consensus_opt = options.get("consensus")
+            if repeat_opt is not None or consensus_opt is not None:
+                self._apply_checker_options({
+                    "repeat": repeat_opt,
+                    "consensus": consensus_opt,
+                })
+
             # 创建检查任务并保存状态（Task 8.1: 进度持久化）
             project_name = os.path.basename(os.getcwd())
             # 清理项目名称
