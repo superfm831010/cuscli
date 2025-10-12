@@ -420,10 +420,6 @@ class CodeCheckerPlugin(Plugin):
         try:
             # 确保 checker 已初始化
             self._ensure_checker()
-            self._apply_checker_options({
-                "repeat": options.get("repeat"),
-                "consensus": options.get("consensus"),
-            })
 
             # 应用共识参数
             self._apply_checker_options(common_options)
