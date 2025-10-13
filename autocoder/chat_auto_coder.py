@@ -1030,10 +1030,8 @@ async def run_app():
         mode = get_mode()
         human_as_model = get_human_as_model_string()
         MODES = {
-            "normal": "normal",
-            "auto_detect": "nature language auto detect",
-            "voice_input": "voice input",
-            "shell": "shell",
+            "auto_detect": "自然语言自动识别",
+            "shell": "Shell模式",
         }
         if mode not in MODES:
             mode = "auto_detect"

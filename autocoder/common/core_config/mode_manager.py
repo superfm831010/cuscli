@@ -15,8 +15,8 @@ class ModeManagerMixin:
     """Mixin class providing mode management functionality."""
     
     # Available modes in cycle order
-    MODE_CYCLE = ["normal", "auto_detect", "voice_input", "shell"]
-    DEFAULT_MODE = "normal"
+    MODE_CYCLE = ["auto_detect", "shell"]
+    DEFAULT_MODE = "auto_detect"
     
     # These will be provided by BaseMemoryManager when mixed in
     _memory: 'CoreMemory'

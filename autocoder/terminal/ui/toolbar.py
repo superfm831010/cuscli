@@ -22,10 +22,8 @@ def get_bottom_toolbar_func(
         mode = get_mode_func()
         human_as_model = get_human_as_model_string_func()
         MODES = {
-            "normal": "normal",
-            "auto_detect": "nature language auto detect",
-            "voice_input": "voice input",
-            "shell": "shell",
+            "auto_detect": "自然语言自动识别",
+            "shell": "Shell模式",
         }
         if mode not in MODES:
             mode = "auto_detect"

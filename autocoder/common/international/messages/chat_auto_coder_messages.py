@@ -599,6 +599,20 @@ CHAT_AUTO_CODER_MESSAGES = {
         "ar": "تبديل وضع الإدخال",
         "ru": "Переключить режим ввода"
     },
+    "mode_auto_detect": {
+        "en": "Natural Language Auto Detect",
+        "zh": "自然语言自动识别",
+        "ja": "自然言語自動検出",
+        "ar": "الكشف التلقائي عن اللغة الطبيعية",
+        "ru": "Автоопределение естественного языка"
+    },
+    "mode_shell": {
+        "en": "Shell Mode",
+        "zh": "Shell模式",
+        "ja": "シェルモード",
+        "ar": "وضع Shell",
+        "ru": "Режим Shell"
+    },
     "conf_key": {
         "en": "Key",
         "zh": "键",
