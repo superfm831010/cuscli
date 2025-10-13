@@ -260,7 +260,8 @@ class GitFileHelper:
     def get_file_content_at_commit(
         self,
         file_path: str,
-        commit_hash: str
+        commit_hash: str,
+        max_size: int = 10 * 1024 * 1024  # 10MB
     ) -> Optional[str]:
         """
         获取文件在指定 commit 时的内容
@@ -268,9 +269,10 @@ class GitFileHelper:
         Args:
             file_path: 文件路径（相对于仓库根目录）
             commit_hash: commit 哈希值
+            max_size: 最大文件大小（字节），默认 10MB
 
         Returns:
-            文件内容字符串，如果失败返回 None
+            文件内容字符串，如果失败或文件过大返回 None
 
         Example:
             >>> helper = GitFileHelper()
@@ -279,6 +281,21 @@ class GitFileHelper:
             'import os\nimport sys\n\ndef main():\n    pass'
         """
         try:
+            # 先检查文件大小（Phase 3: 大文件过滤）
+            commit = self.repo.commit(commit_hash)
+            try:
+                blob = commit.tree / file_path
+                if blob.size > max_size:
+                    logger.warning(
+                        f"文件过大，跳过: {file_path} "
+                        f"({blob.size / 1024 / 1024:.2f}MB > {max_size / 1024 / 1024}MB)"
+                    )
+                    return None
+            except KeyError:
+                # 文件不存在于该 commit（可能是删除操作）
+                logger.debug(f"文件不存在于 commit: {file_path}@{commit_hash}")
+                return None
+
             # 使用 git show 命令获取文件内容
             content = self.repo.git.show(f"{commit_hash}:{file_path}")
             return content
@@ -286,6 +303,11 @@ class GitFileHelper:
         except GitCommandError as e:
             logger.warning(
                 f"无法获取文件内容: {file_path}@{commit_hash}, {e}"
+            )
+            return None
+        except Exception as e:
+            logger.error(
+                f"获取文件内容时发生错误: {file_path}@{commit_hash}, {e}"
             )
             return None
 
@@ -384,3 +406,143 @@ class GitFileHelper:
         except Exception as e:
             logger.error(f"获取 commit 信息失败: {e}")
             return {}
+
+
+class TempFileManager:
+    """
+    临时文件管理器，用于批量管理从 Git 历史中提取的临时文件
+
+    用于 Check Git Phase 3: 支持检查历史 commit 中不在工作区的文件。
+    将 Git 对象中的文件内容提取到临时目录，检查完成后自动清理。
+
+    Attributes:
+        temp_dir: 临时目录路径
+        temp_files: 原始路径 -> 临时路径的映射字典
+
+    Example:
+        >>> with TempFileManager() as manager:
+        ...     temp_path = manager.create_temp_file("src/main.py", "print('hello')")
+        ...     # 使用 temp_path 进行检查
+        ...     # 退出时自动清理
+    """
+
+    # 大文件限制：10MB
+    MAX_FILE_SIZE = 10 * 1024 * 1024
+
+    def __init__(self):
+        """初始化临时文件管理器，创建临时目录"""
+        import tempfile
+        self.temp_dir = tempfile.mkdtemp(prefix="codechecker_git_")
+        self.temp_files: Dict[str, str] = {}  # 原始路径 -> 临时路径
+        logger.info(f"创建临时目录: {self.temp_dir}")
+
+    def create_temp_file(self, file_path: str, content: str) -> str:
+        """
+        创建临时文件并保留目录结构
+
+        Args:
+            file_path: 原始文件路径（相对路径）
+            content: 文件内容
+
+        Returns:
+            临时文件绝对路径
+
+        Raises:
+            OSError: 文件创建失败
+
+        Example:
+            >>> manager = TempFileManager()
+            >>> temp_path = manager.create_temp_file("src/main.py", "code...")
+            >>> print(temp_path)
+            '/tmp/codechecker_git_xxx/src/main.py'
+        """
+        # 保留目录结构以避免文件名冲突
+        # 例如: src/main.py -> temp_dir/src/main.py
+        # 清理路径中的特殊字符
+        relative_path = file_path.replace('..', '_').replace(':', '_')
+
+        # Windows 路径兼容：统一使用正斜杠
+        relative_path = relative_path.replace('\\', '/')
+
+        temp_file = os.path.join(self.temp_dir, relative_path)
+
+        try:
+            # 创建父目录
+            parent_dir = os.path.dirname(temp_file)
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
+
+            # 写入文件（明确指定 UTF-8 编码）
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+            # 保存映射
+            self.temp_files[file_path] = temp_file
+            logger.debug(f"创建临时文件: {file_path} -> {temp_file}")
+            return temp_file
+
+        except PermissionError as e:
+            logger.error(f"无权限写入临时文件: {temp_file}, {e}")
+            raise OSError(f"无权限创建临时文件: {file_path}")
+        except Exception as e:
+            logger.error(f"创建临时文件失败: {file_path}, {e}")
+            raise OSError(f"创建临时文件失败: {file_path}, {e}")
+
+    def get_temp_path(self, file_path: str) -> Optional[str]:
+        """
+        获取文件的临时路径
+
+        Args:
+            file_path: 原始文件路径
+
+        Returns:
+            临时文件路径，如果不存在返回 None
+        """
+        return self.temp_files.get(file_path)
+
+    def get_original_path(self, temp_path: str) -> Optional[str]:
+        """
+        根据临时路径反查原始路径
+
+        Args:
+            temp_path: 临时文件路径
+
+        Returns:
+            原始文件路径，如果不存在返回 None
+        """
+        # 反向查找
+        for orig, temp in self.temp_files.items():
+            if temp == temp_path:
+                return orig
+        return None
+
+    def cleanup(self):
+        """
+        清理所有临时文件
+
+        删除临时目录及其所有内容。
+        如果清理失败，只记录警告日志，不抛出异常。
+        """
+        import shutil
+        try:
+            if os.path.exists(self.temp_dir):
+                shutil.rmtree(self.temp_dir)
+                logger.info(f"清理临时目录: {self.temp_dir}")
+        except PermissionError as e:
+            logger.warning(f"清理临时目录失败（权限问题）: {self.temp_dir}, {e}")
+        except Exception as e:
+            logger.error(f"清理临时目录失败: {self.temp_dir}, {e}")
+
+    def __enter__(self):
+        """Context manager 入口"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager 退出，自动清理"""
+        self.cleanup()
+        # 不抑制异常
+        return False
+
+    def __len__(self) -> int:
+        """返回管理的临时文件数量"""
+        return len(self.temp_files)

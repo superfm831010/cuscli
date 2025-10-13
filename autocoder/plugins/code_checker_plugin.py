@@ -19,7 +19,7 @@ from datetime import datetime
 
 from autocoder.plugins import Plugin, PluginManager
 from loguru import logger
-from autocoder.checker.git_helper import GitFileHelper
+from autocoder.checker.git_helper import GitFileHelper, TempFileManager
 
 
 class CodeCheckerPlugin(Plugin):
@@ -1498,8 +1498,8 @@ class CodeCheckerPlugin(Plugin):
             print(f"✅ 找到 {len(files)} 个变更文件")
             print()
 
-            # 准备文件（Phase 2 简化版：转换为绝对路径）
-            prepared_files = self._prepare_git_files(
+            # 准备文件（Phase 3: 支持历史文件提取）
+            prepared_files, temp_manager = self._prepare_git_files(
                 files,
                 git_helper,
                 commit_hash
@@ -1507,16 +1507,20 @@ class CodeCheckerPlugin(Plugin):
 
             if not prepared_files:
                 print("⚠️  没有可检查的文件")
-                print("💡 提示: 文件可能在当前工作区不存在，Phase 3 将支持检查历史文件")
+                # 清理临时文件（如果有）
+                if temp_manager:
+                    temp_manager.cleanup()
                 return
 
             options = self._parse_git_check_options(option_args)
             options['commit_info'] = commit_info  # 传递 commit 信息用于报告
 
+            # Phase 3: 传递 temp_manager 以便检查后自动清理
             self._execute_batch_check(
                 files=prepared_files,
                 check_type=f"git_commit_{commit_info['short_hash']}",
-                options=options
+                options=options,
+                temp_manager=temp_manager
             )
 
         except ValueError as e:
@@ -1567,8 +1571,8 @@ class CodeCheckerPlugin(Plugin):
             print(f"✅ 找到 {len(files)} 个差异文件")
             print()
 
-            # 准备文件（使用 commit2 的版本）
-            prepared_files = self._prepare_git_files(
+            # 准备文件（Phase 3: 使用 commit2 的版本）
+            prepared_files, temp_manager = self._prepare_git_files(
                 files,
                 git_helper,
                 commit2
@@ -1576,16 +1580,20 @@ class CodeCheckerPlugin(Plugin):
 
             if not prepared_files:
                 print("⚠️  没有可检查的文件")
-                print("💡 提示: 文件可能在当前工作区不存在，Phase 3 将支持检查历史文件")
+                # 清理临时文件（如果有）
+                if temp_manager:
+                    temp_manager.cleanup()
                 return
 
             options = self._parse_git_check_options(option_args)
             options['diff_info'] = f"{commit1}...{commit2}"
 
+            # Phase 3: 传递 temp_manager 以便检查后自动清理
             self._execute_batch_check(
                 files=prepared_files,
                 check_type=f"git_diff_{commit1[:7]}_{commit2[:7]}",
-                options=options
+                options=options,
+                temp_manager=temp_manager
             )
 
         except ValueError as e:
@@ -1645,48 +1653,105 @@ class CodeCheckerPlugin(Plugin):
         files: List[str],
         git_helper: GitFileHelper,
         commit_hash: Optional[str] = None
-    ) -> List[str]:
+    ) -> Tuple[List[str], Optional[TempFileManager]]:
         """
-        准备 git 文件供检查（Phase 2 简化版）
+        准备 git 文件供检查（Phase 3 完整版）
 
         对于工作区文件（staged/unstaged），直接返回绝对路径
-        对于历史文件（commit），仅检查当前工作区中存在的文件
+        对于历史文件（commit），从 Git 对象中提取内容到临时文件
 
         Args:
             files: 文件路径列表（可能是相对路径或绝对路径）
             git_helper: GitFileHelper 实例
-            commit_hash: 如果指定，表示从该 commit 检查（Phase 2: 仅检查工作区存在的）
+            commit_hash: 如果指定，表示从该 commit 提取文件
 
         Returns:
-            准备好的文件路径列表（绝对路径）
+            (准备好的文件路径列表, 临时文件管理器)
+            如果不需要临时文件，管理器为 None
         """
         repo_path = git_helper.repo_path
-        prepared = []
 
-        for file_path in files:
-            # 转换为绝对路径
-            if os.path.isabs(file_path):
-                abs_path = file_path
-            else:
-                abs_path = os.path.join(repo_path, file_path)
+        # 如果是工作区或暂存区文件，直接返回绝对路径
+        if commit_hash is None:
+            prepared = []
+            for file_path in files:
+                # 转换为绝对路径
+                if os.path.isabs(file_path):
+                    abs_path = file_path
+                else:
+                    abs_path = os.path.join(repo_path, file_path)
 
-            # 检查文件是否存在
-            if os.path.exists(abs_path):
-                prepared.append(abs_path)
-            else:
-                if commit_hash:
-                    logger.debug(f"跳过不存在的历史文件: {file_path}")
+                # 检查文件是否存在
+                if os.path.exists(abs_path):
+                    prepared.append(abs_path)
                 else:
                     logger.warning(f"文件不存在: {abs_path}")
 
-        logger.info(f"准备了 {len(prepared)}/{len(files)} 个文件")
-        return prepared
+            logger.info(f"准备了 {len(prepared)}/{len(files)} 个工作区文件")
+            return prepared, None
+
+        # 历史文件：需要提取到临时目录（Phase 3）
+        temp_manager = TempFileManager()
+        prepared = []
+        skipped_binary = 0
+        skipped_large = 0
+        skipped_error = 0
+
+        for file_path in files:
+            try:
+                # 检查是否为二进制文件
+                if git_helper.is_binary_file(file_path, commit_hash):
+                    logger.debug(f"跳过二进制文件: {file_path}")
+                    skipped_binary += 1
+                    continue
+
+                # 获取文件内容（会自动跳过大文件）
+                content = git_helper.get_file_content_at_commit(
+                    file_path,
+                    commit_hash
+                )
+
+                if content is None:
+                    logger.warning(f"无法获取文件内容: {file_path}@{commit_hash}")
+                    skipped_error += 1
+                    continue
+
+                # 创建临时文件
+                temp_path = temp_manager.create_temp_file(file_path, content)
+                prepared.append(temp_path)
+
+            except OSError as e:
+                logger.error(f"创建临时文件失败: {file_path}, {e}")
+                skipped_error += 1
+                continue
+            except Exception as e:
+                logger.error(f"准备文件失败: {file_path}, {e}", exc_info=True)
+                skipped_error += 1
+                continue
+
+        # 显示统计信息
+        total_skipped = skipped_binary + skipped_large + skipped_error
+        logger.info(
+            f"准备了 {len(prepared)}/{len(files)} 个历史文件 "
+            f"(跳过: 二进制 {skipped_binary}, 错误 {skipped_error})"
+        )
+
+        if total_skipped > 0:
+            print(f"💡 跳过 {total_skipped} 个文件：")
+            if skipped_binary > 0:
+                print(f"   - {skipped_binary} 个二进制文件")
+            if skipped_error > 0:
+                print(f"   - {skipped_error} 个无法获取的文件（可能已删除或过大）")
+            print()
+
+        return prepared, temp_manager
 
     def _execute_batch_check(
         self,
         files: List[str],
         check_type: str,
-        options: Dict[str, Any]
+        options: Dict[str, Any],
+        temp_manager: Optional[TempFileManager] = None
     ) -> None:
         """
         执行批量检查（复用现有逻辑）
@@ -1695,6 +1760,7 @@ class CodeCheckerPlugin(Plugin):
             files: 文件列表
             check_type: 检查类型（用于生成 check_id）
             options: 检查选项
+            temp_manager: 临时文件管理器（Phase 3: 用于历史文件检查）
         """
         workers = options.get("workers", 5)
 
@@ -1740,6 +1806,13 @@ class CodeCheckerPlugin(Plugin):
                     self.checker.check_files_concurrent(files, max_workers=workers),
                     1
                 ):
+                    # Phase 3: 如果使用了临时文件，恢复原始路径（用于报告）
+                    if temp_manager:
+                        original_path = temp_manager.get_original_path(result.file_path)
+                        if original_path:
+                            result.file_path = original_path
+                            logger.debug(f"恢复原始路径: {original_path}")
+
                     results.append(result)
 
                     # 更新进度
@@ -1756,6 +1829,11 @@ class CodeCheckerPlugin(Plugin):
 
         finally:
             task_logger.stop()
+
+            # Phase 3: 清理临时文件
+            if temp_manager:
+                temp_manager.cleanup()
+                logger.info("临时文件已清理")
 
     def get_help_text(self) -> Optional[str]:
         """Get the help text displayed in the startup screen.
