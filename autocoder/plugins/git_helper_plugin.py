@@ -495,6 +495,12 @@ class GitHelperPlugin(Plugin):
                     border_style="green"
                 ))
 
+                # 如果这是当前平台的配置，同步到 PR 模块
+                if self.platform_manager.current_platform == "github":
+                    current_config = self.platform_manager.get_current_config()
+                    if current_config and current_config.name == name:
+                        self._sync_to_pr_module(current_config)
+
                 # 自动测试连接
                 if Confirm.ask("\n是否测试连接？", default=True):
                     self._github_test(name)
@@ -902,6 +908,12 @@ class GitHelperPlugin(Plugin):
                     border_style="green"
                 ))
 
+                # 如果这是当前平台的配置，同步到 PR 模块
+                if self.platform_manager.current_platform == "gitlab":
+                    current_config = self.platform_manager.get_current_config()
+                    if current_config and current_config.name == name:
+                        self._sync_to_pr_module(current_config)
+
                 # 自动测试连接
                 if Confirm.ask("\n是否测试连接？", default=True):
                     self._gitlab_test(name)
@@ -1159,6 +1171,35 @@ class GitHelperPlugin(Plugin):
   /git /gitlab /modify company-gitlab
         """)
 
+    def _sync_to_pr_module(self, config) -> None:
+        """
+        同步配置到 PR 模块
+
+        Args:
+            config: GitPlatformConfig 对象
+        """
+        try:
+            from autocoder.common.pull_requests.manager import set_global_config
+            from autocoder.common.pull_requests.models import PRConfig, PlatformType
+            from loguru import logger
+
+            # 将 GitPlatformConfig 转换为 PRConfig
+            pr_config = PRConfig(
+                platform=PlatformType(config.platform),
+                token=config.token,
+                base_url=config.base_url,
+                timeout=config.timeout,
+                verify_ssl=config.verify_ssl
+            )
+
+            # 设置全局配置
+            set_global_config(pr_config)
+            logger.info(f"已同步配置到 PR 模块: {config.platform}/{config.name}")
+
+        except Exception as e:
+            from loguru import logger
+            logger.error(f"同步配置到 PR 模块失败: {e}")
+
     def handle_platform(self, args: str) -> None:
         """
         处理 /git /platform 命令
@@ -1281,7 +1322,7 @@ class GitHelperPlugin(Plugin):
             console.print(f"   地址: {new_config.base_url}\n")
 
             # 同步到 PR 模块（Phase 6 实现）
-            # self._sync_to_pr_module(new_config)
+            self._sync_to_pr_module(new_config)
         else:
             console.print(f"\n[red]❌ 切换失败: 配置 '{config_name}' 不存在[/red]\n")
 
