@@ -650,7 +650,11 @@ async def process_user_input(user_input: str, new_prompt_callback, session=None)
             if plugin_result:
                 plugin_name, handler, args = plugin_result
                 if handler:
-                    handler(*args)
+                    # 检查handler是否是异步函数
+                    if asyncio.iscoroutinefunction(handler):
+                        await handler(*args)
+                    else:
+                        handler(*args)
                     plugin_handled = True
 
         # 如果插件已处理命令，直接返回

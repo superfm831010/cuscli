@@ -5,10 +5,70 @@ Provides convenient Git commands and information display.
 
 import os
 import subprocess
+import asyncio
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from autocoder.plugins import Plugin, PluginManager
 from autocoder.common.international import register_messages, get_message, get_message_with_format
+
+
+# ==================================================
+# 异步辅助函数：用于在异步环境中进行用户交互
+# ==================================================
+
+async def async_input(prompt_text: str, is_password: bool = False) -> str:
+    """
+    异步输入函数，使用 prompt_toolkit 的异步 API
+
+    Args:
+        prompt_text: 提示文本
+        is_password: 是否为密码输入（隐藏输入内容）
+
+    Returns:
+        用户输入的字符串
+    """
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.history import InMemoryHistory
+
+    session = PromptSession(history=InMemoryHistory())
+    try:
+        result = await session.prompt_async(prompt_text, is_password=is_password)
+        return result
+    except (KeyboardInterrupt, EOFError):
+        return ""
+
+
+async def async_confirm(prompt_text: str, default: bool = True) -> bool:
+    """
+    异步确认函数（yes/no）
+
+    Args:
+        prompt_text: 提示文本
+        default: 默认值（True=yes, False=no）
+
+    Returns:
+        用户选择的布尔值
+    """
+    default_hint = " [Y/n]" if default else " [y/N]"
+    full_prompt = prompt_text + default_hint + ": "
+
+    while True:
+        response = await async_input(full_prompt)
+        response = response.strip().lower()
+
+        # 如果用户直接回车，使用默认值
+        if not response:
+            return default
+
+        # 解析用户输入
+        if response in ['y', 'yes', 'Y', 'Yes', 'YES', '是', 'shi', 'ok']:
+            return True
+        elif response in ['n', 'no', 'N', 'No', 'NO', '否', 'fou']:
+            return False
+        else:
+            # 输入无效，继续循环
+            print("请输入 y/yes 或 n/no")
+            continue
 
 
 class GitHelperPlugin(Plugin):
@@ -200,7 +260,7 @@ class GitHelperPlugin(Plugin):
             return [b.strip() for b in stdout.splitlines() if b.strip()]
         return []
 
-    def handle_git(self, args: str) -> None:
+    async def handle_git(self, args: str) -> None:
         """Handle the /git command and route to specific subcommand handlers.
 
         Args:
@@ -238,9 +298,9 @@ class GitHelperPlugin(Plugin):
         elif subcommand == "/reset":
             self.handle_reset(sub_args)
         elif subcommand == "/github":
-            self.handle_github(sub_args)
+            await self.handle_github(sub_args)
         elif subcommand == "/gitlab":
-            self.handle_gitlab(sub_args)
+            await self.handle_gitlab(sub_args)
         elif subcommand == "/platform":
             self.handle_platform(sub_args)
         else:
@@ -393,7 +453,7 @@ class GitHelperPlugin(Plugin):
         else:
             print(f"{get_message('error_prefix')} {stderr}")
 
-    def handle_github(self, args: str) -> None:
+    async def handle_github(self, args: str) -> None:
         """
         处理 /git /github 命令
 
@@ -415,26 +475,24 @@ class GitHelperPlugin(Plugin):
         sub_args = parts[1] if len(parts) > 1 else ""
 
         if subcmd == "/setup":
-            self._github_setup()
+            await self._github_setup()
         elif subcmd == "/list":
             self._github_list()
         elif subcmd == "/modify":
-            self._github_modify(sub_args)
+            await self._github_modify(sub_args)
         elif subcmd == "/delete":
-            self._github_delete(sub_args)
+            await self._github_delete(sub_args)
         elif subcmd == "/test":
             self._github_test(sub_args)
         else:
             print(f"❌ 未知的子命令: {subcmd}")
             self._show_github_help()
 
-    def _github_setup(self) -> None:
+    async def _github_setup(self) -> None:
         """GitHub 引导式配置"""
-        from prompt_toolkit import prompt
         from rich.console import Console
         from rich.panel import Panel
         from rich.table import Table
-        from rich.prompt import Confirm
 
         console = Console()
 
@@ -452,14 +510,14 @@ class GitHelperPlugin(Plugin):
             # 1. 配置名称
             console.print("\n[cyan]1. 配置名称[/cyan]")
             console.print("   输入便于识别的名称（如 'personal-github', 'work-github'）")
-            name = prompt("   名称: ").strip()
+            name = (await async_input("   名称: ")).strip()
             if not name:
                 console.print("[red]❌ 配置名称不能为空[/red]")
                 return
 
             # 检查是否已存在
             if self.platform_manager.get_config("github", name):
-                if not Confirm.ask(f"配置 '{name}' 已存在，是否覆盖？", default=False):
+                if not await async_confirm(f"配置 '{name}' 已存在，是否覆盖？", default=False):
                     console.print("[yellow]已取消[/yellow]")
                     return
 
@@ -467,7 +525,7 @@ class GitHelperPlugin(Plugin):
             console.print("\n[cyan]2. GitHub API 地址[/cyan]")
             console.print("   [dim]默认：https://api.github.com[/dim]")
             console.print("   [dim]企业版：https://github.example.com/api/v3[/dim]")
-            base_url = prompt("   地址 [默认: https://api.github.com]: ").strip()
+            base_url = (await async_input("   地址 [默认: https://api.github.com]: ")).strip()
             if not base_url:
                 base_url = "https://api.github.com"
 
@@ -479,18 +537,18 @@ class GitHelperPlugin(Plugin):
             console.print("      3. Generate new token")
             console.print("      4. 勾选权限: repo, read:user")
             console.print("      5. 复制生成的 token\n")
-            token = prompt("   Token: ", is_password=True).strip()
+            token = (await async_input("   Token: ", is_password=True)).strip()
             if not token:
                 console.print("[red]❌ Token 不能为空[/red]")
                 return
 
             # 4. SSL 验证
             console.print("\n[cyan]4. SSL 验证 (可选)[/cyan]")
-            verify_ssl = Confirm.ask("   验证 SSL 证书？", default=True)
+            verify_ssl = await async_confirm("   验证 SSL 证书？", default=True)
 
             # 5. 超时设置
             console.print("\n[cyan]5. 超时设置 (可选)[/cyan]")
-            timeout_str = prompt("   超时时间（秒） [默认: 30]: ").strip()
+            timeout_str = (await async_input("   超时时间（秒） [默认: 30]: ")).strip()
             timeout = 30
             if timeout_str:
                 try:
@@ -514,7 +572,7 @@ class GitHelperPlugin(Plugin):
             console.print(table)
             console.print()
 
-            if not Confirm.ask("是否保存以上配置？", default=True):
+            if not await async_confirm("是否保存以上配置？", default=True):
                 console.print("[yellow]已取消[/yellow]")
                 return
 
@@ -547,7 +605,7 @@ class GitHelperPlugin(Plugin):
                         self._sync_to_pr_module(current_config)
 
                 # 自动测试连接
-                if Confirm.ask("\n是否测试连接？", default=True):
+                if await async_confirm("\n是否测试连接？", default=True):
                     self._github_test(name)
             else:
                 console.print("[red]❌ 保存配置失败[/red]")
@@ -604,7 +662,7 @@ class GitHelperPlugin(Plugin):
         console.print(table)
         console.print()
 
-    def _github_modify(self, name: str) -> None:
+    async def _github_modify(self, name: str) -> None:
         """修改 GitHub 配置"""
         name = name.strip()
         if not name:
@@ -624,29 +682,26 @@ class GitHelperPlugin(Plugin):
         console.print("[dim]直接回车保持原值[/dim]\n")
 
         # 依次修改各个字段
-        from prompt_toolkit import prompt
-        from rich.prompt import Confirm
-
         # API 地址
-        new_url = prompt(f"API 地址 [{config.base_url}]: ").strip()
+        new_url = (await async_input(f"API 地址 [{config.base_url}]: ")).strip()
         if new_url:
             config.base_url = new_url
 
         # Token
-        change_token = Confirm.ask("是否更换 Token？", default=False)
+        change_token = await async_confirm("是否更换 Token？", default=False)
         if change_token:
-            new_token = prompt("新 Token: ", is_password=True).strip()
+            new_token = (await async_input("新 Token: ", is_password=True)).strip()
             if new_token:
                 config.token = new_token
 
         # SSL 验证
-        config.verify_ssl = Confirm.ask(
+        config.verify_ssl = await async_confirm(
             f"验证 SSL？",
             default=config.verify_ssl
         )
 
         # 超时
-        new_timeout = prompt(f"超时时间（秒） [{config.timeout}]: ").strip()
+        new_timeout = (await async_input(f"超时时间（秒） [{config.timeout}]: ")).strip()
         if new_timeout:
             try:
                 config.timeout = int(new_timeout)
@@ -659,7 +714,7 @@ class GitHelperPlugin(Plugin):
         else:
             console.print(f"\n[red]❌ 更新失败[/red]\n")
 
-    def _github_delete(self, name: str) -> None:
+    async def _github_delete(self, name: str) -> None:
         """删除 GitHub 配置"""
         name = name.strip()
         if not name:
@@ -668,7 +723,6 @@ class GitHelperPlugin(Plugin):
             return
 
         from rich.console import Console
-        from rich.prompt import Confirm
 
         console = Console()
 
@@ -676,7 +730,7 @@ class GitHelperPlugin(Plugin):
             console.print(f"\n[red]❌ 配置不存在: {name}[/red]\n")
             return
 
-        if Confirm.ask(f"确认删除配置 '{name}'？", default=False):
+        if await async_confirm(f"确认删除配置 '{name}'？", default=False):
             if self.platform_manager.delete_config("github", name):
                 console.print(f"\n[green]✅ 已删除配置: {name}[/green]\n")
             else:
@@ -795,7 +849,7 @@ class GitHelperPlugin(Plugin):
   /git /github /delete old-config
         """)
 
-    def handle_gitlab(self, args: str) -> None:
+    async def handle_gitlab(self, args: str) -> None:
         """
         处理 /git /gitlab 命令
 
@@ -817,26 +871,24 @@ class GitHelperPlugin(Plugin):
         sub_args = parts[1] if len(parts) > 1 else ""
 
         if subcmd == "/setup":
-            self._gitlab_setup()
+            await self._gitlab_setup()
         elif subcmd == "/list":
             self._gitlab_list()
         elif subcmd == "/modify":
-            self._gitlab_modify(sub_args)
+            await self._gitlab_modify(sub_args)
         elif subcmd == "/delete":
-            self._gitlab_delete(sub_args)
+            await self._gitlab_delete(sub_args)
         elif subcmd == "/test":
             self._gitlab_test(sub_args)
         else:
             print(f"❌ 未知的子命令: {subcmd}")
             self._show_gitlab_help()
 
-    def _gitlab_setup(self) -> None:
+    async def _gitlab_setup(self) -> None:
         """GitLab 引导式配置"""
-        from prompt_toolkit import prompt
         from rich.console import Console
         from rich.panel import Panel
         from rich.table import Table
-        from rich.prompt import Confirm
 
         console = Console()
 
@@ -853,13 +905,13 @@ class GitHelperPlugin(Plugin):
             # 1. 配置名称
             console.print("\n[cyan]1. 配置名称[/cyan]")
             console.print("   输入便于识别的名称（如 'company-gitlab', 'personal-gitlab'）")
-            name = prompt("   名称: ").strip()
+            name = (await async_input("   名称: ")).strip()
             if not name:
                 console.print("[red]❌ 配置名称不能为空[/red]")
                 return
 
             if self.platform_manager.get_config("gitlab", name):
-                if not Confirm.ask(f"配置 '{name}' 已存在，是否覆盖？", default=False):
+                if not await async_confirm(f"配置 '{name}' 已存在，是否覆盖？", default=False):
                     console.print("[yellow]已取消[/yellow]")
                     return
 
@@ -867,7 +919,7 @@ class GitHelperPlugin(Plugin):
             console.print("\n[cyan]2. GitLab 地址[/cyan]")
             console.print("   [dim]公网 GitLab: https://gitlab.com[/dim]")
             console.print("   [dim]私有部署: https://gitlab.example.com[/dim]")
-            base_url_input = prompt("   地址: ").strip()
+            base_url_input = (await async_input("   地址: ")).strip()
 
             if not base_url_input:
                 console.print("[red]❌ GitLab 地址不能为空[/red]")
@@ -890,7 +942,7 @@ class GitHelperPlugin(Plugin):
             console.print("      3. Add new token")
             console.print("      4. 勾选权限: api")
             console.print("      5. 复制生成的 token\n")
-            token = prompt("   Token: ", is_password=True).strip()
+            token = (await async_input("   Token: ", is_password=True)).strip()
             if not token:
                 console.print("[red]❌ Token 不能为空[/red]")
                 return
@@ -898,11 +950,11 @@ class GitHelperPlugin(Plugin):
             # 4. SSL 验证（私有部署可能需要禁用）
             console.print("\n[cyan]4. SSL 验证 (可选)[/cyan]")
             console.print("   [dim]内网私有部署可能需要选择 'n'[/dim]")
-            verify_ssl = Confirm.ask("   验证 SSL 证书？", default=True)
+            verify_ssl = await async_confirm("   验证 SSL 证书？", default=True)
 
             # 5. 超时设置
             console.print("\n[cyan]5. 超时设置 (可选)[/cyan]")
-            timeout_str = prompt("   超时时间（秒） [默认: 30]: ").strip()
+            timeout_str = (await async_input("   超时时间（秒） [默认: 30]: ")).strip()
             timeout = 30
             if timeout_str:
                 try:
@@ -927,7 +979,7 @@ class GitHelperPlugin(Plugin):
             console.print(table)
             console.print()
 
-            if not Confirm.ask("是否保存以上配置？", default=True):
+            if not await async_confirm("是否保存以上配置？", default=True):
                 console.print("[yellow]已取消[/yellow]")
                 return
 
@@ -960,7 +1012,7 @@ class GitHelperPlugin(Plugin):
                         self._sync_to_pr_module(current_config)
 
                 # 自动测试连接
-                if Confirm.ask("\n是否测试连接？", default=True):
+                if await async_confirm("\n是否测试连接？", default=True):
                     self._gitlab_test(name)
             else:
                 console.print("[red]❌ 保存配置失败[/red]")
@@ -1017,7 +1069,7 @@ class GitHelperPlugin(Plugin):
         console.print(table)
         console.print()
 
-    def _gitlab_modify(self, name: str) -> None:
+    async def _gitlab_modify(self, name: str) -> None:
         """修改 GitLab 配置"""
         name = name.strip()
         if not name:
@@ -1037,29 +1089,26 @@ class GitHelperPlugin(Plugin):
         console.print("[dim]直接回车保持原值[/dim]\n")
 
         # 依次修改各个字段
-        from prompt_toolkit import prompt
-        from rich.prompt import Confirm
-
         # API 地址
-        new_url = prompt(f"API 地址 [{config.base_url}]: ").strip()
+        new_url = (await async_input(f"API 地址 [{config.base_url}]: ")).strip()
         if new_url:
             config.base_url = new_url
 
         # Token
-        change_token = Confirm.ask("是否更换 Token？", default=False)
+        change_token = await async_confirm("是否更换 Token？", default=False)
         if change_token:
-            new_token = prompt("新 Token: ", is_password=True).strip()
+            new_token = (await async_input("新 Token: ", is_password=True)).strip()
             if new_token:
                 config.token = new_token
 
         # SSL 验证
-        config.verify_ssl = Confirm.ask(
+        config.verify_ssl = await async_confirm(
             f"验证 SSL？",
             default=config.verify_ssl
         )
 
         # 超时
-        new_timeout = prompt(f"超时时间（秒） [{config.timeout}]: ").strip()
+        new_timeout = (await async_input(f"超时时间（秒） [{config.timeout}]: ")).strip()
         if new_timeout:
             try:
                 config.timeout = int(new_timeout)
@@ -1072,7 +1121,7 @@ class GitHelperPlugin(Plugin):
         else:
             console.print(f"\n[red]❌ 更新失败[/red]\n")
 
-    def _gitlab_delete(self, name: str) -> None:
+    async def _gitlab_delete(self, name: str) -> None:
         """删除 GitLab 配置"""
         name = name.strip()
         if not name:
@@ -1081,7 +1130,6 @@ class GitHelperPlugin(Plugin):
             return
 
         from rich.console import Console
-        from rich.prompt import Confirm
 
         console = Console()
 
@@ -1089,7 +1137,7 @@ class GitHelperPlugin(Plugin):
             console.print(f"\n[red]❌ 配置不存在: {name}[/red]\n")
             return
 
-        if Confirm.ask(f"确认删除配置 '{name}'？", default=False):
+        if await async_confirm(f"确认删除配置 '{name}'？", default=False):
             if self.platform_manager.delete_config("gitlab", name):
                 console.print(f"\n[green]✅ 已删除配置: {name}[/green]\n")
             else:
