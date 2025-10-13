@@ -185,5 +185,5 @@ See [METADATA](extracted/auto_coder-1.0.39.dist-info/METADATA) for complete list
 
 ## 其他要求
 - 用中文答复
-- 每次修改的过程需要单独记录在二次开发的过程文档
+- 每次修改的过程需要单独记录在二次开发的过程文档（docs/二次开发记录.md），由于内容很长，直接在文件尾追加内容即可
 - 每一次修改都同步到git，方便版本管理

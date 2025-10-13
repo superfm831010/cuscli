@@ -9,7 +9,6 @@ from .chat_auto_coder_messages import CHAT_AUTO_CODER_MESSAGES
 from .sdk_messages import SDK_MESSAGES
 from .tool_display_messages import TOOL_DISPLAY_MESSAGES
 from .git_helper_plugin_messages import GIT_HELPER_PLUGIN_MESSAGES
-from .token_helper_plugin_messages import TOKEN_HELPER_PLUGIN_MESSAGES
 from .rules_command_messages import RULES_COMMAND_MESSAGES
 from .queue_command_messages import QUEUE_COMMAND_MESSAGES
 from .async_command_messages import ASYNC_COMMAND_MESSAGES
@@ -24,7 +23,6 @@ def register_all_messages():
     register_messages(SDK_MESSAGES)
     register_messages(TOOL_DISPLAY_MESSAGES)
     register_messages(GIT_HELPER_PLUGIN_MESSAGES)
-    register_messages(TOKEN_HELPER_PLUGIN_MESSAGES)
     register_messages(RULES_COMMAND_MESSAGES)
     register_messages(QUEUE_COMMAND_MESSAGES)
     register_messages(ASYNC_COMMAND_MESSAGES)
@@ -39,7 +37,6 @@ __all__ = [
     'SDK_MESSAGES',
     'TOOL_DISPLAY_MESSAGES',
     'GIT_HELPER_PLUGIN_MESSAGES',
-    'TOKEN_HELPER_PLUGIN_MESSAGES',
     'RULES_COMMAND_MESSAGES',
     'QUEUE_COMMAND_MESSAGES',
     'ASYNC_COMMAND_MESSAGES',
