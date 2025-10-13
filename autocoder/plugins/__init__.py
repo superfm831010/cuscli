@@ -1093,8 +1093,8 @@ class PluginManager:
         """处理动态补全命令
 
         Args:
-            command: 基础命令，如 /plugins
-            current_input: 当前完整的输入，如 /plugins/dirs /remove /usr
+            command: 基础命令，如 /plugins 或 /git /github /modify
+            current_input: 当前完整的输入，如 /plugins/dirs /remove /usr 或 /git /github /modify personal
 
         Returns:
             List[Tuple[str, str]]: 补全选项列表，每个选项为 (补全文本, 显示文本)
@@ -1104,13 +1104,18 @@ class PluginManager:
 
         # 处理补全选项
         processed_completions = []
+
+        # 获取命令的部分数
+        command_parts_count = len(command.split())
+
+        # 分割当前输入
         parts = current_input.split()
         existing_input = ""
 
-        # 如果输入包含子命令和参数
-        if len(parts) > 2:
-            # 获取最后一个部分作为补全前缀
-            existing_input = parts[-1]
+        # 如果输入的部分数大于命令的部分数，说明用户开始输入参数了
+        if len(parts) > command_parts_count:
+            # 获取命令之后的第一个部分作为补全前缀
+            existing_input = parts[command_parts_count]
 
         # 只提供未输入部分作为补全
         for completion_text, display_text in completions:
