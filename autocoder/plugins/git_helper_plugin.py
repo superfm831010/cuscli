@@ -58,15 +58,7 @@ class GitHelperPlugin(Plugin):
             A dictionary of command name to handler and description
         """
         return {
-            "git/status": (self.git_status, get_message("cmd_git_status_desc")),
-            "git/commit": (self.git_commit, get_message("cmd_git_commit_desc")),
-            "git/branch": (self.git_branch, get_message("cmd_git_branch_desc")),
-            "git/checkout": (self.git_checkout, get_message("cmd_git_checkout_desc")),
-            "git/diff": (self.git_diff, get_message("cmd_git_diff_desc")),
-            "git/log": (self.git_log, get_message("cmd_git_log_desc")),
-            "git/pull": (self.git_pull, get_message("cmd_git_pull_desc")),
-            "git/push": (self.git_push, get_message("cmd_git_push_desc")),
-            "git/reset": (self.handle_reset, get_message("cmd_git_reset_desc")),
+            "git": (self.handle_git, "Git 辅助工具，管理版本控制"),
         }
 
     def get_completions(self) -> Dict[str, List[str]]:
@@ -76,23 +68,17 @@ class GitHelperPlugin(Plugin):
             A dictionary mapping command prefixes to completion options
         """
         completions = {
-            "/git/status": [],
-            "/git/commit": [],
-            "/git/branch": [],
-            "/git/checkout": [],
-            "/git/diff": [],
-            "/git/log": [],
-            "/git/pull": [],
-            "/git/push": [],
-            "/git/reset": ["hard", "soft", "mixed"],
+            "/git": ["/status", "/commit", "/branch", "/checkout", "/diff",
+                     "/log", "/pull", "/push", "/reset"],
+            "/git /reset": ["hard", "soft", "mixed"],
         }
 
         # 添加分支补全
         if self.git_available:
             try:
                 branches = self._get_git_branches()
-                completions["/git/checkout"] = branches
-                completions["/git/branch"] = branches + [
+                completions["/git /checkout"] = branches
+                completions["/git /branch"] = branches + [
                     "--delete",
                     "--all",
                     "--remote",
@@ -138,6 +124,70 @@ class GitHelperPlugin(Plugin):
         if code == 0:
             return [b.strip() for b in stdout.splitlines() if b.strip()]
         return []
+
+    def handle_git(self, args: str) -> None:
+        """Handle the /git command and route to specific subcommand handlers.
+
+        Args:
+            args: Subcommand and arguments, e.g., "/status" or "/commit message"
+        """
+        args = args.strip()
+
+        # 如果没有子命令，显示帮助
+        if not args:
+            self._show_git_help()
+            return
+
+        # 解析子命令
+        parts = args.split(maxsplit=1)
+        subcommand = parts[0]
+        sub_args = parts[1] if len(parts) > 1 else ""
+
+        # 路由到对应的处理函数
+        if subcommand == "/status":
+            self.git_status(sub_args)
+        elif subcommand == "/commit":
+            self.git_commit(sub_args)
+        elif subcommand == "/branch":
+            self.git_branch(sub_args)
+        elif subcommand == "/checkout":
+            self.git_checkout(sub_args)
+        elif subcommand == "/diff":
+            self.git_diff(sub_args)
+        elif subcommand == "/log":
+            self.git_log(sub_args)
+        elif subcommand == "/pull":
+            self.git_pull(sub_args)
+        elif subcommand == "/push":
+            self.git_push(sub_args)
+        elif subcommand == "/reset":
+            self.handle_reset(sub_args)
+        else:
+            print(f"❌ 未知的子命令: {subcommand}")
+            self._show_git_help()
+
+    def _show_git_help(self) -> None:
+        """Display help information for git commands."""
+        print("""
+📋 Git 命令帮助
+
+使用方法:
+  /git /status              - 查看仓库状态
+  /git /commit <message>    - 提交更改（自动 add .）
+  /git /branch [args]       - 分支管理
+  /git /checkout <branch>   - 切换分支
+  /git /diff [args]         - 查看差异
+  /git /log [args]          - 查看提交历史（默认显示最近10条）
+  /git /pull [args]         - 拉取远程更新
+  /git /push [args]         - 推送到远程
+  /git /reset <mode> [commit] - 重置（hard/soft/mixed）
+
+示例:
+  /git /status
+  /git /commit "feat: 添加新功能"
+  /git /checkout develop
+  /git /reset soft HEAD~1
+        """)
 
     def git_status(self, args: str) -> None:
         """Handle the git/status command."""
@@ -248,6 +298,23 @@ class GitHelperPlugin(Plugin):
             print(get_message_with_format("reset_success", mode=mode, commit=commit))
         else:
             print(f"{get_message('error_prefix')} {stderr}")
+
+    def get_help_text(self) -> Optional[str]:
+        """Get the help text displayed in the startup screen.
+
+        Returns:
+            Help text with formatted subcommands
+        """
+        return """  \033[94m/git\033[0m - \033[92mGit 辅助工具\033[0m
+    \033[94m/git /status\033[0m - 查看仓库状态
+    \033[94m/git /commit\033[0m \033[93m<message>\033[0m - 提交更改
+    \033[94m/git /branch\033[0m \033[93m[args]\033[0m - 分支管理
+    \033[94m/git /checkout\033[0m \033[93m<branch>\033[0m - 切换分支
+    \033[94m/git /diff\033[0m \033[93m[args]\033[0m - 查看差异
+    \033[94m/git /log\033[0m \033[93m[args]\033[0m - 查看提交历史
+    \033[94m/git /pull\033[0m \033[93m[args]\033[0m - 拉取远程更新
+    \033[94m/git /push\033[0m \033[93m[args]\033[0m - 推送到远程
+    \033[94m/git /reset\033[0m \033[93m<mode> [commit]\033[0m - 重置（hard/soft/mixed）"""
 
     def shutdown(self) -> None:
         """Shutdown the plugin."""

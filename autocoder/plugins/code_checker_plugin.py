@@ -1216,6 +1216,18 @@ class CodeCheckerPlugin(Plugin):
 
         return report_dir
 
+    def get_help_text(self) -> Optional[str]:
+        """Get the help text displayed in the startup screen.
+
+        Returns:
+            Help text with formatted subcommands
+        """
+        return """  \033[94m/check\033[0m - \033[92m代码规范检查插件\033[0m
+    \033[94m/check /file\033[0m \033[93m<filepath>\033[0m - 检查单个文件
+    \033[94m/check /folder\033[0m \033[93m[options]\033[0m - 检查目录
+    \033[94m/check /resume\033[0m \033[93m[check_id]\033[0m - 恢复中断的检查
+    \033[94m/check /config\033[0m \033[93m[options]\033[0m - 配置默认参数"""
+
     def shutdown(self) -> None:
         """关闭插件"""
         print(f"[{self.name}] 代码检查插件已关闭")

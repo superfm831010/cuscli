@@ -83,6 +83,17 @@ class Plugin:
         """
         return {}
 
+    def get_help_text(self) -> Optional[str]:
+        """Get the help text displayed in the startup screen.
+
+        If a plugin has a complex subcommand structure, it can customize the
+        startup screen display format through this method.
+
+        Returns:
+            Help text string (may include ANSI color codes), or None to use default display
+        """
+        return None
+
     def load_config(self, config_path: Optional[str] = None) -> bool:
         """加载插件配置。
 

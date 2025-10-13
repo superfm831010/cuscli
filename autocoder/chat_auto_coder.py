@@ -250,6 +250,14 @@ def show_help():
         for cmd, (_, desc, plugin_id) in plugin_manager.command_handlers.items():
             plugin = plugin_manager.get_plugin(plugin_id)
             if plugin:
+                # 检查插件是否有自定义帮助文本
+                if hasattr(plugin, 'get_help_text') and callable(plugin.get_help_text):
+                    help_text = plugin.get_help_text()
+                    if help_text:
+                        print(help_text)
+                        continue
+
+                # 默认显示方式（用于没有实现 get_help_text 的插件）
                 print(
                     f"  \033[94m{cmd}\033[0m - \033[92m{desc} ({get_message('plugin_from')} {plugin.plugin_name()})\033[0m"
                 )
