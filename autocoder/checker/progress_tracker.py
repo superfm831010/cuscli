@@ -6,10 +6,17 @@
 
 import os
 import json
-import fcntl
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
+
+# 条件导入 fcntl（仅在 Unix/Linux 上可用）
+try:
+    import fcntl
+    HAS_FCNTL = True
+except ImportError:
+    # Windows 系统没有 fcntl 模块
+    HAS_FCNTL = False
 
 from autocoder.checker.types import CheckState
 
@@ -24,6 +31,10 @@ class ProgressTracker:
     - 跟踪文件检查进度
     - 支持中断恢复
     - 列出历史检查记录
+
+    跨平台支持：
+    - Unix/Linux: 使用 fcntl 文件锁防止并发冲突
+    - Windows: 降级为无锁模式（适用于单用户场景）
     """
 
     def __init__(self, state_dir: str = ".auto-coder/codecheck/progress"):
@@ -77,10 +88,16 @@ class ProgressTracker:
 
         Returns:
             (file_object, lock_acquired)
+
+        注意：
+            - Unix/Linux 使用 fcntl 文件锁
+            - Windows 降级为无锁模式（直接返回成功）
         """
         try:
             f = open(file_path, mode)
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # 仅在支持 fcntl 的平台上尝试加锁
+            if HAS_FCNTL:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             return f, True
         except (IOError, OSError):
             return None, False
@@ -91,10 +108,16 @@ class ProgressTracker:
 
         Args:
             file_obj: 文件对象
+
+        注意：
+            - Unix/Linux 使用 fcntl 解锁
+            - Windows 直接关闭文件
         """
         if file_obj:
             try:
-                fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
+                # 仅在支持 fcntl 的平台上解锁
+                if HAS_FCNTL:
+                    fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
                 file_obj.close()
             except Exception:
                 pass
