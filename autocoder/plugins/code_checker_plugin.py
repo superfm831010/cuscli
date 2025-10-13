@@ -19,6 +19,7 @@ from datetime import datetime
 
 from autocoder.plugins import Plugin, PluginManager
 from loguru import logger
+from autocoder.checker.git_helper import GitFileHelper
 
 
 class CodeCheckerPlugin(Plugin):
@@ -209,9 +210,14 @@ class CodeCheckerPlugin(Plugin):
             补全字典 {命令前缀: 补全选项列表}
         """
         return {
-            "/check": ["/file", "/folder", "/resume", "/report", "/config"],
+            "/check": ["/file", "/folder", "/resume", "/report", "/config", "/git"],
             "/check /folder": ["/path", "/ext", "/ignore", "/workers", "/repeat", "/consensus"],
             "/check /config": ["/repeat", "/consensus"],
+            "/check /git": ["/staged", "/unstaged", "/commit", "/diff"],
+            "/check /git /staged": ["/repeat", "/consensus", "/workers"],
+            "/check /git /unstaged": ["/repeat", "/consensus", "/workers"],
+            "/check /git /commit": ["/repeat", "/consensus", "/workers"],
+            "/check /git /diff": ["/repeat", "/consensus", "/workers"],
         }
 
     def get_dynamic_completions(
@@ -348,6 +354,8 @@ class CodeCheckerPlugin(Plugin):
             self._resume_check(sub_args)
         elif subcommand == "/report":
             self._show_report(sub_args)
+        elif subcommand == "/git":
+            self._check_git(sub_args)
         else:
             print(f"❌ 未知的子命令: {subcommand}")
             self._show_help()
@@ -364,6 +372,11 @@ class CodeCheckerPlugin(Plugin):
   /check /resume [check_id]            - 恢复中断的检查
   /check /report [check_id]            - 查看检查报告
 
+  /check /git /staged [options]        - 检查暂存区文件 (NEW)
+  /check /git /unstaged [options]      - 检查工作区修改 (NEW)
+  /check /git /commit <hash> [options] - 检查指定 commit (NEW)
+  /check /git /diff <c1> [c2] [opts]   - 检查 commit 差异 (NEW)
+
 /check /folder 选项:
   /path <dir>                          - 指定检查目录（默认: 当前目录）
   /ext <.py,.js>                       - 指定文件扩展名（逗号分隔）
@@ -372,12 +385,20 @@ class CodeCheckerPlugin(Plugin):
   /repeat <1>                          - LLM 调用次数（默认: 1）
   /consensus <1.0>                     - 共识阈值 0~1（默认: 1.0）
 
+/check /git 通用选项:
+  /repeat <1>                          - LLM 调用次数（默认: 1）
+  /consensus <1.0>                     - 共识阈值 0~1（默认: 1.0）
+  /workers <5>                         - 并发数（默认: 5）
+
 示例:
   /check /file autocoder/auto_coder.py
   /check /file autocoder/auto_coder.py /repeat 3 /consensus 0.8
   /check /folder
   /check /folder /path src /ext .py
   /check /folder /path src /ext .py /ignore tests,__pycache__ /repeat 3
+  /check /git /staged
+  /check /git /commit abc1234 /repeat 3
+  /check /git /diff main dev
   /check /resume check_20250110_143022
   /check /report check_20250110_143022
         """
@@ -1306,6 +1327,436 @@ class CodeCheckerPlugin(Plugin):
 
         return report_dir
 
+    def _create_check_id_with_prefix(self, prefix: str) -> str:
+        """
+        生成带前缀的检查 ID
+
+        Args:
+            prefix: 前缀（如 git_staged, git_commit_abc1234）
+
+        Returns:
+            check_id: 格式为 {prefix}_{timestamp}
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"{prefix}_{timestamp}"
+
+    # ===== Git 集成功能 =====
+
+    def _check_git(self, args: str) -> None:
+        """
+        处理 /check /git 命令
+
+        Args:
+            args: 子命令和参数
+        """
+        args = args.strip()
+
+        if not args:
+            print("❌ 请指定 git 子命令")
+            print()
+            print("可用子命令:")
+            print("  /check /git /staged              - 检查暂存区文件")
+            print("  /check /git /unstaged            - 检查工作区修改文件")
+            print("  /check /git /commit <hash>       - 检查指定 commit")
+            print("  /check /git /diff <c1> [c2]      - 检查两个 commit 间差异")
+            return
+
+        # 解析子命令
+        parts = shlex.split(args)
+        subcommand = parts[0]
+        sub_args = parts[1:]
+
+        # 路由到具体处理函数
+        if subcommand == "/staged":
+            self._check_git_staged(sub_args)
+        elif subcommand == "/unstaged":
+            self._check_git_unstaged(sub_args)
+        elif subcommand == "/commit":
+            self._check_git_commit(sub_args)
+        elif subcommand == "/diff":
+            self._check_git_diff(sub_args)
+        else:
+            print(f"❌ 未知的 git 子命令: {subcommand}")
+
+    def _check_git_staged(self, args: List[str]) -> None:
+        """
+        检查暂存区文件（已 add 但未 commit）
+
+        Args:
+            args: 选项参数列表
+        """
+        print("🔍 检查暂存区文件...")
+        print()
+
+        try:
+            # 初始化 GitFileHelper
+            git_helper = GitFileHelper()
+
+            # 获取暂存区文件
+            files = git_helper.get_staged_files()
+
+            if not files:
+                print("📭 暂存区没有文件")
+                print()
+                print("💡 提示: 使用 git add <文件> 将文件添加到暂存区")
+                return
+
+            print(f"✅ 找到 {len(files)} 个暂存区文件")
+            print()
+
+            # 解析选项
+            options = self._parse_git_check_options(args)
+
+            # 执行检查（复用现有逻辑）
+            self._execute_batch_check(
+                files=files,
+                check_type="git_staged",
+                options=options
+            )
+
+        except RuntimeError as e:
+            print(f"❌ {e}")
+            logger.error(f"Git 暂存区检查失败: {e}", exc_info=True)
+        except Exception as e:
+            print(f"❌ 检查过程出错: {e}")
+            logger.error(f"Git 暂存区检查失败: {e}", exc_info=True)
+
+    def _check_git_unstaged(self, args: List[str]) -> None:
+        """
+        检查工作区修改文件（已修改但未 add）
+
+        Args:
+            args: 选项参数列表
+        """
+        print("🔍 检查工作区修改文件...")
+        print()
+
+        try:
+            git_helper = GitFileHelper()
+            files = git_helper.get_unstaged_files()
+
+            if not files:
+                print("📭 工作区没有修改文件")
+                print()
+                print("💡 提示: 修改文件后即可检查，使用 git status 查看状态")
+                return
+
+            print(f"✅ 找到 {len(files)} 个修改文件")
+            print()
+
+            options = self._parse_git_check_options(args)
+
+            self._execute_batch_check(
+                files=files,
+                check_type="git_unstaged",
+                options=options
+            )
+
+        except RuntimeError as e:
+            print(f"❌ {e}")
+            logger.error(f"Git 工作区检查失败: {e}", exc_info=True)
+        except Exception as e:
+            print(f"❌ 检查过程出错: {e}")
+            logger.error(f"Git 工作区检查失败: {e}", exc_info=True)
+
+    def _check_git_commit(self, args: List[str]) -> None:
+        """
+        检查指定 commit 的变更文件
+
+        Args:
+            args: [commit_hash, ...options]
+        """
+        if not args:
+            print("❌ 请指定 commit 哈希值")
+            print("用法: /check /git /commit <commit_hash> [/repeat N] [/consensus 0.8]")
+            return
+
+        commit_hash = args[0]
+        option_args = args[1:]
+
+        print(f"🔍 检查 commit {commit_hash}...")
+        print()
+
+        try:
+            git_helper = GitFileHelper()
+
+            # 获取 commit 信息
+            commit_info = git_helper.get_commit_info(commit_hash)
+            print(f"📝 Commit: {commit_info['short_hash']}")
+            print(f"   作者: {commit_info['author']}")
+            print(f"   日期: {commit_info['date']}")
+            print(f"   信息: {commit_info['message'].splitlines()[0]}")
+            print()
+
+            # 获取变更文件（相对路径）
+            files = git_helper.get_commit_files(commit_hash)
+
+            if not files:
+                print("📭 该 commit 没有文件变更")
+                return
+
+            print(f"✅ 找到 {len(files)} 个变更文件")
+            print()
+
+            # 准备文件（Phase 2 简化版：转换为绝对路径）
+            prepared_files = self._prepare_git_files(
+                files,
+                git_helper,
+                commit_hash
+            )
+
+            if not prepared_files:
+                print("⚠️  没有可检查的文件")
+                print("💡 提示: 文件可能在当前工作区不存在，Phase 3 将支持检查历史文件")
+                return
+
+            options = self._parse_git_check_options(option_args)
+            options['commit_info'] = commit_info  # 传递 commit 信息用于报告
+
+            self._execute_batch_check(
+                files=prepared_files,
+                check_type=f"git_commit_{commit_info['short_hash']}",
+                options=options
+            )
+
+        except ValueError as e:
+            print(f"❌ {e}")
+        except RuntimeError as e:
+            print(f"❌ {e}")
+            logger.error(f"Git commit 检查失败: {e}", exc_info=True)
+        except Exception as e:
+            print(f"❌ 检查过程出错: {e}")
+            logger.error(f"Git commit 检查失败: {e}", exc_info=True)
+
+    def _check_git_diff(self, args: List[str]) -> None:
+        """
+        检查两个 commit 之间的差异文件
+
+        Args:
+            args: [commit1, [commit2], ...options]
+        """
+        if not args:
+            print("❌ 请指定 commit")
+            print("用法: /check /git /diff <commit1> [commit2] [options]")
+            print("     commit2 默认为 HEAD")
+            return
+
+        commit1 = args[0]
+
+        # 判断第二个参数是选项还是 commit
+        if len(args) > 1 and not args[1].startswith('/'):
+            commit2 = args[1]
+            option_args = args[2:]
+        else:
+            commit2 = "HEAD"
+            option_args = args[1:]
+
+        print(f"🔍 检查 diff: {commit1}...{commit2}")
+        print()
+
+        try:
+            git_helper = GitFileHelper()
+
+            # 获取差异文件
+            files = git_helper.get_diff_files(commit1, commit2)
+
+            if not files:
+                print(f"📭 {commit1} 和 {commit2} 之间没有差异")
+                return
+
+            print(f"✅ 找到 {len(files)} 个差异文件")
+            print()
+
+            # 准备文件（使用 commit2 的版本）
+            prepared_files = self._prepare_git_files(
+                files,
+                git_helper,
+                commit2
+            )
+
+            if not prepared_files:
+                print("⚠️  没有可检查的文件")
+                print("💡 提示: 文件可能在当前工作区不存在，Phase 3 将支持检查历史文件")
+                return
+
+            options = self._parse_git_check_options(option_args)
+            options['diff_info'] = f"{commit1}...{commit2}"
+
+            self._execute_batch_check(
+                files=prepared_files,
+                check_type=f"git_diff_{commit1[:7]}_{commit2[:7]}",
+                options=options
+            )
+
+        except ValueError as e:
+            print(f"❌ {e}")
+        except RuntimeError as e:
+            print(f"❌ {e}")
+            logger.error(f"Git diff 检查失败: {e}", exc_info=True)
+        except Exception as e:
+            print(f"❌ 检查过程出错: {e}")
+            logger.error(f"Git diff 检查失败: {e}", exc_info=True)
+
+    def _parse_git_check_options(self, args: List[str]) -> Dict[str, Any]:
+        """
+        解析 git 检查的选项参数
+
+        Args:
+            args: 参数列表
+
+        Returns:
+            选项字典 {repeat, consensus, workers}
+        """
+        options = {
+            "repeat": None,
+            "consensus": None,
+            "workers": 5  # 默认并发数
+        }
+
+        i = 0
+        while i < len(args):
+            arg = args[i]
+
+            if arg == "/repeat" and i + 1 < len(args):
+                try:
+                    options["repeat"] = int(args[i + 1])
+                except ValueError:
+                    print(f"⚠️  无效的重复次数: {args[i + 1]}")
+                i += 2
+            elif arg == "/consensus" and i + 1 < len(args):
+                try:
+                    options["consensus"] = float(args[i + 1])
+                except ValueError:
+                    print(f"⚠️  无效的共识阈值: {args[i + 1]}")
+                i += 2
+            elif arg == "/workers" and i + 1 < len(args):
+                try:
+                    options["workers"] = int(args[i + 1])
+                except ValueError:
+                    print(f"⚠️  无效的并发数: {args[i + 1]}")
+                i += 2
+            else:
+                i += 1
+
+        return options
+
+    def _prepare_git_files(
+        self,
+        files: List[str],
+        git_helper: GitFileHelper,
+        commit_hash: Optional[str] = None
+    ) -> List[str]:
+        """
+        准备 git 文件供检查（Phase 2 简化版）
+
+        对于工作区文件（staged/unstaged），直接返回绝对路径
+        对于历史文件（commit），仅检查当前工作区中存在的文件
+
+        Args:
+            files: 文件路径列表（可能是相对路径或绝对路径）
+            git_helper: GitFileHelper 实例
+            commit_hash: 如果指定，表示从该 commit 检查（Phase 2: 仅检查工作区存在的）
+
+        Returns:
+            准备好的文件路径列表（绝对路径）
+        """
+        repo_path = git_helper.repo_path
+        prepared = []
+
+        for file_path in files:
+            # 转换为绝对路径
+            if os.path.isabs(file_path):
+                abs_path = file_path
+            else:
+                abs_path = os.path.join(repo_path, file_path)
+
+            # 检查文件是否存在
+            if os.path.exists(abs_path):
+                prepared.append(abs_path)
+            else:
+                if commit_hash:
+                    logger.debug(f"跳过不存在的历史文件: {file_path}")
+                else:
+                    logger.warning(f"文件不存在: {abs_path}")
+
+        logger.info(f"准备了 {len(prepared)}/{len(files)} 个文件")
+        return prepared
+
+    def _execute_batch_check(
+        self,
+        files: List[str],
+        check_type: str,
+        options: Dict[str, Any]
+    ) -> None:
+        """
+        执行批量检查（复用现有逻辑）
+
+        Args:
+            files: 文件列表
+            check_type: 检查类型（用于生成 check_id）
+            options: 检查选项
+        """
+        workers = options.get("workers", 5)
+
+        # 确保 checker 已初始化
+        self._ensure_checker()
+
+        # 应用 repeat/consensus 参数
+        self._apply_checker_options({
+            "repeat": options.get("repeat"),
+            "consensus": options.get("consensus"),
+        })
+
+        # 生成 check_id
+        check_id = self._create_check_id_with_prefix(check_type)
+        report_dir = self._create_report_dir(check_id)
+
+        # 启动任务日志
+        from autocoder.checker.task_logger import TaskLogger
+        task_logger = TaskLogger(report_dir)
+        task_logger.start()
+
+        try:
+            logger.info(f"开始检查任务: {check_id}, 文件数: {len(files)}")
+
+            print(f"📝 检查任务 ID: {check_id}")
+            print(f"📄 报告目录: {report_dir}")
+            print()
+
+            # 导入进度显示
+            from autocoder.checker.progress_display import ProgressDisplay
+
+            results = []
+            progress_display = ProgressDisplay()
+
+            with progress_display.display_progress():
+                progress_display.update_file_progress(
+                    total_files=len(files),
+                    completed_files=0
+                )
+
+                # 并发检查
+                for idx, result in enumerate(
+                    self.checker.check_files_concurrent(files, max_workers=workers),
+                    1
+                ):
+                    results.append(result)
+
+                    # 更新进度
+                    progress_display.update_file_progress(completed_files=idx)
+
+            # 生成报告
+            for result in results:
+                self.report_generator.generate_file_report(result, report_dir)
+
+            self.report_generator.generate_summary_report(results, report_dir)
+
+            # 显示汇总
+            self._show_batch_summary(results, report_dir)
+
+        finally:
+            task_logger.stop()
+
     def get_help_text(self) -> Optional[str]:
         """Get the help text displayed in the startup screen.
 
@@ -1315,6 +1766,7 @@ class CodeCheckerPlugin(Plugin):
         return """  \033[94m/check\033[0m - \033[92m代码规范检查插件\033[0m
     \033[94m/check /file\033[0m \033[93m<filepath>\033[0m - 检查单个文件
     \033[94m/check /folder\033[0m \033[93m[options]\033[0m - 检查目录
+    \033[94m/check /git\033[0m \033[93m<subcommand>\033[0m - Git 文件检查 (NEW)
     \033[94m/check /resume\033[0m \033[93m[check_id]\033[0m - 恢复中断的检查
     \033[94m/check /config\033[0m \033[93m[options]\033[0m - 配置默认参数"""
 
