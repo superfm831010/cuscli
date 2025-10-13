@@ -9,6 +9,7 @@ import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
+from loguru import logger
 
 # 条件导入 fcntl（仅在 Unix/Linux 上可用）
 try:
@@ -206,24 +207,41 @@ class ProgressTracker:
 
     def save_state(self, check_id: str, state: CheckState) -> None:
         """
-        保存检查状态到文件
+        保存检查状态到文件（原子写入）
+
+        使用原子写入模式：先写临时文件，再重命名。
+        这样可以防止中断时损坏原有文件。
 
         Args:
             check_id: 检查ID
             state: 检查状态对象
         """
         state_file = self._get_state_file_path(check_id)
+        temp_file = state_file + '.tmp'
 
         try:
-            with open(state_file, 'w', encoding='utf-8') as f:
+            # 1. 先写入临时文件
+            with open(temp_file, 'w', encoding='utf-8') as f:
                 # 使用 pydantic 的 dict() 方法序列化
                 json.dump(state.dict(), f, indent=2, ensure_ascii=False)
+
+            # 2. 原子重命名（os.replace 在 Windows 和 Linux 上都是原子操作）
+            os.replace(temp_file, state_file)
+
         except Exception as e:
+            # 清理临时文件（如果存在）
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
             raise IOError(f"保存状态文件失败: {e}")
 
     def load_state(self, check_id: str) -> Optional[CheckState]:
         """
-        从文件加载检查状态
+        从文件加载检查状态（支持自动修复）
+
+        如果 JSON 损坏，尝试自动修复。
 
         Args:
             check_id: 检查ID
@@ -240,6 +258,17 @@ class ProgressTracker:
             with open(state_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 return CheckState(**data)
+        except json.JSONDecodeError as e:
+            # JSON 解析失败，尝试修复
+            logger.warning(f"状态文件 JSON 损坏: {e}，尝试自动修复...")
+            repaired_state = self._repair_corrupted_state(check_id)
+            if repaired_state:
+                logger.info(f"状态文件已成功修复: {check_id}")
+                # 保存修复后的状态
+                self.save_state(check_id, repaired_state)
+                return repaired_state
+            else:
+                raise IOError(f"加载状态文件失败: {e}")
         except Exception as e:
             raise IOError(f"加载状态文件失败: {e}")
 
@@ -491,3 +520,59 @@ class ProgressTracker:
             return count
         except Exception:
             return 0
+
+    def _repair_corrupted_state(self, check_id: str) -> Optional[CheckState]:
+        """
+        尝试修复损坏的状态文件
+
+        修复策略：
+        1. 读取文件内容
+        2. 找到不完整的数组（末尾有逗号但缺少结束符）
+        3. 补全 JSON 结构
+        4. 解析并返回修复后的状态
+
+        Args:
+            check_id: 检查ID
+
+        Returns:
+            修复后的 CheckState 对象，如果无法修复则返回 None
+        """
+        state_file = self._get_state_file_path(check_id)
+
+        try:
+            # 读取文件内容
+            with open(state_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # 尝试修复：移除末尾的逗号，添加缺失的结束符
+            # 常见情况：JSON 数组未闭合
+            content = content.rstrip()
+
+            # 如果末尾是逗号，说明数组未完成
+            if content.endswith(','):
+                content = content[:-1]  # 移除末尾逗号
+
+            # 统计缺少的结束符
+            open_brackets = content.count('[') - content.count(']')
+            open_braces = content.count('{') - content.count('}')
+
+            # 补全缺失的结束符
+            for _ in range(open_brackets):
+                content += '\n  ]'
+            for _ in range(open_braces):
+                content += '\n}'
+
+            # 尝试解析修复后的 JSON
+            data = json.loads(content)
+            state = CheckState(**data)
+
+            logger.info(
+                f"成功修复状态文件 {check_id}：移除末尾逗号，补全 "
+                f"{open_brackets} 个 ']' 和 {open_braces} 个 '}}'"
+            )
+
+            return state
+
+        except Exception as e:
+            logger.error(f"无法修复状态文件 {check_id}: {e}")
+            return None

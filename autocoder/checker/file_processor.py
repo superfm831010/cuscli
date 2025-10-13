@@ -29,6 +29,18 @@ class FileProcessor:
         tokenizer: 用于计算 token 数的分词器
     """
 
+    # 默认排除的目录模式（防止检查生成的报告和不必要的目录）
+    DEFAULT_EXCLUDED_DIRS = [
+        'codecheck',        # 检查报告目录
+        '.git',             # Git 仓库目录
+        '.auto-coder',      # auto-coder 配置和日志目录
+        '__pycache__',      # Python 缓存目录
+        'node_modules',     # Node.js 依赖目录
+        '.venv', 'venv',    # Python 虚拟环境
+        'build', 'dist',    # 构建输出目录
+        '.idea', '.vscode'  # IDE 配置目录
+    ]
+
     def __init__(self, chunk_size: int = 4000, overlap: int = 200):
         """
         初始化文件处理器
@@ -99,13 +111,19 @@ class FileProcessor:
             file_str = str(file_path)
             relative_path = str(file_path.relative_to(path_obj))
 
-            # 应用忽略模式
+            # 默认排除检查报告目录和其他不必要的目录
+            path_parts = file_path.parts
+            if any(part in self.DEFAULT_EXCLUDED_DIRS for part in path_parts):
+                logger.debug(f"Ignored by default exclusion: {relative_path}")
+                continue
+
+            # 应用用户自定义的忽略模式
             if filters and filters.should_ignore(relative_path):
                 logger.debug(f"Ignored by filter: {relative_path}")
                 continue
 
             # 跳过隐藏文件和目录
-            if any(part.startswith('.') for part in file_path.parts):
+            if any(part.startswith('.') and part not in ['.github'] for part in path_parts):
                 logger.debug(f"Ignored hidden file: {relative_path}")
                 continue
 
