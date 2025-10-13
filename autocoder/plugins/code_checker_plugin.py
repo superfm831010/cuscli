@@ -52,8 +52,8 @@ class CodeCheckerPlugin(Plugin):
         self.report_generator = None
         self.progress_tracker = None
         self.checker_defaults = {
-            "repeat": 3,
-            "consensus": 0.34,  # 3次中至少1次发现即保留，防止漏报
+            "repeat": 1,
+            "consensus": 1.0,  # 单次调用模式，快速检查
         }
 
     def initialize(self) -> bool:
@@ -369,7 +369,7 @@ class CodeCheckerPlugin(Plugin):
   /ext <.py,.js>                       - 指定文件扩展名（逗号分隔）
   /ignore <tests,__pycache__>          - 忽略目录/文件（逗号分隔）
   /workers <5>                         - 并发数（默认: 5）
-  /repeat <3>                          - LLM 调用次数（默认: 3）
+  /repeat <1>                          - LLM 调用次数（默认: 1）
   /consensus <1.0>                     - 共识阈值 0~1（默认: 1.0）
 
 示例:
@@ -431,8 +431,13 @@ class CodeCheckerPlugin(Plugin):
             progress_display = ProgressDisplay()
 
             with progress_display.display_progress():
-                # 创建进度回调适配器
-                progress_callback = SimpleProgressCallback(progress_display, file_path)
+                # 创建进度回调适配器（传递repeat和consensus参数）
+                progress_callback = SimpleProgressCallback(
+                    progress_display,
+                    file_path,
+                    repeat=self.checker.llm_repeat,
+                    consensus=self.checker.llm_consensus_ratio
+                )
 
                 # 执行检查（传入进度回调）
                 result = self.checker.check_file(file_path, progress_callback=progress_callback)
@@ -836,7 +841,7 @@ class CodeCheckerPlugin(Plugin):
                 try:
                     options["repeat"] = int(parts[i + 1])
                 except ValueError:
-                    print(f"⚠️  无效的重复次数: {parts[i + 1]}，使用默认值 3")
+                    print(f"⚠️  无效的重复次数: {parts[i + 1]}，使用默认值 1")
                 i += 2
             elif part == "/consensus" and i + 1 < len(parts):
                 try:

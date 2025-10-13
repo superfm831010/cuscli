@@ -86,7 +86,7 @@ class CodeChecker:
     DEFAULT_CHUNK_TOKEN_LIMIT = 20000
 
     DEFAULT_LLM_REPEAT = 1
-    DEFAULT_LLM_CONSENSUS_RATIO = 0.34  # 修改为0.34：3次中至少1次发现即保留，防止"集体放水"导致的漏报
+    DEFAULT_LLM_CONSENSUS_RATIO = 1.0  # 单次调用时必须发现，多次调用时所有调用都要发现才保留（最少误报）
 
     def _resolve_chunk_token_limit(self) -> int:
         """

@@ -83,6 +83,10 @@ class ProgressDisplay:
             "llm_last_duration": 0.0,
             "llm_last_issues_found": 0,
 
+            # LLM配置参数
+            "llm_repeat": 1,
+            "llm_consensus": 1.0,
+
             # 速度统计
             "files_per_minute": 0.0,
             "chunks_per_minute": 0.0,
@@ -133,6 +137,12 @@ class ProgressDisplay:
                 llm_text += f" | 📋 发现 {self.current_state['llm_last_issues_found']} 个问题"
 
             lines.append(llm_text)
+
+            # 添加参数说明行
+            repeat = self.current_state["llm_repeat"]
+            consensus = self.current_state["llm_consensus"]
+            param_text = f"⚙️  repeat={repeat} (↑值=↑准确↓速度), consensus={consensus:.2f} (↑值=↓误报↑漏报) | 修改: /check /config"
+            lines.append(param_text)
 
         # 组合文本
         if lines:
@@ -328,6 +338,18 @@ class ProgressDisplay:
 
         self._update_display()
 
+    def update_llm_config(self, repeat: int, consensus: float):
+        """
+        更新LLM配置参数
+
+        Args:
+            repeat: LLM重复调用次数
+            consensus: 共识阈值
+        """
+        self.current_state["llm_repeat"] = repeat
+        self.current_state["llm_consensus"] = consensus
+        self._update_display()
+
     def remove_llm_task(self):
         """清除LLM显示（兼容接口）"""
         self.current_state["llm_total_attempts"] = 0
@@ -368,18 +390,29 @@ class SimpleProgressCallback:
     适用于单文件检查场景。
     """
 
-    def __init__(self, progress_display: ProgressDisplay, file_path: str):
+    def __init__(
+        self,
+        progress_display: ProgressDisplay,
+        file_path: str,
+        repeat: int = 1,
+        consensus: float = 1.0
+    ):
         """
         初始化回调适配器
 
         Args:
             progress_display: 进度显示管理器
             file_path: 文件路径
+            repeat: LLM重复调用次数
+            consensus: 共识阈值
         """
         self.display = progress_display
         self.file_path = file_path
         self.total_chunks = 0
         self.completed_chunks = 0
+
+        # 更新LLM配置参数到显示器
+        self.display.update_llm_config(repeat, consensus)
 
     def __call__(self, step: str, **kwargs):
         """
