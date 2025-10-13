@@ -290,19 +290,28 @@ class EnhancedCompleter(Completer):
                 _input_one_space = " ".join(current_input.split())
                 # 先尝试动态补全特定命令
                 dynamic_cmds = self.plugin_manager.get_dynamic_cmds()
-                for dynamic_cmd in dynamic_cmds:
+
+                # 按长度排序，最长的命令优先匹配（避免短命令误匹配长命令）
+                sorted_dynamic_cmds = sorted(dynamic_cmds, key=len, reverse=True)
+
+                for dynamic_cmd in sorted_dynamic_cmds:
                     if _input_one_space.startswith(dynamic_cmd):
-                        # 使用 PluginManager 处理动态补全，通常是用于命令或子命令动态的参数值列表的补全
-                        completions = self.plugin_manager.process_dynamic_completions(
-                            dynamic_cmd, current_input
-                        )
-                        for completion_text, display_text in completions:
-                            yield Completion(
-                                completion_text,
-                                start_position=0,
-                                display=display_text,
+                        # 精确匹配：确保匹配的是完整命令（后面是空格或结尾）
+                        next_char_pos = len(dynamic_cmd)
+                        if (next_char_pos == len(_input_one_space) or
+                            _input_one_space[next_char_pos] == ' '):
+
+                            # 使用 PluginManager 处理动态补全，通常是用于命令或子命令动态的参数值列表的补全
+                            completions = self.plugin_manager.process_dynamic_completions(
+                                dynamic_cmd, current_input
                             )
-                        return
+                            for completion_text, display_text in completions:
+                                yield Completion(
+                                    completion_text,
+                                    start_position=0,
+                                    display=display_text,
+                                )
+                            return
 
                 # 如果不是特定命令，检查一般命令 + 空格的情况, 通常是用于固定的下级子命令列表的补全
                 cmd_parts = current_input.split(maxsplit=1)
@@ -387,22 +396,30 @@ class EnhancedCompleter(Completer):
                         executor, self.plugin_manager.get_dynamic_cmds
                     )
 
-                    for dynamic_cmd in dynamic_cmds:
+                    # 按长度排序，最长的命令优先匹配（避免短命令误匹配长命令）
+                    sorted_dynamic_cmds = sorted(dynamic_cmds, key=len, reverse=True)
+
+                    for dynamic_cmd in sorted_dynamic_cmds:
                         if _input_one_space.startswith(dynamic_cmd):
-                            # 异步处理动态补全
-                            completions = await loop.run_in_executor(
-                                executor,
-                                self.plugin_manager.process_dynamic_completions,
-                                dynamic_cmd,
-                                current_input,
-                            )
-                            for completion_text, display_text in completions:
-                                yield Completion(
-                                    completion_text,
-                                    start_position=0,
-                                    display=display_text,
+                            # 精确匹配：确保匹配的是完整命令（后面是空格或结尾）
+                            next_char_pos = len(dynamic_cmd)
+                            if (next_char_pos == len(_input_one_space) or
+                                _input_one_space[next_char_pos] == ' '):
+
+                                # 异步处理动态补全
+                                completions = await loop.run_in_executor(
+                                    executor,
+                                    self.plugin_manager.process_dynamic_completions,
+                                    dynamic_cmd,
+                                    current_input,
                                 )
-                            return
+                                for completion_text, display_text in completions:
+                                    yield Completion(
+                                        completion_text,
+                                        start_position=0,
+                                        display=display_text,
+                                    )
+                                return
 
                     # 如果不是特定命令，检查一般命令 + 空格的情况
                     cmd_parts = current_input.split(maxsplit=1)
