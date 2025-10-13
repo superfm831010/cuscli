@@ -668,6 +668,12 @@ class CodeCheckerPlugin(Plugin):
                 # 使用新的进度显示系统
                 progress_display = ProgressDisplay()
 
+                # 更新 LLM 配置显示（与单文件审核保持一致）
+                progress_display.update_llm_config(
+                    repeat=self.checker.llm_repeat,
+                    consensus=self.checker.llm_consensus_ratio
+                )
+
                 try:
                     with progress_display.display_progress():
                         # 初始化文件级进度
@@ -1170,6 +1176,12 @@ class CodeCheckerPlugin(Plugin):
 
             # 使用新的进度显示系统
             progress_display = ProgressDisplay()
+
+            # 更新 LLM 配置显示（与单文件审核保持一致）
+            progress_display.update_llm_config(
+                repeat=self.checker.llm_repeat,
+                consensus=self.checker.llm_consensus_ratio
+            )
 
             results = []
             with progress_display.display_progress():
@@ -1795,6 +1807,12 @@ class CodeCheckerPlugin(Plugin):
 
             results = []
             progress_display = ProgressDisplay()
+
+            # 更新 LLM 配置显示（与单文件审核保持一致）
+            progress_display.update_llm_config(
+                repeat=self.checker.llm_repeat,
+                consensus=self.checker.llm_consensus_ratio
+            )
 
             with progress_display.display_progress():
                 progress_display.update_file_progress(
