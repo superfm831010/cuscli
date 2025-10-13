@@ -635,26 +635,29 @@ class GitHelperPlugin(Plugin):
 
     def _github_test(self, name: str) -> None:
         """测试 GitHub 连接"""
+        import requests
+        from rich.console import Console
+
+        console = Console()
+
         name = name.strip()
         if not name:
-            print("❌ 请指定配置名称")
-            print("用法: /git /github /test <配置名>")
+            console.print("\n[red]❌ 请指定配置名称[/red]")
+            console.print("用法: [cyan]/git /github /test <配置名>[/cyan]\n")
             return
 
         config = self.platform_manager.get_config("github", name)
         if not config:
-            print(f"❌ 配置不存在: {name}")
+            console.print(f"\n[red]❌ 配置不存在: {name}[/red]\n")
             return
 
-        from rich.console import Console
-        from rich.status import Status
-        import requests
+        console.print(f"\n🔍 正在测试 GitHub 连接: {config.name}")
+        console.print(f"   地址: {config.base_url}\n")
 
-        console = Console()
-
-        with Status("[cyan]正在测试连接...", console=console):
+        # 显示进度
+        with console.status("[bold green]测试中...", spinner="dots"):
             try:
-                # 测试 GitHub API
+                # 调用 GitHub API
                 headers = {
                     "Authorization": f"token {config.token}",
                     "Accept": "application/vnd.github.v3+json"
@@ -668,29 +671,59 @@ class GitHelperPlugin(Plugin):
                 )
 
                 if response.status_code == 200:
-                    user_data = response.json()
-                    username = user_data.get("login", "unknown")
+                    data = response.json()
+                    username = data.get("login", "未知")
+                    user_id = data.get("id", "未知")
+                    user_type = data.get("type", "User")
 
-                    # 更新测试时间
+                    # 更新最后测试时间
                     config.update_last_tested()
                     self.platform_manager.save_configs()
 
-                    console.print(f"\n[green]✅ 连接成功！[/green]")
-                    console.print(f"   用户: {username}")
-                    console.print(f"   API: {config.base_url}\n")
+                    # 显示成功信息
+                    console.print("[green]✅ 连接成功！[/green]\n")
+                    console.print(f"[bold]用户信息：[/bold]")
+                    console.print(f"  用户名: {username}")
+                    console.print(f"  用户ID: {user_id}")
+                    console.print(f"  类型: {user_type}")
+
+                    # 显示 API 限额信息
+                    rate_limit = response.headers.get("X-RateLimit-Limit")
+                    rate_remaining = response.headers.get("X-RateLimit-Remaining")
+                    if rate_limit and rate_remaining:
+                        console.print(f"\n[dim]API 限额: {rate_remaining}/{rate_limit}[/dim]")
+
+                    console.print()
+
+                elif response.status_code == 401:
+                    console.print("[red]❌ 认证失败[/red]")
+                    console.print("   Token 无效或已过期\n")
+
+                elif response.status_code == 403:
+                    console.print("[red]❌ 访问被拒绝[/red]")
+                    console.print("   可能是 Token 权限不足或 API 限额耗尽\n")
+
                 else:
-                    console.print(f"\n[red]❌ 连接失败[/red]")
-                    console.print(f"   状态码: {response.status_code}")
-                    console.print(f"   响应: {response.text[:200]}\n")
+                    console.print(f"[red]❌ 连接失败[/red]")
+                    console.print(f"   HTTP {response.status_code}: {response.reason}\n")
+
+            except requests.exceptions.SSLError as e:
+                console.print("[red]❌ SSL 证书验证失败[/red]")
+                console.print(f"   {str(e)}")
+                console.print("\n💡 尝试禁用 SSL 验证:")
+                console.print(f"   [cyan]/git /github /modify {name}[/cyan]\n")
 
             except requests.exceptions.Timeout:
-                console.print(f"\n[red]❌ 连接超时[/red]")
-                console.print(f"   超时时间: {config.timeout}秒\n")
-            except requests.exceptions.SSLError:
-                console.print(f"\n[red]❌ SSL 证书验证失败[/red]")
-                console.print(f"   如果是自签名证书，可以关闭 SSL 验证\n")
+                console.print("[red]❌ 连接超时[/red]")
+                console.print(f"   超过 {config.timeout} 秒未响应\n")
+
+            except requests.exceptions.ConnectionError as e:
+                console.print("[red]❌ 连接错误[/red]")
+                console.print("   无法连接到服务器")
+                console.print(f"   请检查网络和地址: {config.base_url}\n")
+
             except Exception as e:
-                console.print(f"\n[red]❌ 测试失败: {e}[/red]\n")
+                console.print(f"[red]❌ 测试失败: {str(e)}[/red]\n")
 
     def _show_github_help(self) -> None:
         """显示 GitHub 命令帮助"""
@@ -1009,29 +1042,31 @@ class GitHelperPlugin(Plugin):
 
     def _gitlab_test(self, name: str) -> None:
         """测试 GitLab 连接"""
+        import requests
+        from rich.console import Console
+
+        console = Console()
+
         name = name.strip()
         if not name:
-            print("❌ 请指定配置名称")
-            print("用法: /git /gitlab /test <配置名>")
+            console.print("\n[red]❌ 请指定配置名称[/red]")
+            console.print("用法: [cyan]/git /gitlab /test <配置名>[/cyan]\n")
             return
 
         config = self.platform_manager.get_config("gitlab", name)
         if not config:
-            print(f"❌ 配置不存在: {name}")
+            console.print(f"\n[red]❌ 配置不存在: {name}[/red]\n")
             return
 
-        from rich.console import Console
-        from rich.status import Status
-        import requests
+        console.print(f"\n🔍 正在测试 GitLab 连接: {config.name}")
+        console.print(f"   地址: {config.base_url}\n")
 
-        console = Console()
-
-        with Status("[cyan]正在测试连接...", console=console):
+        with console.status("[bold green]测试中...", spinner="dots"):
             try:
-                # 测试 GitLab API
+                # 调用 GitLab API
                 headers = {
-                    "PRIVATE-TOKEN": config.token,
-                    "Accept": "application/json"
+                    "Authorization": f"Bearer {config.token}",
+                    "Content-Type": "application/json"
                 }
 
                 response = requests.get(
@@ -1042,29 +1077,69 @@ class GitHelperPlugin(Plugin):
                 )
 
                 if response.status_code == 200:
-                    user_data = response.json()
-                    username = user_data.get("username", "unknown")
+                    data = response.json()
+                    username = data.get("username", "未知")
+                    user_id = data.get("id", "未知")
+                    name_full = data.get("name", "未知")
 
-                    # 更新测试时间
+                    # 更新最后测试时间
                     config.update_last_tested()
                     self.platform_manager.save_configs()
 
-                    console.print(f"\n[green]✅ 连接成功！[/green]")
-                    console.print(f"   用户: {username}")
-                    console.print(f"   API: {config.base_url}\n")
+                    # 显示成功信息
+                    console.print("[green]✅ 连接成功！[/green]\n")
+                    console.print(f"[bold]用户信息：[/bold]")
+                    console.print(f"  用户名: {username}")
+                    console.print(f"  姓名: {name_full}")
+                    console.print(f"  用户ID: {user_id}")
+
+                    # 尝试获取 GitLab 版本
+                    try:
+                        version_response = requests.get(
+                            f"{config.base_url}/version",
+                            headers=headers,
+                            verify=config.verify_ssl,
+                            timeout=config.timeout
+                        )
+                        if version_response.status_code == 200:
+                            version_data = version_response.json()
+                            gitlab_version = version_data.get("version", "未知")
+                            console.print(f"\n[dim]GitLab 版本: {gitlab_version}[/dim]")
+                    except:
+                        pass
+
+                    console.print()
+
+                elif response.status_code == 401:
+                    console.print("[red]❌ 认证失败[/red]")
+                    console.print("   Token 无效或已过期\n")
+
+                elif response.status_code == 403:
+                    console.print("[red]❌ 访问被拒绝[/red]")
+                    console.print("   Token 权限不足\n")
+
                 else:
-                    console.print(f"\n[red]❌ 连接失败[/red]")
-                    console.print(f"   状态码: {response.status_code}")
-                    console.print(f"   响应: {response.text[:200]}\n")
+                    console.print(f"[red]❌ 连接失败[/red]")
+                    console.print(f"   HTTP {response.status_code}: {response.reason}\n")
+
+            except requests.exceptions.SSLError as e:
+                console.print("[red]❌ SSL 证书验证失败[/red]")
+                console.print(f"   {str(e)}")
+                console.print("\n💡 这在私有部署的 GitLab 中很常见")
+                console.print("   尝试禁用 SSL 验证:")
+                console.print(f"   [cyan]/git /gitlab /modify {name}[/cyan]\n")
 
             except requests.exceptions.Timeout:
-                console.print(f"\n[red]❌ 连接超时[/red]")
-                console.print(f"   超时时间: {config.timeout}秒\n")
-            except requests.exceptions.SSLError:
-                console.print(f"\n[red]❌ SSL 证书验证失败[/red]")
-                console.print(f"   如果是自签名证书，可以关闭 SSL 验证\n")
+                console.print("[red]❌ 连接超时[/red]")
+                console.print(f"   超过 {config.timeout} 秒未响应\n")
+
+            except requests.exceptions.ConnectionError:
+                console.print("[red]❌ 连接错误[/red]")
+                console.print("   无法连接到服务器")
+                console.print(f"   请检查网络和地址: {config.base_url}\n")
+
             except Exception as e:
-                console.print(f"\n[red]❌ 测试失败: {e}[/red]\n")
+                console.print(f"[red]❌ 测试失败: {str(e)}[/red]\n")
 
     def _show_gitlab_help(self) -> None:
         """显示 GitLab 命令帮助"""
