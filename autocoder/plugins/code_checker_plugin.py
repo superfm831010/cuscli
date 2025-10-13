@@ -725,23 +725,23 @@ class CodeCheckerPlugin(Plugin):
                                 except Exception as e:
                                     logger.error(f"生成中间快照失败: {e}", exc_info=True)
 
-            except KeyboardInterrupt:
-                # Task 8.1: 处理中断
-                print()
-                print()
-                check_interrupted = True
-                state = self.progress_tracker.load_state(check_id)
-                if state:
-                    state.status = "interrupted"
-                    self.progress_tracker.save_state(check_id, state)
+                except KeyboardInterrupt:
+                    # Task 8.1: 处理中断
+                    print()
+                    print()
+                    check_interrupted = True
+                    state = self.progress_tracker.load_state(check_id)
+                    if state:
+                        state.status = "interrupted"
+                        self.progress_tracker.save_state(check_id, state)
 
-                print("⚠️  检查已中断")
-                print(f"   检查 ID: {check_id}")
-                print(f"   已完成: {len(results)}/{len(files)} 个文件")
-                print(f"   剩余: {len(files) - len(results)} 个文件")
-                print()
+                    print("⚠️  检查已中断")
+                    print(f"   检查 ID: {check_id}")
+                    print(f"   已完成: {len(results)}/{len(files)} 个文件")
+                    print(f"   剩余: {len(files) - len(results)} 个文件")
+                    print()
 
-                logger.info(f"检查已中断: {check_id}, 已完成 {len(results)}/{len(files)}")
+                    logger.info(f"检查已中断: {check_id}, 已完成 {len(results)}/{len(files)}")
 
                 finally:
                     # 确保即使中断或出错也生成部分报告
