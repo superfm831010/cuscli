@@ -20,6 +20,7 @@ from datetime import datetime
 from autocoder.plugins import Plugin, PluginManager
 from loguru import logger
 from autocoder.checker.git_helper import GitFileHelper, TempFileManager
+from autocoder.checker.types import GitInfo
 
 
 class CodeCheckerPlugin(Plugin):
@@ -1822,7 +1823,56 @@ class CodeCheckerPlugin(Plugin):
             for result in results:
                 self.report_generator.generate_file_report(result, report_dir)
 
-            self.report_generator.generate_summary_report(results, report_dir)
+            # Phase 4: 构造 GitInfo（如果是 Git 检查）
+            git_info = None
+            if 'commit_info' in options:
+                # Commit 检查
+                commit_info = options['commit_info']
+                git_info = GitInfo(
+                    type="commit",
+                    commit_hash=commit_info['hash'],
+                    short_hash=commit_info['short_hash'],
+                    message=commit_info['message'],
+                    author=commit_info['author'],
+                    date=commit_info['date'],
+                    files_changed=len(files)
+                )
+            elif 'diff_info' in options:
+                # Diff 检查
+                diff_parts = options['diff_info'].split('...')
+                git_info = GitInfo(
+                    type="diff",
+                    commit1=diff_parts[0] if len(diff_parts) > 0 else "",
+                    commit2=diff_parts[1] if len(diff_parts) > 1 else "HEAD",
+                    files_changed=len(files)
+                )
+            elif check_type == "git_staged":
+                # 暂存区检查
+                try:
+                    git_helper = GitFileHelper()
+                    branch = git_helper.repo.active_branch.name
+                    git_info = GitInfo(
+                        type="staged",
+                        branch=branch,
+                        files_changed=len(files)
+                    )
+                except Exception as e:
+                    logger.warning(f"获取分支信息失败: {e}")
+            elif check_type == "git_unstaged":
+                # 工作区检查
+                try:
+                    git_helper = GitFileHelper()
+                    branch = git_helper.repo.active_branch.name
+                    git_info = GitInfo(
+                        type="unstaged",
+                        branch=branch,
+                        files_changed=len(files)
+                    )
+                except Exception as e:
+                    logger.warning(f"获取分支信息失败: {e}")
+
+            # 生成汇总报告（Phase 4: 传递 git_info）
+            self.report_generator.generate_summary_report(results, report_dir, git_info=git_info)
 
             # 显示汇总
             self._show_batch_summary(results, report_dir)

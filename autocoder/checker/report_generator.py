@@ -14,6 +14,7 @@ from loguru import logger
 from autocoder.checker.types import (
     FileCheckResult,
     BatchCheckResult,
+    GitInfo,
     Issue,
     Severity
 )
@@ -112,7 +113,7 @@ class ReportGenerator:
             raise RuntimeError(error_msg) from e
 
     def generate_summary_report(
-        self, results: List[FileCheckResult], report_dir: str
+        self, results: List[FileCheckResult], report_dir: str, git_info: Optional[GitInfo] = None
     ) -> None:
         """
         生成批量检查的汇总报告（JSON + Markdown）
@@ -120,6 +121,7 @@ class ReportGenerator:
         Args:
             results: 所有文件的检查结果列表
             report_dir: 报告输出目录
+            git_info: Git 检查信息（可选，Phase 4 新增）
         """
         try:
             # 确保报告目录存在
@@ -144,7 +146,8 @@ class ReportGenerator:
                 total_errors=total_errors,
                 total_warnings=total_warnings,
                 total_infos=total_infos,
-                file_results=results
+                file_results=results,
+                git_info=git_info  # Phase 4: 传递 Git 信息
             )
 
             # 生成 JSON 汇总报告
@@ -378,6 +381,73 @@ class ReportGenerator:
         md += "\n---\n\n"
         return md
 
+    def _get_git_report_title(self, git_info: GitInfo) -> str:
+        """
+        根据 Git 类型生成报告标题（Phase 4）
+
+        Args:
+            git_info: Git 检查信息
+
+        Returns:
+            报告标题字符串
+        """
+        if git_info.type == "staged":
+            return "代码检查报告 - Git 暂存区"
+        elif git_info.type == "unstaged":
+            return "代码检查报告 - Git 工作区"
+        elif git_info.type == "commit":
+            return "代码检查报告 - Git Commit"
+        elif git_info.type == "diff":
+            return "代码检查报告 - Git Diff"
+        else:
+            return "代码检查报告"
+
+    def _format_git_info_markdown(self, git_info: GitInfo) -> List[str]:
+        """
+        格式化 Git 信息为 Markdown（Phase 4）
+
+        Args:
+            git_info: Git 检查信息
+
+        Returns:
+            Markdown 格式的 Git 信息行列表
+        """
+        lines = []
+
+        if git_info.type == "staged":
+            lines.append("**检查类型**: Git 暂存区文件")
+            if git_info.branch:
+                lines.append(f"**当前分支**: {git_info.branch}")
+            lines.append(f"**文件数量**: {git_info.files_changed} 个")
+
+        elif git_info.type == "unstaged":
+            lines.append("**检查类型**: Git 工作区修改文件")
+            if git_info.branch:
+                lines.append(f"**当前分支**: {git_info.branch}")
+            lines.append(f"**文件数量**: {git_info.files_changed} 个")
+
+        elif git_info.type == "commit":
+            lines.append("**检查类型**: Git Commit 检查")
+            if git_info.short_hash and git_info.message:
+                # 截断过长的 commit message（只显示第一行）
+                message_first_line = git_info.message.splitlines()[0] if git_info.message else ""
+                if len(message_first_line) > 80:
+                    message_first_line = message_first_line[:77] + "..."
+                lines.append(f"**Commit**: `{git_info.short_hash}` - {message_first_line}")
+            if git_info.author:
+                lines.append(f"**作者**: {git_info.author}")
+            if git_info.date:
+                lines.append(f"**日期**: {git_info.date}")
+            lines.append(f"**变更文件**: {git_info.files_changed} 个")
+
+        elif git_info.type == "diff":
+            lines.append("**检查类型**: Git Diff 检查")
+            if git_info.commit1 and git_info.commit2:
+                lines.append(f"**对比范围**: `{git_info.commit1}`...`{git_info.commit2}`")
+            lines.append(f"**差异文件**: {git_info.files_changed} 个")
+
+        return lines
+
     def _format_summary_markdown(self, batch_result: BatchCheckResult) -> str:
         """
         格式化批量检查结果为 Markdown
@@ -394,36 +464,45 @@ class ReportGenerator:
         if duration >= 60:
             duration_str = f"{duration / 60:.2f} 分钟"
 
+        # Phase 4: 根据是否有 Git 信息决定标题
+        if batch_result.git_info:
+            title = self._get_git_report_title(batch_result.git_info)
+        else:
+            title = "代码检查汇总报告"
+
         # 构建 Markdown 内容
-        md = f"""# 📊 代码检查汇总报告
+        md = f"# 📊 {title}\n\n"
 
-**检查 ID**: `{batch_result.check_id}`
-**开始时间**: {batch_result.start_time}
-**结束时间**: {batch_result.end_time}
-**总耗时**: {duration_str}
+        # Phase 4: 如果有 Git 信息，先显示 Git 信息
+        if batch_result.git_info:
+            git_lines = self._format_git_info_markdown(batch_result.git_info)
+            for line in git_lines:
+                md += f"{line}\n"
+            md += f"**检查时间**: {batch_result.end_time}\n"
+            md += "\n---\n\n"
+        else:
+            # 非 Git 检查，显示原有的检查 ID 和时间信息
+            md += f"**检查 ID**: `{batch_result.check_id}`\n"
+            md += f"**开始时间**: {batch_result.start_time}\n"
+            md += f"**结束时间**: {batch_result.end_time}\n"
+            md += f"**总耗时**: {duration_str}\n\n"
 
-## 📈 检查概览
+        md += "## 📈 检查概览\n\n"
+        md += "| 统计项 | 数量 |\n"
+        md += "|--------|------|\n"
+        md += f"| 总文件数 | {batch_result.total_files} |\n"
+        md += f"| 已检查文件 | {batch_result.checked_files} |\n"
+        md += f"| 完成率 | {batch_result.get_completion_rate():.1f}% |\n"
+        md += f"| **总问题数** | **{batch_result.total_issues}** |\n\n"
 
-| 统计项 | 数量 |
-|--------|------|
-| 总文件数 | {batch_result.total_files} |
-| 已检查文件 | {batch_result.checked_files} |
-| 完成率 | {batch_result.get_completion_rate():.1f}% |
-| **总问题数** | **{batch_result.total_issues}** |
-
-## 🔍 问题分布
-
-| 严重程度 | 数量 | 占比 |
-|---------|------|------|
-| ❌ 错误 (ERROR) | {batch_result.total_errors} | {batch_result.total_errors / max(batch_result.total_issues, 1) * 100:.1f}% |
-| ⚠️ 警告 (WARNING) | {batch_result.total_warnings} | {batch_result.total_warnings / max(batch_result.total_issues, 1) * 100:.1f}% |
-| ℹ️ 提示 (INFO) | {batch_result.total_infos} | {batch_result.total_infos / max(batch_result.total_issues, 1) * 100:.1f}% |
-
----
-
-## 📋 文件检查详情
-
-"""
+        md += "## 🔍 问题分布\n\n"
+        md += "| 严重程度 | 数量 | 占比 |\n"
+        md += "|---------|------|------|\n"
+        md += f"| ❌ 错误 (ERROR) | {batch_result.total_errors} | {batch_result.total_errors / max(batch_result.total_issues, 1) * 100:.1f}% |\n"
+        md += f"| ⚠️ 警告 (WARNING) | {batch_result.total_warnings} | {batch_result.total_warnings / max(batch_result.total_issues, 1) * 100:.1f}% |\n"
+        md += f"| ℹ️ 提示 (INFO) | {batch_result.total_infos} | {batch_result.total_infos / max(batch_result.total_issues, 1) * 100:.1f}% |\n\n"
+        md += "---\n\n"
+        md += "## 📋 文件检查详情\n\n"
 
         # 按问题数量排序文件
         sorted_results = sorted(

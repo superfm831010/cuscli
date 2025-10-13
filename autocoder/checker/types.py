@@ -105,6 +105,36 @@ class FileCheckResult(BaseModel):
         return self.error_count > 0
 
 
+class GitInfo(BaseModel):
+    """
+    Git 检查信息（Phase 4: 报告增强）
+
+    用于在报告中显示 Git 上下文信息，帮助用户了解检查的来源。
+
+    Attributes:
+        type: 检查类型（staged/unstaged/commit/diff）
+        branch: 当前分支名称（可选，用于 staged/unstaged）
+        commit_hash: 完整 commit 哈希值（可选，用于 commit）
+        short_hash: 短 commit 哈希值（可选，用于 commit）
+        message: commit 提交信息（可选，用于 commit）
+        author: commit 作者（可选，用于 commit）
+        date: commit 日期（可选，用于 commit）
+        commit1: diff 的第一个 commit（可选，用于 diff）
+        commit2: diff 的第二个 commit（可选，用于 diff）
+        files_changed: 变更文件数量
+    """
+    type: str = Field(..., description="检查类型：staged/unstaged/commit/diff")
+    branch: Optional[str] = Field(default=None, description="当前分支名称")
+    commit_hash: Optional[str] = Field(default=None, description="完整 commit 哈希值")
+    short_hash: Optional[str] = Field(default=None, description="短 commit 哈希值")
+    message: Optional[str] = Field(default=None, description="commit 提交信息")
+    author: Optional[str] = Field(default=None, description="commit 作者")
+    date: Optional[str] = Field(default=None, description="commit 日期")
+    commit1: Optional[str] = Field(default=None, description="diff 的第一个 commit")
+    commit2: Optional[str] = Field(default=None, description="diff 的第二个 commit")
+    files_changed: int = Field(default=0, ge=0, description="变更文件数量")
+
+
 class BatchCheckResult(BaseModel):
     """
     批量检查结果
@@ -120,6 +150,7 @@ class BatchCheckResult(BaseModel):
         total_warnings: 总警告数
         total_infos: 总提示数
         file_results: 各文件的检查结果
+        git_info: Git 检查信息（可选，Phase 4 新增）
     """
     check_id: str = Field(..., description="检查任务ID")
     start_time: str = Field(..., description="开始时间")
@@ -133,6 +164,7 @@ class BatchCheckResult(BaseModel):
     file_results: List[FileCheckResult] = Field(
         default_factory=list, description="文件检查结果列表"
     )
+    git_info: Optional[GitInfo] = Field(default=None, description="Git 检查信息（Phase 4）")
 
     def get_duration_seconds(self) -> float:
         """计算检查耗时（秒）"""
