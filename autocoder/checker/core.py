@@ -85,7 +85,7 @@ class CodeChecker:
     DEFAULT_CHUNK_TOKEN_LIMIT = 20000
 
     DEFAULT_LLM_REPEAT = 1
-    DEFAULT_LLM_CONSENSUS_RATIO = 1.0
+    DEFAULT_LLM_CONSENSUS_RATIO = 0.34  # 修改为0.34：3次中至少1次发现即保留，防止"集体放水"导致的漏报
 
     def _resolve_chunk_token_limit(self) -> int:
         """
@@ -182,15 +182,44 @@ class CodeChecker:
         return ratio
 
     def _aggregate_attempt_results(self, attempt_results: List[List[Issue]]) -> List[Issue]:
-        """根据多次 LLM 调用结果取交集/多数票"""
+        """根据多次 LLM 调用结果取交集/多数票，并检测结果一致性"""
         if not attempt_results:
             return []
 
         attempts = len(attempt_results)
         threshold = max(1, math.ceil(self.llm_consensus_ratio * attempts))
         logger.debug(
-            "聚合 LLM 结果: attempts=%s, threshold=%s", attempts, threshold
+            f"聚合 LLM 结果: attempts={attempts}, threshold={threshold}"
         )
+
+        # 一致性检查：计算各次调用的问题数量
+        issue_counts = [len(issues or []) for issues in attempt_results]
+        avg_count = sum(issue_counts) / len(issue_counts) if issue_counts else 0
+        max_count = max(issue_counts) if issue_counts else 0
+        min_count = min(issue_counts) if issue_counts else 0
+
+        # 检测异常情况：结果差异过大
+        if attempts >= 2:
+            # 计算变异系数 (CV = std / mean)，衡量相对波动
+            if avg_count > 0:
+                variance = sum((c - avg_count) ** 2 for c in issue_counts) / len(issue_counts)
+                std_dev = math.sqrt(variance)
+                cv = std_dev / avg_count
+
+                # 如果变异系数 > 0.5（即标准差超过均值的50%），发出警告
+                if cv > 0.5:
+                    logger.warning(
+                        f"⚠️  检测到 LLM 输出不一致：{attempts}次调用发现问题数分别为 {issue_counts}，"
+                        f"平均={avg_count:.1f}，标准差={std_dev:.1f}，变异系数={cv:.2f}"
+                    )
+
+                # 特别警告："集体放水"现象（有些调用返回0，有些返回正常数量）
+                if min_count == 0 and max_count > 3:
+                    zero_count = sum(1 for c in issue_counts if c == 0)
+                    logger.warning(
+                        f"⚠️  检测到疑似'集体放水'：{attempts}次调用中有{zero_count}次返回0个问题，"
+                        f"但其他调用发现了{max_count}个问题。建议检查 Prompt 是否足够严格。"
+                    )
 
         aggregated: Dict[tuple, Dict[str, Any]] = {}
 
@@ -212,11 +241,7 @@ class CodeChecker:
                     seen_keys.add(key)
 
             logger.debug(
-                "Attempt %s/%s 包含 %s 个问题（去重后 %s）",
-                idx,
-                attempts,
-                len(issues or []),
-                len(seen_keys),
+                f"Attempt {idx}/{attempts} 包含 {len(issues or [])} 个问题（去重后 {len(seen_keys)}）"
             )
 
         final_issues: List[Issue] = []
@@ -225,10 +250,7 @@ class CodeChecker:
                 final_issues.append(data["issue"])
             else:
                 logger.debug(
-                    "丢弃问题 %s：出现 %s 次 < 阈值 %s",
-                    key,
-                    data["count"],
-                    threshold,
+                    f"丢弃问题 {key}：出现 {data['count']} 次 < 阈值 {threshold}"
                 )
 
         return final_issues
@@ -685,10 +707,7 @@ class CodeChecker:
             conversations = [{"role": "user", "content": prompt}]
             attempts = max(1, self.llm_repeat)
             logger.info(
-                "调用 LLM 进行代码检查（超时: %s秒，重复次数=%s，consensus=%.2f）",
-                timeout,
-                attempts,
-                self.llm_consensus_ratio,
+                f"调用 LLM 进行代码检查（超时: {timeout}秒，重复次数={attempts}，consensus={self.llm_consensus_ratio:.2f}）"
             )
 
             effective_llm_config = dict(self.llm_config)
@@ -730,10 +749,7 @@ class CodeChecker:
                     logger.debug(f"LLM 响应: {response_text[:200]}...")
                     issues = self._parse_llm_response(response_text, line_map=line_map)
                     logger.info(
-                        "Attempt %s/%s 解析出 %s 个问题",
-                        attempt + 1,
-                        attempts,
-                        len(issues),
+                        f"Attempt {attempt + 1}/{attempts} 解析出 {len(issues)} 个问题"
                     )
                     attempt_results.append(issues)
                 else:
@@ -749,9 +765,7 @@ class CodeChecker:
 
             aggregated = self._aggregate_attempt_results(attempt_results)
             logger.info(
-                "多次尝试后保留 %s 个问题 (consensus >= %.2f)",
-                len(aggregated),
-                self.llm_consensus_ratio,
+                f"多次尝试后保留 {len(aggregated)} 个问题 (consensus >= {self.llm_consensus_ratio:.2f})"
             )
             return aggregated
 
@@ -915,9 +929,22 @@ class CodeChecker:
         """
         代码检查 Prompt
 
-        你是一个代码审查专家。请根据提供的规则检查代码，找出不符合规范的地方。
+        你是一个严格的代码审查专家，你的职责是发现代码中的所有规范问题。
 
-        **重要：请使用一致的判断标准进行检查，确保同样的代码问题每次都能被准确发现和报告。对于明显违反规则的问题，应该准确报告。**
+        **核心原则（最高优先级）**：
+        1. **宁可误报，不可漏报** - 对于可疑的代码，应该报告问题而不是放过
+        2. **严格执行规则** - 对照规则逐条检查，不要因为"看起来还行"就放宽标准
+        3. **保持一致性** - 相同的代码问题每次检查都必须发现并报告
+        4. **客观量化** - 对于涉及数值判断的规则（如行数、嵌套层数），严格按照阈值判断
+
+        **常见错误（必须避免）**：
+        ❌ 错误示例1：代码"看起来还可以"，就不报告问题 → 这是放水行为，严禁！
+        ❌ 错误示例2：方法有35行，觉得"还不算太长"，就不报告 → 必须严格对照30行阈值
+        ❌ 错误示例3：本次检查发现0个问题，但代码明显存在规范问题 → 这是严重失职
+
+        ✅ 正确示例1：代码有魔数"0"用于判断，即使很常见也要报告
+        ✅ 正确示例2：方法有31行，立即报告 backend_009 违规
+        ✅ 正确示例3：发现未使用的import，无论多小都要报告
 
         ## 检查规则
 
@@ -931,11 +958,16 @@ class CodeChecker:
 
         ## 输出要求
 
-        请仔细检查代码，对于每个发现的问题：
+        请逐条对照规则严格检查代码，对于每个发现的问题：
         1. 准确定位问题的起始和结束行号（注意：代码中的行号格式为 "行号 代码内容"，请提取正确的行号）
         2. 引用违反的规则ID
-        3. 描述问题
+        3. 描述问题（要具体，说明违反了什么标准）
         4. 提供修复建议
+
+        **检查策略**：
+        - 对每条规则进行全文扫描，不要遗漏任何可疑点
+        - 遇到边界情况（如正好30行）要严格按照规则判断
+        - 即使是小问题（如单个魔数、一行注释代码）也要报告
 
         以 JSON 数组格式输出，每个问题包含：
         - rule_id: 违反的规则ID（字符串）
@@ -964,7 +996,10 @@ class CodeChecker:
            - 对于涉及数值判断的规则（如行数、嵌套层数），严格按照阈值判断
         6. 每个问题都必须有明确的规则依据
 
-        如果没有发现问题，返回空数组 []
+        **重要提醒**：
+        - 只有在彻底检查所有规则后，确认代码完全符合所有规范，才返回空数组 []
+        - 如果返回空数组，意味着你承诺代码完全合规，请三思而后行
+        - 对于一个500+行的Java业务代码，通常会存在多个规范问题（如魔数、注释代码、过长方法等）
 
         ## 输出示例
 

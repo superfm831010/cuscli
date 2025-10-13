@@ -53,7 +53,7 @@ class CodeCheckerPlugin(Plugin):
         self.progress_tracker = None
         self.checker_defaults = {
             "repeat": 3,
-            "consensus": 1.0,
+            "consensus": 0.34,  # 3次中至少1次发现即保留，防止漏报
         }
 
     def initialize(self) -> bool:
