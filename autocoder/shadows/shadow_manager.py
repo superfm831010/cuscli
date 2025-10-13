@@ -1,5 +1,6 @@
 import os
 import shutil
+import platform
 
 class ShadowManager:
     """
@@ -272,13 +273,13 @@ class ShadowManager:
     def _clean_link_project_dir(self):
         """
         清理链接项目目录中的所有内容，但保留目录本身。
-        
+
         返回:
             bool: 操作成功则为True，否则为False
         """
         if not os.path.exists(self.link_projects_dir):
             return True
-            
+
         try:
             # 删除链接项目目录中的所有内容
             for item in os.listdir(self.link_projects_dir):
@@ -287,11 +288,43 @@ class ShadowManager:
                     os.unlink(item_path)
                 elif os.path.isdir(item_path):
                     shutil.rmtree(item_path)
-            
+
             return True
         except Exception as e:
             print(f"清理链接项目目录时出错: {str(e)}")
             return False
+
+    def _create_symlink_safe(self, src, dst):
+        """
+        跨平台安全地创建符号链接
+
+        在 Unix/Linux 系统上使用 os.symlink()（原有逻辑保持不变）
+        在 Windows 系统上尝试创建符号链接，失败时降级为文件复制
+
+        参数:
+            src: 源文件或目录路径
+            dst: 目标链接路径
+
+        注意:
+            - Linux/Unix: 保持原有 os.symlink() 行为不变
+            - Windows: 尝试创建符号链接（需要权限），失败则复制文件/目录
+        """
+        if platform.system() == "Windows":
+            # Windows 平台特殊处理
+            try:
+                # 尝试创建符号链接（需要管理员权限或开发者模式）
+                os.symlink(src, dst)
+            except OSError:
+                # 符号链接创建失败，降级为复制
+                if os.path.isdir(src):
+                    # 目录：使用 copytree
+                    shutil.copytree(src, dst, symlinks=True)
+                else:
+                    # 文件：使用 copy2（保留元数据）
+                    shutil.copy2(src, dst)
+        else:
+            # Linux/Unix 系统：保持原有逻辑不变
+            os.symlink(src, dst)
 
     def _create_links(self, source_path, link_path, rel_path=''):
         """
@@ -338,10 +371,10 @@ class ShadowManager:
                                 
                             # 如果文件在shadows_dir中存在，链接到shadows_dir中的文件
                             if os.path.exists(shadow_file_path) and os.path.isfile(shadow_file_path):
-                                os.symlink(shadow_file_path, link_file_path)
+                                self._create_symlink_safe(shadow_file_path, link_file_path)
                             # 否则链接到源目录中的文件
                             else:
-                                os.symlink(source_file_path, link_file_path)
+                                self._create_symlink_safe(source_file_path, link_file_path)
                     
                     # 递归处理子目录
                     self._create_links(source_item_path, link_item_path, current_rel_path)
@@ -356,24 +389,24 @@ class ShadowManager:
                             shutil.rmtree(link_item_path)
                         else:
                             os.remove(link_item_path)
-                            
-                    os.symlink(source_item_path, link_item_path)
+
+                    self._create_symlink_safe(source_item_path, link_item_path)
             
             # 处理第一层级文件
             elif os.path.isfile(source_item_path):
                 # 构建在shadows_dir中可能存在的对应文件路径
                 shadow_file_path = os.path.join(self.shadows_dir, current_rel_path)
-                
+
                 # 检查链接文件是否已存在，如果存在则删除
                 if os.path.exists(link_item_path):
                     os.remove(link_item_path)
-                    
+
                 # 如果文件在shadows_dir中存在，链接到shadows_dir中的文件
                 if os.path.exists(shadow_file_path) and os.path.isfile(shadow_file_path):
-                    os.symlink(shadow_file_path, link_item_path)
+                    self._create_symlink_safe(shadow_file_path, link_item_path)
                 # 否则链接到源目录中的文件
                 else:
-                    os.symlink(source_item_path, link_item_path)
+                    self._create_symlink_safe(source_item_path, link_item_path)
                     
     def compare_directories(self):
         """

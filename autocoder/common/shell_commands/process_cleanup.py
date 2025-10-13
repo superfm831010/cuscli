@@ -90,16 +90,25 @@ def _cleanup_process_tree_unix(pid: int, timeout: float, force_timeout: float) -
 def _terminate_gracefully_unix(pid: int, pgid: int, children: List, timeout: float) -> bool:
     """
     Attempt graceful termination on Unix systems.
-    
+
     Args:
         pid: Process ID
         pgid: Process group ID
         children: List of child processes (if psutil available)
         timeout: Timeout for graceful termination
-        
+
     Returns:
         True if successful
+
+    Note:
+        This function is Unix-specific. On Windows, it returns False immediately
+        to let the caller use Windows-specific cleanup methods.
     """
+    # Platform check: This function is Unix-specific
+    if platform.system() == "Windows":
+        logger.debug("_terminate_gracefully_unix called on Windows, returning False")
+        return False
+
     # Check if process already gone
     if not _process_exists(pid):
         logger.debug(f"Process {pid} already terminated")
@@ -148,16 +157,25 @@ def _terminate_gracefully_unix(pid: int, pgid: int, children: List, timeout: flo
 def _force_terminate_unix(pid: int, pgid: int, children: List, timeout: float) -> bool:
     """
     Force termination on Unix systems.
-    
+
     Args:
         pid: Process ID
-        pgid: Process group ID  
+        pgid: Process group ID
         children: List of child processes
         timeout: Timeout for forced termination
-        
+
     Returns:
         True if successful
+
+    Note:
+        This function is Unix-specific. On Windows, it returns False immediately
+        to let the caller use Windows-specific cleanup methods.
     """
+    # Platform check: This function is Unix-specific
+    if platform.system() == "Windows":
+        logger.debug("_force_terminate_unix called on Windows, returning False")
+        return False
+
     # Check if process already gone
     if not _process_exists(pid):
         logger.debug(f"Process {pid} already terminated")
@@ -294,23 +312,27 @@ def _process_exists(pid: int) -> bool:
 def kill_process_group(pgid: int, sig: int = signal.SIGTERM) -> bool:
     """
     Send signal to an entire process group.
-    
+
     Args:
         pgid: Process group ID
         sig: Signal to send (default: SIGTERM)
-        
+
     Returns:
         True if successful
+
+    Note:
+        Process group signaling is Unix-specific and not supported on Windows.
+        On Windows, this function returns False immediately.
     """
     try:
         if platform.system() == "Windows":
             logger.warning("Process group signaling not supported on Windows")
             return False
-        
+
         os.killpg(pgid, sig)
         logger.debug(f"Sent signal {sig} to process group {pgid}")
         return True
-        
+
     except OSError as e:
         logger.debug(f"Error sending signal {sig} to process group {pgid}: {e}")
         return False
