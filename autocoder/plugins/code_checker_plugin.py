@@ -1218,4 +1218,4 @@ class CodeCheckerPlugin(Plugin):
 
     def shutdown(self) -> None:
         """关闭插件"""
-        logger.info(f"[{self.name}] 代码检查插件已关闭")
+        print(f"[{self.name}] 代码检查插件已关闭")
