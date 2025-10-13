@@ -161,7 +161,9 @@ class CheckState(BaseModel):
         total_files: 所有待检查文件列表
         completed_files: 已完成检查的文件列表
         remaining_files: 剩余待检查文件列表
-        status: 检查状态（running/completed/interrupted）
+        status: 检查状态（running/completed/interrupted/failed）
+        report_dir: 报告目录路径
+        file_results_dir: 文件结果保存目录（用于持久化检查结果）
     """
     check_id: str = Field(..., description="检查任务ID")
     start_time: str = Field(..., description="开始时间")
@@ -170,6 +172,8 @@ class CheckState(BaseModel):
     completed_files: List[str] = Field(default_factory=list, description="已完成文件")
     remaining_files: List[str] = Field(default_factory=list, description="剩余文件")
     status: str = Field(default="running", description="检查状态")
+    report_dir: Optional[str] = Field(default=None, description="报告目录路径")
+    file_results_dir: Optional[str] = Field(default=None, description="文件结果保存目录")
 
     def get_progress_percentage(self) -> float:
         """获取进度百分比"""

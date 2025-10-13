@@ -126,7 +126,8 @@ class ProgressTracker:
         self,
         files: List[str],
         config: Dict[str, Any],
-        project_name: str = "project"
+        project_name: str = "project",
+        report_dir: Optional[str] = None
     ) -> str:
         """
         开始新的检查任务
@@ -135,12 +136,17 @@ class ProgressTracker:
             files: 待检查文件列表
             config: 检查配置
             project_name: 项目名称
+            report_dir: 报告目录路径
 
         Returns:
             生成的检查ID
         """
         check_id = self._generate_check_id(project_name)
         start_time = datetime.now().isoformat()
+
+        # 创建文件结果保存目录
+        results_dir = self._get_results_dir(check_id)
+        os.makedirs(results_dir, exist_ok=True)
 
         state = CheckState(
             check_id=check_id,
@@ -149,7 +155,9 @@ class ProgressTracker:
             total_files=files.copy(),
             completed_files=[],
             remaining_files=files.copy(),
-            status="running"
+            status="running",
+            report_dir=report_dir,
+            file_results_dir=results_dir
         )
 
         self.save_state(check_id, state)
@@ -352,3 +360,134 @@ class ProgressTracker:
             "remaining_files": len(state.remaining_files),
             "progress_percentage": state.get_progress_percentage(),
         }
+
+    def _get_results_dir(self, check_id: str) -> str:
+        """
+        获取文件结果保存目录
+
+        Args:
+            check_id: 检查ID
+
+        Returns:
+            结果目录路径
+        """
+        return os.path.join(self.state_dir, f"{check_id}_results")
+
+    def _get_result_file_path(self, check_id: str, file_path: str) -> str:
+        """
+        获取单个文件结果的保存路径
+
+        Args:
+            check_id: 检查ID
+            file_path: 文件路径
+
+        Returns:
+            结果文件路径
+        """
+        # 将文件路径转换为安全的文件名
+        import hashlib
+        file_hash = hashlib.md5(file_path.encode()).hexdigest()[:16]
+        safe_name = file_path.replace('/', '_').replace('\\', '_').replace(':', '_')
+        # 限制长度，避免文件名过长
+        if len(safe_name) > 100:
+            safe_name = safe_name[:100] + '_' + file_hash
+        else:
+            safe_name = safe_name + '_' + file_hash
+
+        results_dir = self._get_results_dir(check_id)
+        return os.path.join(results_dir, f"{safe_name}.json")
+
+    def save_file_result(self, check_id: str, result) -> None:
+        """
+        保存单个文件的检查结果
+
+        Args:
+            check_id: 检查ID
+            result: FileCheckResult 对象
+
+        Raises:
+            IOError: 如果保存失败
+        """
+        from autocoder.checker.types import FileCheckResult
+
+        if not isinstance(result, FileCheckResult):
+            raise TypeError(f"result 必须是 FileCheckResult 类型，当前为: {type(result)}")
+
+        result_file = self._get_result_file_path(check_id, result.file_path)
+
+        try:
+            # 确保目录存在
+            os.makedirs(os.path.dirname(result_file), exist_ok=True)
+
+            # 保存结果
+            with open(result_file, 'w', encoding='utf-8') as f:
+                json.dump(result.model_dump(), f, indent=2, ensure_ascii=False)
+
+        except Exception as e:
+            raise IOError(f"保存文件结果失败 {result.file_path}: {e}")
+
+    def load_all_results(self, check_id: str) -> List:
+        """
+        加载检查任务的所有文件结果
+
+        Args:
+            check_id: 检查ID
+
+        Returns:
+            FileCheckResult 对象列表
+
+        Raises:
+            IOError: 如果加载失败
+        """
+        from autocoder.checker.types import FileCheckResult
+
+        results_dir = self._get_results_dir(check_id)
+
+        if not os.path.exists(results_dir):
+            return []
+
+        results = []
+        try:
+            for filename in os.listdir(results_dir):
+                if not filename.endswith('.json'):
+                    continue
+
+                result_file = os.path.join(results_dir, filename)
+                try:
+                    with open(result_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        result = FileCheckResult(**data)
+                        results.append(result)
+                except Exception as e:
+                    # 记录错误但继续加载其他文件
+                    print(f"⚠️  加载结果文件失败 {filename}: {e}")
+                    continue
+
+            return results
+
+        except Exception as e:
+            raise IOError(f"加载检查结果失败: {e}")
+
+    def get_result_count(self, check_id: str) -> int:
+        """
+        获取已保存的结果数量
+
+        Args:
+            check_id: 检查ID
+
+        Returns:
+            已保存的结果文件数量
+        """
+        results_dir = self._get_results_dir(check_id)
+
+        if not os.path.exists(results_dir):
+            return 0
+
+        try:
+            count = 0
+            for filename in os.listdir(results_dir):
+                if filename.endswith('.json'):
+                    count += 1
+            return count
+        except Exception:
+            return 0

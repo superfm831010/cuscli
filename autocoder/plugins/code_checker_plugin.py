@@ -644,50 +644,86 @@ class CodeCheckerPlugin(Plugin):
             # 清理项目名称
             project_name = "".join(c if c.isalnum() or c == "_" else "_" for c in project_name)
 
-            check_id = self.progress_tracker.start_check(
-                files=files,
-                config={
-                    "path": path,
-                    "extensions": extensions,
-                    "ignored": ignored,
-                    "workers": workers
-                },
-                project_name=project_name
-            )
+            # 生成 check_id 并创建报告目录
+            check_id = self._create_check_id()
+            report_dir = self._create_report_dir(check_id)
 
-            print(f"📝 检查任务 ID: {check_id}")
-            print()
-
-            # 批量检查（Task 9.2: 使用并发检查）
-            results = []
-            check_interrupted = False
+            # 启动任务日志记录
+            from autocoder.checker.task_logger import TaskLogger
+            task_logger = TaskLogger(report_dir)
+            task_logger.start()
 
             try:
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[bold blue]{task.description}"),
-                    BarColumn(),
-                    TaskProgressColumn(),
-                    TimeRemainingColumn(),
-                ) as progress:
-                    # 显示并发数
-                    task = progress.add_task(
-                        f"正在检查文件... (并发: {workers})",
-                        total=len(files)
-                    )
+                logger.info(f"开始检查任务: {check_id}, 文件数: {len(files)}, 并发: {workers}")
 
-                    # Task 9.2: 使用并发检查
-                    for result in self.checker.check_files_concurrent(files, max_workers=workers):
-                        results.append(result)
+                # 创建检查任务状态
+                check_id = self.progress_tracker.start_check(
+                    files=files,
+                    config={
+                        "path": path,
+                        "extensions": extensions,
+                        "ignored": ignored,
+                        "workers": workers
+                    },
+                    project_name=project_name,
+                    report_dir=report_dir
+                )
 
-                        # Task 8.1: 标记文件完成，保存进度
-                        self.progress_tracker.mark_completed(check_id, result.file_path)
+                print(f"📝 检查任务 ID: {check_id}")
+                print(f"📄 报告目录: {report_dir}")
+                print(f"📋 任务日志: {task_logger.get_log_path()}")
+                print()
 
-                        progress.update(
-                            task,
-                            advance=1,
-                            description=f"检查 {os.path.basename(result.file_path)} (并发: {workers})"
+                # 批量检查（Task 9.2: 使用并发检查）
+                results = []
+                check_interrupted = False
+                snapshot_interval = 100  # 每100个文件生成一次快照
+
+                try:
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn("[bold blue]{task.description}"),
+                        BarColumn(),
+                        TaskProgressColumn(),
+                        TimeRemainingColumn(),
+                    ) as progress:
+                        # 显示并发数
+                        task = progress.add_task(
+                            f"正在检查文件... (并发: {workers})",
+                            total=len(files)
                         )
+
+                        # Task 9.2: 使用并发检查
+                        for idx, result in enumerate(self.checker.check_files_concurrent(files, max_workers=workers), 1):
+                            results.append(result)
+
+                            # 立即保存结果到持久化存储（防止数据丢失）
+                            try:
+                                self.progress_tracker.save_file_result(check_id, result)
+                            except Exception as e:
+                                logger.error(f"保存文件结果失败 {result.file_path}: {e}", exc_info=True)
+
+                            # Task 8.1: 标记文件完成，保存进度
+                            self.progress_tracker.mark_completed(check_id, result.file_path)
+
+                            progress.update(
+                                task,
+                                advance=1,
+                                description=f"检查 {os.path.basename(result.file_path)} (并发: {workers})"
+                            )
+
+                            # 每100个文件生成一次快照
+                            if idx % snapshot_interval == 0:
+                                logger.info(f"已完成 {idx}/{len(files)} 个文件，生成中间快照")
+                                try:
+                                    # 生成中间报告
+                                    self.report_generator.generate_summary_report(
+                                        results,
+                                        report_dir
+                                    )
+                                    logger.info(f"中间快照已生成: {idx} 个文件")
+                                except Exception as e:
+                                    logger.error(f"生成中间快照失败: {e}", exc_info=True)
 
             except KeyboardInterrupt:
                 # Task 8.1: 处理中断
@@ -707,20 +743,28 @@ class CodeCheckerPlugin(Plugin):
 
                 logger.info(f"检查已中断: {check_id}, 已完成 {len(results)}/{len(files)}")
 
-            finally:
-                # 确保即使中断或出错也生成部分报告
-                if results:
-                    logger.info(f"生成部分报告，已完成 {len(results)} 个文件")
+                finally:
+                    # 确保即使中断或出错也生成部分报告
+                    # 如果 results 为空，尝试从持久化存储加载
+                    if not results:
+                        logger.warning(f"results 为空，尝试从持久化存储加载...")
+                        try:
+                            results = self.progress_tracker.load_all_results(check_id)
+                            logger.info(f"从持久化存储加载了 {len(results)} 个结果")
+                        except Exception as e:
+                            logger.error(f"从持久化存储加载结果失败: {e}", exc_info=True)
 
-                    # 如果是正常完成，标记状态
-                    if not check_interrupted:
-                        state = self.progress_tracker.load_state(check_id)
-                        if state:
-                            state.status = "completed"
-                            self.progress_tracker.save_state(check_id, state)
+                    if results:
+                        logger.info(f"生成部分报告，已完成 {len(results)} 个文件")
 
-                    # 生成报告
-                    report_dir = self._create_report_dir(check_id)
+                        # 如果是正常完成，标记状态
+                        if not check_interrupted:
+                            state = self.progress_tracker.load_state(check_id)
+                            if state:
+                                state.status = "completed"
+                                self.progress_tracker.save_state(check_id, state)
+
+                        # report_dir 已在前面创建，直接使用
 
                     # 生成单文件报告（统计失败数量）
                     failed_reports = []
@@ -766,6 +810,11 @@ class CodeCheckerPlugin(Plugin):
                         print()
                     else:
                         self._show_batch_summary(results, report_dir, failed_reports)
+
+            finally:
+                # 确保停止任务日志记录器
+                task_logger.stop()
+                logger.info(f"任务日志已停止: {check_id}")
 
         except Exception as e:
             print(f"❌ 检查过程出错: {e}")
