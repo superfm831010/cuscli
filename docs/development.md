@@ -990,6 +990,76 @@ __version__ = 'alpha-0.1'
 
 ---
 
+### 2025-10-13: 简化模式切换并翻译为中文
+
+**修改内容:**
+1. **修改核心模式列表** (`autocoder/common/core_config/mode_manager.py`):
+   - 将 `MODE_CYCLE` 从 `["normal", "auto_detect", "voice_input", "shell"]` 简化为 `["auto_detect", "shell"]`
+   - 将 `DEFAULT_MODE` 从 `"normal"` 改为 `"auto_detect"`
+
+2. **中文化模式显示** (2处):
+   - `autocoder/chat_auto_coder.py:1032-1037` - 更新 `MODES` 字典
+   - `autocoder/terminal/ui/toolbar.py:24-29` - 更新 `MODES` 字典
+   - 将模式名称翻译为中文：
+     - `auto_detect`: "自然语言自动识别"
+     - `shell`: "Shell模式"
+
+3. **新增国际化支持** (`autocoder/common/international/messages/chat_auto_coder_messages.py`):
+   - 添加 `mode_auto_detect` 消息键（支持 en/zh/ja/ar/ru）
+   - 添加 `mode_shell` 消息键（支持 en/zh/ja/ar/ru）
+
+**修改原因:**
+- 用户反馈模式太多，实际只需要"自然语言"和"Shell"两种模式
+- 要求将模式名称翻译成中文，提升中文用户体验
+- 简化模式切换逻辑，减少不必要的功能
+
+**技术细节:**
+```python
+# mode_manager.py 修改前
+MODE_CYCLE = ["normal", "auto_detect", "voice_input", "shell"]
+DEFAULT_MODE = "normal"
+
+# mode_manager.py 修改后
+MODE_CYCLE = ["auto_detect", "shell"]
+DEFAULT_MODE = "auto_detect"
+
+# chat_auto_coder.py 和 toolbar.py 修改前
+MODES = {
+    "normal": "normal",
+    "auto_detect": "nature language auto detect",
+    "voice_input": "voice input",
+    "shell": "shell",
+}
+
+# chat_auto_coder.py 和 toolbar.py 修改后
+MODES = {
+    "auto_detect": "自然语言自动识别",
+    "shell": "Shell模式",
+}
+```
+
+**影响范围:**
+- Ctrl+K 快捷键现在在两种模式间切换（之前是4种模式循环）
+- 底部工具栏显示中文模式名称
+- 如果用户之前使用 `normal` 或 `voice_input` 模式，启动时会自动切换为 `auto_detect`
+- `cycle_mode()` 函数自动适应新的模式列表
+- 不影响其他功能逻辑
+
+**测试建议:**
+- 启动 `cuscli`，验证底部工具栏显示"自然语言自动识别(ctrl+k)"
+- 按 Ctrl+K 切换模式，验证在"自然语言自动识别"和"Shell模式"之间切换
+- 在"Shell模式"下输入命令，验证直接执行shell命令
+- 在"自然语言自动识别"模式下输入文本，验证调用AI处理
+
+**Git 提交:**
+- 提交哈希: 3b953b8
+- 提交信息: "feat(ui): 简化模式切换并翻译为中文"
+- 修改文件数: 4 个
+- 新增行数: 20 行
+- 删除行数: 10 行
+
+---
+
 ## 后续开发记录模板
 
 ### YYYY-MM-DD: 修改标题
