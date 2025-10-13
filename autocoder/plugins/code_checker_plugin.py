@@ -472,6 +472,11 @@ class CodeCheckerPlugin(Plugin):
                         print(f"📄 报告已保存到: {report_dir}")
                         print(f"   - {md_path}")
                         print(f"   - {json_path}")
+
+                        # 提示日志文件位置
+                        log_path = os.path.join(report_dir, 'check.log')
+                        if os.path.exists(log_path):
+                            print(f"📋 详细日志: {log_path}")
                     else:
                         print("⚠️  报告生成部分失败:")
                         if not md_exists:
@@ -483,6 +488,12 @@ class CodeCheckerPlugin(Plugin):
                         print("   - 磁盘空间不足")
                         print("   - 文件路径过长或包含特殊字符")
                         print("   - 文件系统权限限制")
+
+                        # 提示可以查看日志
+                        log_path = os.path.join(report_dir, 'check.log')
+                        if os.path.exists(log_path):
+                            print()
+                            print(f"💡 查看详细日志: {log_path}")
 
                 except Exception as e:
                     print()
@@ -1052,11 +1063,18 @@ class CodeCheckerPlugin(Plugin):
         print(f"   - 有问题的文件 ({files_with_issues_count} 个): {os.path.join(report_dir, 'files', 'with_issues/')}")
         print(f"   - 无问题的文件 ({files_no_issues_count} 个): {os.path.join(report_dir, 'files', 'no_issues/')}")
 
+        # 显示日志文件
+        log_path = os.path.join(report_dir, 'check.log')
+        if os.path.exists(log_path):
+            print(f"📋 详细日志: {log_path}")
+            print("   (包含完整的检查执行过程，便于问题排查)")
+
         # 显示报告生成失败的信息
         if failed_reports:
             print()
             print(f"⚠️  警告: {len(failed_reports)} 个文件的报告生成失败")
-            print("   请查看上面的详细错误信息或日志文件")
+            log_hint = f"或查看日志文件: {log_path}" if os.path.exists(log_path) else ""
+            print(f"   请查看上面的详细错误信息{log_hint}")
 
         print()
         print("💡 提示: 优先查看 files/with_issues/ 目录中的报告进行修复")
@@ -1107,6 +1125,13 @@ class CodeCheckerPlugin(Plugin):
             print(f"   总文件数: {total}")
             print(f"   已完成: {completed}")
             print(f"   剩余: {remaining}")
+
+            # 提示可以查看日志了解中断原因
+            report_dir = os.path.join("codecheck", check_id)
+            log_path = os.path.join(report_dir, 'check.log')
+            if os.path.exists(log_path):
+                print(f"📋 查看详细日志（包含中断前的执行过程）: {log_path}")
+
             print()
 
             # 导入进度显示组件
@@ -1167,6 +1192,12 @@ class CodeCheckerPlugin(Plugin):
             print(f"发现问题: {total_issues}")
             print()
             print(f"📄 详细报告: {report_dir}/")
+
+            # 提示日志文件
+            log_path = os.path.join(report_dir, 'check.log')
+            if os.path.exists(log_path):
+                print(f"📋 详细日志: {log_path}")
+
             print()
 
         except ValueError as e:

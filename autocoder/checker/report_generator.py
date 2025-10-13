@@ -28,6 +28,7 @@ class ReportGenerator:
     报告目录结构:
         codecheck/
         └── {check_id}_YYYYMMDD_HHMMSS/
+            ├── check.log             # 检查任务日志（详细执行过程）
             ├── summary.json          # 批量检查汇总（JSON）
             ├── summary.md            # 批量检查汇总（Markdown）
             └── files/
@@ -511,7 +512,19 @@ class ReportGenerator:
         if batch_result.total_infos > 0:
             md += f"- ℹ️ 发现 **{batch_result.total_infos}** 个改进建议，可考虑优化\n"
 
-        md += "\n## 📁 报告文件组织\n\n"
+        md += "\n## 📋 日志文件\n\n"
+        md += "本次检查的详细执行日志已保存在：\n\n"
+        md += f"- **日志文件**: `check.log`\n\n"
+        md += "**日志文件用途**：\n"
+        md += "- 记录完整的检查执行过程（文件扫描、规则加载、LLM 调用等）\n"
+        md += "- 包含详细的 DEBUG 级别信息，便于问题排查\n"
+        md += "- 记录所有警告和错误信息\n"
+        md += "- 适用场景：\n"
+        md += "  - 检查过程异常中断，需要了解中断原因\n"
+        md += "  - LLM 调用失败或超时，需要查看详细错误信息\n"
+        md += "  - 需要了解检查过程的性能数据（各文件耗时等）\n\n"
+
+        md += "## 📁 报告文件组织\n\n"
         md += "为便于快速查看，报告文件已按问题分类存储：\n\n"
 
         # 统计有问题和无问题的文件数量
@@ -520,7 +533,8 @@ class ReportGenerator:
 
         md += f"- **有问题的文件** ({files_with_issues} 个): `files/with_issues/` 目录\n"
         md += f"- **无问题的文件** ({files_no_issues} 个): `files/no_issues/` 目录\n"
-        md += "\n💡 **提示**: 优先查看 `files/with_issues/` 目录中的报告进行修复。\n"
+        md += f"- **日志文件**: `check.log`（详细执行过程）\n"
+        md += "\n💡 **提示**: 优先查看 `files/with_issues/` 目录中的报告进行修复。如需排查问题，可查看 `check.log` 日志文件。\n"
 
         return md
 
