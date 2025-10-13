@@ -1064,7 +1064,7 @@ async def run_app():
             # 静默处理异常，不影响底部工具栏的显示
             pass
 
-        return f"Current Dir: {pwd} \nMode: {MODES[mode]}(ctrl+k) | Human as Model: {human_as_model}(ctrl+n) | {plugin_info}{async_tasks_info}"
+        return f"Current Dir: {pwd} \n模式: {MODES[mode]}(ctrl+k切换) | {plugin_info}{async_tasks_info}"
 
     # 创建增强补全器
     enhanced_completer = EnhancedCompleter(completer, plugin_manager)

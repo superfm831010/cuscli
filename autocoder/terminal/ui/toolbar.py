@@ -55,6 +55,6 @@ def get_bottom_toolbar_func(
             # 静默处理异常，不影响底部工具栏的显示
             pass
 
-        return f"Current Dir: {pwd} \nMode: {MODES[mode]}(ctrl+k) | Human as Model: {human_as_model}(ctrl+n) | {plugin_info}{async_tasks_info}"
+        return f"Current Dir: {pwd} \n模式: {MODES[mode]}(ctrl+k切换) | {plugin_info}{async_tasks_info}"
 
     return get_bottom_toolbar
