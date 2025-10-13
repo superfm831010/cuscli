@@ -424,70 +424,15 @@ class CodeCheckerPlugin(Plugin):
             # 应用共识参数
             self._apply_checker_options(common_options)
 
-            # 导入 rich 进度条组件
-            from rich.progress import (
-                Progress,
-                SpinnerColumn,
-                TextColumn,
-                BarColumn,
-                TaskProgressColumn,
-                TimeRemainingColumn,
-            )
+            # 导入进度显示组件
+            from autocoder.checker.progress_display import ProgressDisplay, SimpleProgressCallback
 
-            # 使用进度条显示检查进度
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold blue]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                TimeRemainingColumn(),
-            ) as progress:
-                # 创建进度任务（初始不确定总量）
-                task = progress.add_task("初始化...", total=None)
+            # 使用新的进度显示系统
+            progress_display = ProgressDisplay()
 
-                # 定义进度回调函数
-                def progress_callback(step: str, **kwargs):
-                    """处理检查进度更新"""
-                    if step == "start":
-                        progress.update(task, description="开始检查...")
-
-                    elif step == "rules_loaded":
-                        total_rules = kwargs.get("total_rules", 0)
-                        progress.update(
-                            task,
-                            description=f"已加载 {total_rules} 条规则"
-                        )
-
-                    elif step == "chunked":
-                        total_chunks = kwargs.get("total_chunks", 0)
-                        # 设置进度条总量为 chunk 数量
-                        progress.update(
-                            task,
-                            total=total_chunks,
-                            completed=0,
-                            description=f"开始检查 ({total_chunks} 个代码块)"
-                        )
-
-                    elif step == "chunk_start":
-                        chunk_index = kwargs.get("chunk_index", 0)
-                        total_chunks = kwargs.get("total_chunks", 1)
-                        progress.update(
-                            task,
-                            description=f"检查代码块 {chunk_index + 1}/{total_chunks}..."
-                        )
-
-                    elif step == "chunk_done":
-                        chunk_index = kwargs.get("chunk_index", 0)
-                        total_chunks = kwargs.get("total_chunks", 1)
-                        # 更新进度
-                        progress.update(
-                            task,
-                            completed=chunk_index + 1,
-                            description=f"已完成代码块 {chunk_index + 1}/{total_chunks}"
-                        )
-
-                    elif step == "merge_done":
-                        progress.update(task, description="合并检查结果...")
+            with progress_display.display_progress():
+                # 创建进度回调适配器
+                progress_callback = SimpleProgressCallback(progress_display, file_path)
 
                 # 执行检查（传入进度回调）
                 result = self.checker.check_file(file_path, progress_callback=progress_callback)
@@ -674,23 +619,23 @@ class CodeCheckerPlugin(Plugin):
                 print(f"📋 任务日志: {task_logger.get_log_path()}")
                 print()
 
+                # 导入进度显示组件
+                from autocoder.checker.progress_display import ProgressDisplay
+
                 # 批量检查（Task 9.2: 使用并发检查）
                 results = []
                 check_interrupted = False
                 snapshot_interval = 100  # 每100个文件生成一次快照
 
+                # 使用新的进度显示系统
+                progress_display = ProgressDisplay()
+
                 try:
-                    with Progress(
-                        SpinnerColumn(),
-                        TextColumn("[bold blue]{task.description}"),
-                        BarColumn(),
-                        TaskProgressColumn(),
-                        TimeRemainingColumn(),
-                    ) as progress:
-                        # 显示并发数
-                        task = progress.add_task(
-                            f"正在检查文件... (并发: {workers})",
-                            total=len(files)
+                    with progress_display.display_progress():
+                        # 初始化文件级进度
+                        progress_display.update_file_progress(
+                            total_files=len(files),
+                            completed_files=0
                         )
 
                         # Task 9.2: 使用并发检查
@@ -706,10 +651,9 @@ class CodeCheckerPlugin(Plugin):
                             # Task 8.1: 标记文件完成，保存进度
                             self.progress_tracker.mark_completed(check_id, result.file_path)
 
-                            progress.update(
-                                task,
-                                advance=1,
-                                description=f"检查 {os.path.basename(result.file_path)} (并发: {workers})"
+                            # 更新文件级进度
+                            progress_display.update_file_progress(
+                                completed_files=idx
                             )
 
                             # 每100个文件生成一次快照
@@ -1165,44 +1109,34 @@ class CodeCheckerPlugin(Plugin):
             print(f"   剩余: {remaining}")
             print()
 
-            # 导入 rich 进度条
-            from rich.progress import (
-                Progress,
-                SpinnerColumn,
-                TextColumn,
-                BarColumn,
-                TaskProgressColumn,
-                TimeRemainingColumn,
-            )
+            # 导入进度显示组件
+            from autocoder.checker.progress_display import ProgressDisplay
 
             # 恢复检查（Task 9.2: 使用并发检查）
             # 获取原配置的并发数，如果没有则使用默认值5
             workers = state.config.get("workers", 5)
 
+            # 使用新的进度显示系统
+            progress_display = ProgressDisplay()
+
             results = []
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold blue]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                TimeRemainingColumn(),
-            ) as progress:
-                task = progress.add_task(
-                    f"恢复检查中... (并发: {workers})",
-                    total=remaining
+            with progress_display.display_progress():
+                # 初始化文件级进度
+                progress_display.update_file_progress(
+                    total_files=remaining,
+                    completed_files=0
                 )
 
                 # Task 9.2: 使用并发检查
-                for result in self.checker.check_files_concurrent(state.remaining_files, max_workers=workers):
+                for idx, result in enumerate(self.checker.check_files_concurrent(state.remaining_files, max_workers=workers), 1):
                     results.append(result)
 
                     # 更新进度
                     self.progress_tracker.mark_completed(check_id, result.file_path)
 
-                    progress.update(
-                        task,
-                        advance=1,
-                        description=f"检查 {os.path.basename(result.file_path)} (并发: {workers})"
+                    # 更新文件级进度
+                    progress_display.update_file_progress(
+                        completed_files=idx
                     )
 
             # 标记检查完成

@@ -15,6 +15,7 @@ import os
 import re
 import json
 import math
+import time
 from typing import List, Dict, Optional, Any, Generator
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
@@ -471,16 +472,22 @@ class CodeChecker:
                     f"行 {chunk.start_line}-{chunk.end_line}"
                 )
 
+                # 计算chunk的token数（用于进度显示）
+                chunk_tokens = self.tokenizer.count_tokens(chunk.content)
+
                 # 回调：开始检查某个 chunk
                 if progress_callback:
                     progress_callback(
                         step="chunk_start",
                         chunk_index=chunk.chunk_index,
-                        total_chunks=len(chunks)
+                        total_chunks=len(chunks),
+                        start_line=chunk.start_line,
+                        end_line=chunk.end_line,
+                        tokens=chunk_tokens
                     )
 
                 try:
-                    issues = self.check_code_chunk(chunk.content, rules)
+                    issues = self.check_code_chunk(chunk.content, rules, progress_callback=progress_callback)
 
                     # 检查是否因超时返回空结果（通过日志判断）
                     if not issues:
@@ -673,6 +680,7 @@ class CodeChecker:
         rules: List[Rule],
         timeout: int = 180,
         llm_overrides: Optional[Dict[str, Any]] = None,
+        progress_callback: Optional[callable] = None,
     ) -> List[Issue]:
         """
         检查代码块
@@ -682,6 +690,7 @@ class CodeChecker:
             rules: 适用的规则列表
             timeout: LLM 调用超时时间（秒），默认 180 秒
             llm_overrides: 临时覆盖的 LLM 配置
+            progress_callback: 可选的进度回调函数
 
         Returns:
             List[Issue]: 发现的问题列表
@@ -720,6 +729,17 @@ class CodeChecker:
             attempt_results: List[List[Issue]] = []
             for attempt in range(attempts):
                 logger.debug("LLM attempt %s/%s", attempt + 1, attempts)
+
+                # 回调：LLM调用开始
+                if progress_callback:
+                    progress_callback(
+                        step="llm_call_start",
+                        attempt=attempt + 1,
+                        total_attempts=attempts
+                    )
+
+                llm_start_time = time.time()
+
                 with ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(self._call_llm, conversations, effective_llm_config)
                     try:
@@ -732,6 +752,15 @@ class CodeChecker:
                             attempts,
                         )
                         attempt_results.append([])
+
+                        # 回调：LLM调用结束（超时）
+                        if progress_callback:
+                            progress_callback(
+                                step="llm_call_end",
+                                attempt=attempt + 1,
+                                duration=time.time() - llm_start_time,
+                                issues_found=0
+                            )
                         continue
                     except Exception as e:
                         logger.error(
@@ -742,7 +771,18 @@ class CodeChecker:
                             exc_info=True,
                         )
                         attempt_results.append([])
+
+                        # 回调：LLM调用结束（失败）
+                        if progress_callback:
+                            progress_callback(
+                                step="llm_call_end",
+                                attempt=attempt + 1,
+                                duration=time.time() - llm_start_time,
+                                issues_found=0
+                            )
                         continue
+
+                llm_duration = time.time() - llm_start_time
 
                 if response and len(response) > 0:
                     response_text = response[0].output
@@ -752,9 +792,27 @@ class CodeChecker:
                         f"Attempt {attempt + 1}/{attempts} 解析出 {len(issues)} 个问题"
                     )
                     attempt_results.append(issues)
+
+                    # 回调：LLM调用结束（成功）
+                    if progress_callback:
+                        progress_callback(
+                            step="llm_call_end",
+                            attempt=attempt + 1,
+                            duration=llm_duration,
+                            issues_found=len(issues)
+                        )
                 else:
                     logger.warning("LLM 返回空响应 (attempt %s/%s)", attempt + 1, attempts)
                     attempt_results.append([])
+
+                    # 回调：LLM调用结束（空响应）
+                    if progress_callback:
+                        progress_callback(
+                            step="llm_call_end",
+                            attempt=attempt + 1,
+                            duration=llm_duration,
+                            issues_found=0
+                        )
 
             if not attempt_results:
                 logger.warning("LLM 所有尝试均未返回结果")
@@ -762,6 +820,13 @@ class CodeChecker:
 
             if attempts == 1:
                 return attempt_results[0]
+
+            # 回调：聚合多次调用结果
+            if progress_callback:
+                progress_callback(
+                    step="llm_aggregate",
+                    total_attempts=attempts
+                )
 
             aggregated = self._aggregate_attempt_results(attempt_results)
             logger.info(
