@@ -505,16 +505,50 @@ class CodeCheckerPlugin(Plugin):
                 # 生成报告
                 check_id = self._create_check_id()
                 report_dir = self._create_report_dir(check_id)
-                self.report_generator.generate_file_report(result, report_dir)
 
-                # 根据是否有问题决定显示哪个目录
-                has_issues = len(result.issues) > 0
-                subdir = "with_issues" if has_issues else "no_issues"
+                try:
+                    self.report_generator.generate_file_report(result, report_dir)
 
-                print()
-                print(f"📄 报告已保存到: {report_dir}")
-                print(f"   - {os.path.join(report_dir, 'files', subdir, self.report_generator._safe_path(file_path) + '.md')}")
-                print(f"   - {os.path.join(report_dir, 'files', subdir, self.report_generator._safe_path(file_path) + '.json')}")
+                    # 根据是否有问题决定显示哪个目录
+                    has_issues = len(result.issues) > 0
+                    subdir = "with_issues" if has_issues else "no_issues"
+
+                    # 构建文件路径
+                    safe_filename = self.report_generator._safe_path(file_path)
+                    md_path = os.path.join(report_dir, 'files', subdir, f"{safe_filename}.md")
+                    json_path = os.path.join(report_dir, 'files', subdir, f"{safe_filename}.json")
+
+                    # 验证文件是否真的存在
+                    md_exists = os.path.exists(md_path)
+                    json_exists = os.path.exists(json_path)
+
+                    print()
+                    if md_exists and json_exists:
+                        print(f"📄 报告已保存到: {report_dir}")
+                        print(f"   - {md_path}")
+                        print(f"   - {json_path}")
+                    else:
+                        print("⚠️  报告生成部分失败:")
+                        if not md_exists:
+                            print(f"   ❌ Markdown 报告未创建: {md_path}")
+                        if not json_exists:
+                            print(f"   ❌ JSON 报告未创建: {json_path}")
+                        print()
+                        print("💡 可能的原因:")
+                        print("   - 磁盘空间不足")
+                        print("   - 文件路径过长或包含特殊字符")
+                        print("   - 文件系统权限限制")
+
+                except Exception as e:
+                    print()
+                    print(f"❌ 报告生成失败: {e}")
+                    print()
+                    print("💡 排查建议:")
+                    print("   1. 检查磁盘空间是否充足")
+                    print("   2. 检查当前目录是否有写入权限")
+                    print("   3. 检查文件路径是否包含特殊字符")
+                    print(f"   4. 查看详细日志: .auto-coder/logs/auto-coder.log")
+                    logger.error(f"报告生成失败: {e}", exc_info=True)
 
             elif result.status == "skipped":
                 print(f"⏭️  文件已跳过: {file_path}")
@@ -688,24 +722,50 @@ class CodeCheckerPlugin(Plugin):
                     # 生成报告
                     report_dir = self._create_report_dir(check_id)
 
-                    # 生成单文件报告
+                    # 生成单文件报告（统计失败数量）
+                    failed_reports = []
                     for result in results:
-                        self.report_generator.generate_file_report(result, report_dir)
+                        try:
+                            self.report_generator.generate_file_report(result, report_dir)
+                        except Exception as e:
+                            failed_reports.append((result.file_path, str(e)))
+                            logger.error(f"生成文件报告失败 {result.file_path}: {e}", exc_info=True)
 
                     # 生成汇总报告
-                    self.report_generator.generate_summary_report(results, report_dir)
+                    try:
+                        self.report_generator.generate_summary_report(results, report_dir)
+                    except Exception as e:
+                        logger.error(f"生成汇总报告失败: {e}", exc_info=True)
+                        print()
+                        print(f"⚠️  汇总报告生成失败: {e}")
+
+                    # 如果有报告生成失败，显示警告
+                    if failed_reports:
+                        print()
+                        print(f"⚠️  {len(failed_reports)} 个文件的报告生成失败:")
+                        for file_path, error in failed_reports[:5]:  # 最多显示5个
+                            print(f"   - {file_path}: {error}")
+                        if len(failed_reports) > 5:
+                            print(f"   ... 还有 {len(failed_reports) - 5} 个文件")
+                        print()
+                        print("💡 排查建议:")
+                        print("   1. 检查磁盘空间是否充足")
+                        print("   2. 检查文件路径是否包含特殊字符")
+                        print(f"   3. 查看详细日志: .auto-coder/logs/auto-coder.log")
 
                     # 显示汇总
                     if check_interrupted:
                         print()
                         print(f"📄 已生成部分报告 ({len(results)}/{len(files)} 个文件)")
                         print(f"   报告位置: {report_dir}/")
+                        if failed_reports:
+                            print(f"   ⚠️  {len(failed_reports)} 个文件的报告生成失败")
                         print()
                         print(f"💡 使用以下命令恢复检查:")
                         print(f"   /check /resume {check_id}")
                         print()
                     else:
-                        self._show_batch_summary(results, report_dir)
+                        self._show_batch_summary(results, report_dir, failed_reports)
 
         except Exception as e:
             print(f"❌ 检查过程出错: {e}")
@@ -933,14 +993,18 @@ class CodeCheckerPlugin(Plugin):
             f"[{self.name}] 使用 LLM repeat={repeat_value}, consensus={consensus_value}"
         )
 
-    def _show_batch_summary(self, results: List, report_dir: str) -> None:
+    def _show_batch_summary(self, results: List, report_dir: str, failed_reports: List = None) -> None:
         """
         显示批量检查汇总
 
         Args:
             results: 检查结果列表
             report_dir: 报告目录
+            failed_reports: 报告生成失败的文件列表 [(file_path, error), ...]
         """
+        if failed_reports is None:
+            failed_reports = []
+
         print()
         print("=" * 60)
         print("📊 检查完成！")
@@ -994,6 +1058,13 @@ class CodeCheckerPlugin(Plugin):
         print(f"   - 汇总报告: {os.path.join(report_dir, 'summary.md')}")
         print(f"   - 有问题的文件 ({files_with_issues_count} 个): {os.path.join(report_dir, 'files', 'with_issues/')}")
         print(f"   - 无问题的文件 ({files_no_issues_count} 个): {os.path.join(report_dir, 'files', 'no_issues/')}")
+
+        # 显示报告生成失败的信息
+        if failed_reports:
+            print()
+            print(f"⚠️  警告: {len(failed_reports)} 个文件的报告生成失败")
+            print("   请查看上面的详细错误信息或日志文件")
+
         print()
         print("💡 提示: 优先查看 files/with_issues/ 目录中的报告进行修复")
         print()

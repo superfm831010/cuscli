@@ -63,6 +63,9 @@ class ReportGenerator:
         Args:
             result: 文件检查结果
             report_dir: 报告输出目录
+
+        Raises:
+            RuntimeError: 如果报告生成失败
         """
         try:
             # 根据是否有问题决定保存到哪个子目录
@@ -80,15 +83,32 @@ class ReportGenerator:
             json_path = os.path.join(files_dir, f"{safe_filename}.json")
             self._generate_json_report(result, json_path)
 
+            # 验证 JSON 文件是否真的创建成功
+            if not os.path.exists(json_path):
+                raise RuntimeError(
+                    f"JSON 报告文件未创建成功: {json_path}\n"
+                    f"可能原因：权限不足、磁盘空间不足或路径包含特殊字符"
+                )
+
             # 生成 Markdown 报告
             md_path = os.path.join(files_dir, f"{safe_filename}.md")
             md_content = self._format_file_markdown(result)
             self._generate_markdown_report(md_content, md_path)
 
+            # 验证 Markdown 文件是否真的创建成功
+            if not os.path.exists(md_path):
+                raise RuntimeError(
+                    f"Markdown 报告文件未创建成功: {md_path}\n"
+                    f"可能原因：权限不足、磁盘空间不足或路径包含特殊字符"
+                )
+
             logger.info(f"已生成文件报告: {result.file_path} -> {subdir}")
 
         except Exception as e:
-            logger.error(f"生成文件报告失败 {result.file_path}: {e}", exc_info=True)
+            error_msg = f"生成文件报告失败 {result.file_path}: {e}"
+            logger.error(error_msg, exc_info=True)
+            # 重新抛出异常，让调用者知道报告生成失败
+            raise RuntimeError(error_msg) from e
 
     def generate_summary_report(
         self, results: List[FileCheckResult], report_dir: str
@@ -147,10 +167,16 @@ class ReportGenerator:
         Args:
             data: 要保存的数据（支持 pydantic 模型）
             output_path: 输出文件路径
+
+        Raises:
+            OSError: 如果文件写入失败
+            RuntimeError: 如果文件创建后验证失败
         """
         try:
             # 确保目录存在
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            parent_dir = os.path.dirname(output_path)
+            if parent_dir:  # 避免空字符串导致的问题
+                os.makedirs(parent_dir, exist_ok=True)
 
             # 如果是 pydantic 模型，使用 model_dump
             if hasattr(data, 'model_dump'):
@@ -162,10 +188,29 @@ class ReportGenerator:
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(json_data, f, ensure_ascii=False, indent=4)
 
-            logger.debug(f"JSON 报告已保存: {output_path}")
+            # 验证文件是否真的创建成功
+            if not os.path.exists(output_path):
+                raise RuntimeError(
+                    f"JSON 文件写入后验证失败，文件不存在: {output_path}\n"
+                    f"可能原因：写入时发生错误但未抛出异常"
+                )
 
+            # 验证文件大小
+            file_size = os.path.getsize(output_path)
+            if file_size == 0:
+                raise RuntimeError(
+                    f"JSON 文件写入后验证失败，文件大小为 0: {output_path}"
+                )
+
+            logger.debug(f"JSON 报告已保存: {output_path} (大小: {file_size} 字节)")
+
+        except (OSError, IOError) as e:
+            error_msg = f"生成 JSON 报告失败 {output_path}: {e}"
+            logger.error(error_msg, exc_info=True)
+            raise OSError(error_msg) from e
         except Exception as e:
-            logger.error(f"生成 JSON 报告失败 {output_path}: {e}", exc_info=True)
+            error_msg = f"生成 JSON 报告时发生未预期的错误 {output_path}: {e}"
+            logger.error(error_msg, exc_info=True)
             raise
 
     def _generate_markdown_report(self, content: str, output_path: str) -> None:
@@ -175,19 +220,44 @@ class ReportGenerator:
         Args:
             content: Markdown 内容
             output_path: 输出文件路径
+
+        Raises:
+            OSError: 如果文件写入失败
+            RuntimeError: 如果文件创建后验证失败
         """
         try:
             # 确保目录存在
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            parent_dir = os.path.dirname(output_path)
+            if parent_dir:  # 避免空字符串导致的问题
+                os.makedirs(parent_dir, exist_ok=True)
 
             # 写入 Markdown 文件
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(content)
 
-            logger.debug(f"Markdown 报告已保存: {output_path}")
+            # 验证文件是否真的创建成功
+            if not os.path.exists(output_path):
+                raise RuntimeError(
+                    f"Markdown 文件写入后验证失败，文件不存在: {output_path}\n"
+                    f"可能原因：写入时发生错误但未抛出异常"
+                )
 
+            # 验证文件大小
+            file_size = os.path.getsize(output_path)
+            if file_size == 0:
+                raise RuntimeError(
+                    f"Markdown 文件写入后验证失败，文件大小为 0: {output_path}"
+                )
+
+            logger.debug(f"Markdown 报告已保存: {output_path} (大小: {file_size} 字节)")
+
+        except (OSError, IOError) as e:
+            error_msg = f"生成 Markdown 报告失败 {output_path}: {e}"
+            logger.error(error_msg, exc_info=True)
+            raise OSError(error_msg) from e
         except Exception as e:
-            logger.error(f"生成 Markdown 报告失败 {output_path}: {e}", exc_info=True)
+            error_msg = f"生成 Markdown 报告时发生未预期的错误 {output_path}: {e}"
+            logger.error(error_msg, exc_info=True)
             raise
 
     def _format_file_markdown(self, result: FileCheckResult) -> str:
@@ -458,13 +528,14 @@ class ReportGenerator:
         """
         将文件路径转换为安全的文件名
 
-        将路径中的斜杠、反斜杠、点等特殊字符替换为下划线
+        将路径中的斜杠、反斜杠、点等特殊字符替换为下划线。
+        处理所有 Windows 非法字符，确保跨平台兼容性。
 
         Args:
             file_path: 原始文件路径
 
         Returns:
-            安全的文件名
+            安全的文件名（最长 200 字符）
 
         Examples:
             >>> gen = ReportGenerator()
@@ -472,9 +543,28 @@ class ReportGenerator:
             'autocoder_checker_core_py'
             >>> gen._safe_path("path\\to\\file.js")
             'path_to_file_js'
+            >>> gen._safe_path("file:with*invalid?chars.txt")
+            'file_with_invalid_chars_txt'
         """
-        # 替换路径分隔符和点
-        safe = file_path.replace('/', '_').replace('\\', '_').replace('.', '_')
+        # Windows 非法字符: < > : " / \ | ? *
+        # 统一替换为下划线
+        illegal_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
+        safe = file_path
+        for char in illegal_chars:
+            safe = safe.replace(char, '_')
+
+        # 替换点号（扩展名分隔符）
+        safe = safe.replace('.', '_')
+
         # 去除开头的下划线
         safe = safe.lstrip('_')
+
+        # 限制文件名长度（Windows 限制 255，留一些余量给扩展名）
+        if len(safe) > 200:
+            safe = safe[:200]
+
+        # 如果处理后为空，返回一个默认名称
+        if not safe:
+            safe = "unnamed_file"
+
         return safe
