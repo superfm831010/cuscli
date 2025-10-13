@@ -18,6 +18,17 @@ class GitHelperPlugin(Plugin):
     description = "Git helper plugin providing Git commands and status"
     version = "0.1.0"
 
+    # 需要动态补全的命令列表
+    dynamic_cmds = [
+        "/git /github /modify",
+        "/git /github /delete",
+        "/git /github /test",
+        "/git /gitlab /modify",
+        "/git /gitlab /delete",
+        "/git /gitlab /test",
+        "/git /platform /switch",
+    ]
+
     def __init__(self, manager: PluginManager, config: Optional[Dict[str, Any]] = None, config_path: Optional[str] = None):
         """Initialize the Git helper plugin."""
         super().__init__(manager, config, config_path)
@@ -95,27 +106,61 @@ class GitHelperPlugin(Plugin):
             except Exception:
                 pass
 
-        # 添加 GitHub 配置名称补全
-        try:
-            github_configs = self.platform_manager.list_configs("github")
-            config_names = [c.name for c in github_configs]
-            if config_names:
-                completions["/git /github /modify"] = config_names
-                completions["/git /github /delete"] = config_names
-                completions["/git /github /test"] = config_names
-        except Exception:
-            pass
+        return completions
 
-        # 添加 GitLab 配置名称补全
-        try:
-            gitlab_configs = self.platform_manager.list_configs("gitlab")
-            config_names = [c.name for c in gitlab_configs]
-            if config_names:
-                completions["/git /gitlab /modify"] = config_names
-                completions["/git /gitlab /delete"] = config_names
-                completions["/git /gitlab /test"] = config_names
-        except Exception:
-            pass
+    def get_dynamic_completions(
+        self, command: str, current_input: str
+    ) -> List[Tuple[str, str]]:
+        """Get dynamic completions based on the current command context.
+
+        Args:
+            command: The base command (e.g., "/git /github /modify")
+            current_input: The full current input
+
+        Returns:
+            A list of tuples containing (completion_text, display_text)
+        """
+        completions = []
+
+        # GitHub 配置名补全
+        if command in ["/git /github /modify", "/git /github /delete", "/git /github /test"]:
+            configs = self.platform_manager.list_configs("github")
+            for config in configs:
+                display = f"{config.name} ({config.base_url})"
+                completions.append((config.name, display))
+
+        # GitLab 配置名补全
+        elif command in ["/git /gitlab /modify", "/git /gitlab /delete", "/git /gitlab /test"]:
+            configs = self.platform_manager.list_configs("gitlab")
+            for config in configs:
+                display = f"{config.name} ({config.base_url})"
+                completions.append((config.name, display))
+
+        # 平台切换补全（两级）
+        elif command == "/git /platform /switch":
+            parts = current_input.split()
+
+            if len(parts) <= 3:
+                # 第一级：平台类型
+                completions = [
+                    ("github", "GitHub"),
+                    ("gitlab", "GitLab"),
+                ]
+            else:
+                # 第二级：配置名
+                platform = parts[3] if len(parts) > 3 else ""
+
+                if platform in ["github", "gitlab"]:
+                    configs = self.platform_manager.list_configs(platform)
+                    for config in configs:
+                        # 标记当前激活的配置
+                        current = ""
+                        if (self.platform_manager.current_platform == platform and
+                            self.platform_manager.current_config.get(platform) == config.name):
+                            current = " ✓"
+
+                        display = f"{config.name}{current} ({config.base_url})"
+                        completions.append((config.name, display))
 
         return completions
 
