@@ -1,10 +1,11 @@
 import byzerllm
-from typing import Union, List, Optional, Dict
+from typing import Union, List, Optional, Dict, Tuple
 
 from .schema import LLMModel
 from .registry import ModelRegistry
 from .factory import LLMFactory
 from .pricing import PricingManager
+from .connection_test import ModelConnectionTester
 
 
 class LLMManager:
@@ -274,4 +275,40 @@ class LLMManager:
         if all_models:
             # 返回字典中的第一个模型
             return next(iter(all_models.values()))
-        return None 
+        return None
+
+    def test_model_connection(
+        self,
+        model_config: Union[str, Dict, LLMModel],
+        product_mode: str = "lite",
+        show_progress: bool = False
+    ) -> Tuple[bool, str]:
+        """
+        测试模型连接
+
+        Args:
+            model_config: 模型配置（模型名称字符串、字典或 LLMModel 对象）
+            product_mode: 产品模式 ("lite" 或 "pro")
+            show_progress: 是否显示进度提示
+
+        Returns:
+            Tuple[bool, str]: (是否成功, 错误信息或成功消息)
+
+        Examples:
+            >>> manager = LLMManager()
+            >>> # 测试已存在的模型
+            >>> success, msg = manager.test_model_connection("v3_chat")
+            >>> # 测试新的模型配置
+            >>> config = {"name": "test", "model_name": "gpt-4", ...}
+            >>> success, msg = manager.test_model_connection(config)
+        """
+        # 如果是字符串，从注册表获取模型
+        if isinstance(model_config, str):
+            model = self.get_model(model_config)
+            if not model:
+                return False, f"模型 '{model_config}' 不存在"
+            model_config = model
+
+        # 创建测试器并执行测试
+        tester = ModelConnectionTester()
+        return tester.test_connection(model_config, product_mode, show_progress) 

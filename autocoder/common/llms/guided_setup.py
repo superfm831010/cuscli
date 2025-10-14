@@ -7,9 +7,10 @@ from prompt_toolkit.formatted_text import HTML
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.prompt import Confirm
+from rich.prompt import Confirm, Prompt
 from typing import Optional, Dict
 from .manager import LLMManager
+from .connection_test import ModelConnectionTester
 
 
 def guide_first_model_setup() -> Optional[str]:
@@ -43,6 +44,16 @@ def guide_first_model_setup() -> Optional[str]:
         if not _confirm_model_config(console, model_config):
             console.print("[yellow]配置已取消[/yellow]")
             return None
+
+        # 测试连接
+        test_result = _test_model_connection(console, model_config)
+        if test_result == "cancel":
+            console.print("[yellow]配置已取消[/yellow]")
+            return None
+        elif test_result == "retry":
+            # 用户选择重新配置
+            console.print("\n[cyan]请重新输入配置信息[/cyan]")
+            return guide_first_model_setup()
 
         # 保存配置
         success = _save_model_config(console, model_config)
@@ -158,6 +169,77 @@ def _confirm_model_config(console: Console, model_config: Dict) -> bool:
     console.print()
 
     return Confirm.ask("是否保存以上配置？", default=True)
+
+
+def _test_model_connection(console: Console, model_config: Dict) -> str:
+    """
+    测试模型连接
+
+    Args:
+        console: Rich Console 对象
+        model_config: 模型配置字典
+
+    Returns:
+        str: 测试结果 ("success", "skip", "retry", "cancel")
+    """
+    console.print("\n")
+    console.print(Panel(
+        "[bold cyan]步骤 3/3: 测试模型连接[/bold cyan]\n\n"
+        "即将测试模型连接，确保配置正确...",
+        border_style="cyan"
+    ))
+
+    # 如果没有 API Key，提示跳过测试
+    if not model_config.get("api_key"):
+        console.print("[yellow]⚠️  未配置 API Key，跳过连接测试[/yellow]")
+        return "success"
+
+    # 执行连接测试
+    tester = ModelConnectionTester(console)
+    success, message = tester.test_connection(model_config, product_mode="lite", show_progress=True)
+
+    console.print()
+
+    if success:
+        # 测试成功
+        console.print(Panel(
+            f"[bold green]✓ 连接测试成功！[/bold green]\n\n{message}",
+            border_style="green",
+            title="测试通过"
+        ))
+        return "success"
+    else:
+        # 测试失败
+        console.print(Panel(
+            f"[bold red]✗ 连接测试失败[/bold red]\n\n[yellow]错误信息：[/yellow]\n{message}\n\n"
+            "[dim]可能的原因：[/dim]\n"
+            "  • API Key 不正确\n"
+            "  • API 地址错误\n"
+            "  • 模型名称不存在\n"
+            "  • 网络连接问题",
+            border_style="red",
+            title="测试失败"
+        ))
+
+        # 询问用户如何处理
+        console.print("\n[bold]请选择下一步操作：[/bold]")
+        console.print("  [cyan]1[/cyan] - 重新配置")
+        console.print("  [cyan]2[/cyan] - 忽略测试，继续保存")
+        console.print("  [cyan]3[/cyan] - 取消配置")
+
+        choice = Prompt.ask(
+            "你的选择",
+            choices=["1", "2", "3"],
+            default="1"
+        )
+
+        if choice == "1":
+            return "retry"
+        elif choice == "2":
+            console.print("[yellow]⚠️  已忽略连接测试，继续保存配置[/yellow]")
+            return "success"
+        else:
+            return "cancel"
 
 
 def _save_model_config(console: Console, model_config: Dict) -> bool:

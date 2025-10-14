@@ -2,12 +2,15 @@ from prompt_toolkit.shortcuts import radiolist_dialog, input_dialog
 from prompt_toolkit.validation import Validator, ValidationError
 from prompt_toolkit.styles import Style
 from rich.console import Console
+from rich.prompt import Prompt, Confirm
+from rich.panel import Panel
 from typing import Optional, Dict, Any, List
 from autocoder.common.printer import Printer
 import re
 from pydantic import BaseModel
 
 from autocoder.common.llms import LLMManager
+from autocoder.common.llms.connection_test import ModelConnectionTester
 
 class ProviderInfo(BaseModel):
     name: str
@@ -221,11 +224,19 @@ class ModelProviderSelector:
             return None
             
         provider_info.api_key = api_key
-        
+
         # 使用新的 LLMManager 添加模型
         models_to_add = self.to_models_json(provider_info)
+
+        # 测试连接（测试第一个模型即可，通常是 v3_chat）
+        if models_to_add:
+            test_result = self._test_provider_connection(models_to_add[0])
+            if not test_result:
+                # 测试失败，用户选择取消
+                return None
+
         self.llm_manager.add_models(models_to_add)  # type: ignore
-        
+
         self.printer.print_panel(
             self.printer.get_message_from_key("model_provider_selected"),
             text_options={"justify": "left"},
@@ -234,5 +245,62 @@ class ModelProviderSelector:
                 "border_style": "green"
             }
         )
-        
+
         return provider_info.dict()
+
+    def _test_provider_connection(self, model_config: Dict[str, Any]) -> bool:
+        """
+        测试提供商连接
+
+        Args:
+            model_config: 模型配置字典
+
+        Returns:
+            bool: 是否继续（True=继续保存，False=取消）
+        """
+        self.console.print("\n")
+        self.console.print(Panel(
+            "[bold cyan]测试模型连接[/bold cyan]\n\n"
+            f"正在测试模型 [bold]{model_config['name']}[/bold] 的连接...",
+            border_style="cyan"
+        ))
+
+        # 执行连接测试
+        tester = ModelConnectionTester(self.console)
+        success, message = tester.test_connection(model_config, product_mode="lite", show_progress=True)
+
+        self.console.print()
+
+        if success:
+            # 测试成功
+            self.console.print(Panel(
+                f"[bold green]✓ 连接测试成功！[/bold green]\n\n{message}",
+                border_style="green",
+                title="测试通过"
+            ))
+            return True
+        else:
+            # 测试失败
+            self.console.print(Panel(
+                f"[bold red]✗ 连接测试失败[/bold red]\n\n[yellow]错误信息：[/yellow]\n{message}\n\n"
+                "[dim]可能的原因：[/dim]\n"
+                "  • API Key 不正确\n"
+                "  • API 地址错误\n"
+                "  • 模型名称不存在\n"
+                "  • 网络连接问题",
+                border_style="red",
+                title="测试失败"
+            ))
+
+            # 询问用户是否继续
+            continue_anyway = Confirm.ask(
+                "\n是否忽略测试失败，继续保存配置？",
+                default=False
+            )
+
+            if continue_anyway:
+                self.console.print("[yellow]⚠️  已忽略连接测试，继续保存配置[/yellow]")
+                return True
+            else:
+                self.console.print("[yellow]已取消配置[/yellow]")
+                return False
