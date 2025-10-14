@@ -1690,6 +1690,9 @@ Git 引用格式 (commit/diff 命令支持):
                     print(f"⚠️  获取 diff 信息失败，将使用全文件审核模式")
                     print()
 
+            # Phase 4: 添加 repo_path 到 options（用于路径映射）
+            options['repo_path'] = git_helper.repo_path
+
             # 执行检查（复用现有逻辑）
             self._execute_batch_check(
                 files=files,
@@ -1757,6 +1760,9 @@ Git 引用格式 (commit/diff 命令支持):
                     logger.warning(f"获取 diff 信息失败: {e}，使用全文件审核模式")
                     print(f"⚠️  获取 diff 信息失败，将使用全文件审核模式")
                     print()
+
+            # Phase 4: 添加 repo_path 到 options（用于路径映射）
+            options['repo_path'] = git_helper.repo_path
 
             self._execute_batch_check(
                 files=files,
@@ -1855,6 +1861,9 @@ Git 引用格式 (commit/diff 命令支持):
                     logger.warning(f"获取 diff 信息失败: {e}，使用全文件审核模式")
                     print(f"⚠️  获取 diff 信息失败，将使用全文件审核模式")
                     print()
+
+            # Phase 4: 添加 repo_path 到 options（用于路径映射）
+            options['repo_path'] = git_helper.repo_path
 
             # Phase 3: 传递 temp_manager 以便检查后自动清理
             self._execute_batch_check(
@@ -1957,6 +1966,9 @@ Git 引用格式 (commit/diff 命令支持):
                     logger.warning(f"获取 diff 信息失败: {e}，使用全文件审核模式")
                     print(f"⚠️  获取 diff 信息失败，将使用全文件审核模式")
                     print()
+
+            # Phase 4: 添加 repo_path 到 options（用于路径映射）
+            options['repo_path'] = git_helper.repo_path
 
             # Phase 3: 传递 temp_manager 以便检查后自动清理
             self._execute_batch_check(
@@ -2139,12 +2151,41 @@ Git 引用格式 (commit/diff 命令支持):
         """
         workers = options.get("workers", 5)
 
-        # Phase 3: 提取 diff_info_dict（如果存在）
+        # Phase 4: 提取并转换 diff_info_dict（如果存在）
         diff_info_dict = options.get("diff_info_dict")
+        abs_diff_info_dict: Optional[Dict[str, Any]] = None
+
         if diff_info_dict:
             logger.info(f"Diff-Only 模式：{len(diff_info_dict)} 个文件有 diff 信息")
-            # 注意：实际使用 diff_info 进行焦点审核需要在 Phase 4 中实现
-            # 当前阶段只是记录信息，实际审核仍为全文件模式
+
+            # Phase 4: 路径映射转换（相对路径 -> 绝对路径）
+            # diff_info_dict 的键是相对路径，但 files 列表是绝对路径
+            # 需要构建绝对路径到 FileDiffInfo 的映射
+            abs_diff_info_dict = {}
+
+            # 尝试从 git_helper 获取 repo_path（如果是 Git 检查）
+            repo_path = options.get("repo_path", os.getcwd())
+
+            for abs_path in files:
+                # 计算相对路径
+                try:
+                    rel_path = os.path.relpath(abs_path, repo_path)
+                    # 标准化路径分隔符（Git 使用正斜杠）
+                    rel_path = rel_path.replace(os.sep, '/')
+
+                    # 查找 diff_info
+                    if rel_path in diff_info_dict:
+                        abs_diff_info_dict[abs_path] = diff_info_dict[rel_path]
+                        logger.debug(f"路径映射: {rel_path} -> {abs_path}")
+                except ValueError:
+                    # relpath 可能抛出异常（如跨盘符）
+                    logger.warning(f"无法计算相对路径: {abs_path} (repo: {repo_path})")
+                    continue
+
+            logger.info(
+                f"路径映射完成: {len(diff_info_dict)} 个相对路径 -> "
+                f"{len(abs_diff_info_dict)} 个绝对路径"
+            )
         else:
             logger.info("全文件审核模式")
 
@@ -2234,9 +2275,14 @@ Git 引用格式 (commit/diff 命令支持):
                     completed_files=0
                 )
 
-                # 并发检查（传递进度回调）
+                # Phase 4: 并发检查（传递进度回调和 diff_info_dict）
                 for idx, result in enumerate(
-                    self.checker.check_files_concurrent(files, max_workers=workers, progress_callback=concurrent_progress_callback),
+                    self.checker.check_files_concurrent(
+                        files,
+                        max_workers=workers,
+                        progress_callback=concurrent_progress_callback,
+                        diff_info_dict=abs_diff_info_dict  # Phase 4: 传递 diff_info
+                    ),
                     1
                 ):
                     # Phase 3: 如果使用了临时文件，恢复原始路径（用于报告）

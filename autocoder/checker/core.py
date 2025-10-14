@@ -24,7 +24,7 @@ import byzerllm
 
 from autocoder.checker.types import (
     Rule, Issue, Severity, FileCheckResult,
-    BatchCheckResult, CodeChunk
+    BatchCheckResult, CodeChunk, FileDiffInfo
 )
 from autocoder.checker.rules_loader import RulesLoader
 from autocoder.checker.file_processor import FileProcessor
@@ -350,7 +350,8 @@ class CodeChecker:
         self,
         file_path: str,
         file_timeout: int = 600,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        diff_info: Optional[FileDiffInfo] = None
     ) -> FileCheckResult:
         """
         检查单个文件
@@ -367,15 +368,18 @@ class CodeChecker:
                 - "chunk_start": 开始检查某个 chunk (chunk_index: int, total_chunks: int)
                 - "chunk_done": 某个 chunk 检查完成 (chunk_index: int, total_chunks: int)
                 - "merge_done": 结果合并完成
+            diff_info: 可选的 Diff 信息（Phase 4: diff-only 审核模式）
+                如果提供，将仅审核修改的代码行及其上下文
 
         Returns:
             FileCheckResult: 文件检查结果
         """
-        logger.info(f"开始检查文件: {file_path} (超时: {file_timeout}秒)")
+        audit_mode = "diff-only" if diff_info else "full"
+        logger.info(f"开始检查文件: {file_path} (超时: {file_timeout}秒, 审核模式: {audit_mode})")
 
         # 使用 ThreadPoolExecutor 实现文件级超时
         with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(self._check_file_impl, file_path, progress_callback)
+            future = executor.submit(self._check_file_impl, file_path, progress_callback, diff_info)
 
             try:
                 result = future.result(timeout=file_timeout)
@@ -415,7 +419,8 @@ class CodeChecker:
     def _check_file_impl(
         self,
         file_path: str,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        diff_info: Optional[FileDiffInfo] = None
     ) -> FileCheckResult:
         """
         检查单个文件的内部实现（用于支持超时）
@@ -423,6 +428,7 @@ class CodeChecker:
         Args:
             file_path: 文件路径
             progress_callback: 可选的进度回调函数
+            diff_info: 可选的 Diff 信息（Phase 4: diff-only 审核模式）
 
         Returns:
             FileCheckResult: 文件检查结果
@@ -454,9 +460,23 @@ class CodeChecker:
             if progress_callback:
                 progress_callback(step="rules_loaded", total_rules=len(rules))
 
-            # 2. 分块处理
-            chunks = self.file_processor.chunk_file(file_path)
-            logger.info(f"文件 {file_path} 被分为 {len(chunks)} 个 chunk")
+            # 2. 分块处理 (Phase 4: 根据是否有 diff_info 选择分块方式)
+            if diff_info and diff_info.has_modifications():
+                # Diff-Only 模式：仅提取修改的代码行及其上下文
+                focus_ranges = diff_info.get_modified_line_ranges()
+                chunks = self.file_processor.chunk_file_with_focus_lines(
+                    file_path,
+                    focus_ranges,
+                    context_lines=5
+                )
+                logger.info(
+                    f"文件 {file_path} (Diff-Only 模式): {len(focus_ranges)} 个修改范围 "
+                    f"-> {len(chunks)} 个 chunk"
+                )
+            else:
+                # 全文件模式：常规分块
+                chunks = self.file_processor.chunk_file(file_path)
+                logger.info(f"文件 {file_path} (全文件模式) 被分为 {len(chunks)} 个 chunk")
 
             # 回调：文件分块完成
             if progress_callback:
@@ -607,7 +627,8 @@ class CodeChecker:
 
     def check_files_concurrent(
         self, files: List[str], max_workers: int = 5, file_timeout: int = 600,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        diff_info_dict: Optional[Dict[str, FileDiffInfo]] = None
     ) -> Generator[FileCheckResult, None, None]:
         """
         并发检查多个文件
@@ -623,6 +644,8 @@ class CodeChecker:
             file_timeout: 单个文件检查的最大超时时间(秒),默认 600 秒(10分钟)
             progress_callback: 可选的进度回调函数，用于报告检查进度（注意：并发场景下，
                 回调会被多个线程同时调用，需要确保线程安全）
+            diff_info_dict: 可选的 Diff 信息字典（Phase 4: diff-only 审核模式）
+                键为文件路径（绝对路径），值为该文件的 FileDiffInfo
 
         Yields:
             FileCheckResult: 每个文件的检查结果（按完成顺序）
@@ -632,7 +655,19 @@ class CodeChecker:
             >>> for result in checker.check_files_concurrent(files, max_workers=5):
             ...     print(f"完成: {result.file_path}")
         """
-        logger.info(f"开始并发检查 {len(files)} 个文件 (workers={max_workers}, file_timeout={file_timeout}秒)")
+        # Phase 4: 记录 diff-only 模式
+        diff_only_count = 0
+        if diff_info_dict:
+            diff_only_count = len(diff_info_dict)
+            logger.info(
+                f"开始并发检查 {len(files)} 个文件 (workers={max_workers}, file_timeout={file_timeout}秒, "
+                f"diff-only 模式: {diff_only_count} 个文件)"
+            )
+        else:
+            logger.info(
+                f"开始并发检查 {len(files)} 个文件 (workers={max_workers}, file_timeout={file_timeout}秒, "
+                f"全文件模式)"
+            )
 
         if not files:
             logger.warning("文件列表为空，跳过检查")
@@ -640,11 +675,21 @@ class CodeChecker:
 
         # 使用 ThreadPoolExecutor 并发检查
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # 提交所有任务(传递 file_timeout 和 progress_callback 参数)
-            future_to_file = {
-                executor.submit(self.check_file, file_path, file_timeout, progress_callback): file_path
-                for file_path in files
-            }
+            # Phase 4: 提交任务时，为每个文件提取对应的 diff_info
+            future_to_file = {}
+            for file_path in files:
+                # 从 diff_info_dict 中提取该文件的 diff_info（如果存在）
+                file_diff_info = diff_info_dict.get(file_path) if diff_info_dict else None
+
+                # 提交任务，传递 diff_info
+                future = executor.submit(
+                    self.check_file,
+                    file_path,
+                    file_timeout,
+                    progress_callback,
+                    file_diff_info  # Phase 4: 传递 diff_info
+                )
+                future_to_file[future] = file_path
 
             logger.info(f"已提交 {len(future_to_file)} 个检查任务到线程池")
 
