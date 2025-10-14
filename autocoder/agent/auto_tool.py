@@ -285,6 +285,8 @@ class AutoTool:
     def run(self, query: str, max_iterations: int = 20):
         from byzerllm.apps.llama_index.byzerai import ByzerAI
         from llama_index.core.agent import ReActAgent
+        from autocoder.utils.rolling_display import rolling_progress
+
         agent = ReActAgent.from_tools(
             tools=self.tools,
             llm=ByzerAI(llm=self.code_model),
@@ -292,7 +294,20 @@ class AutoTool:
             max_iterations=max_iterations,
             context=context.prompt(),
         )
-        r = agent.chat(message=query)
+
+        # 使用滚动显示来展示 agent 的思考过程
+        with rolling_progress(max_lines=5, title="🤖 Agent 正在思考和执行任务..."):
+            r = agent.chat(message=query)
+
+        # 显示完成摘要
+        console = Console()
+        console.print("\n")
+        console.print(Panel(
+            r.response[:500] + ("..." if len(r.response) > 500 else ""),
+            title="✅ 任务完成",
+            border_style="green",
+            padding=(1, 2)
+        ))
 
         # print("\n\n=============EXECUTE==================")
         # executor = code_auto_execute.CodeAutoExecute(
