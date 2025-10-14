@@ -280,3 +280,73 @@ class FileFilters(BaseModel):
         import os
         _, ext = os.path.splitext(path)
         return ext in self.extensions
+
+
+class DiffHunk(BaseModel):
+    """
+    Git Diff 代码修改块
+
+    表示一个连续的代码修改区域（对应 diff 中的一个 @@ hunk）
+
+    Attributes:
+        old_start: 旧版本起始行号
+        old_count: 旧版本行数
+        new_start: 新版本起始行号
+        new_count: 新版本行数
+        change_type: 变更类型（added/modified/deleted）
+    """
+    old_start: int = Field(..., ge=0, description="旧版本起始行号")
+    old_count: int = Field(..., ge=0, description="旧版本行数")
+    new_start: int = Field(..., ge=0, description="新版本起始行号")
+    new_count: int = Field(..., ge=0, description="新版本行数")
+    change_type: str = Field(..., description="变更类型: added/modified/deleted")
+
+    def get_new_line_range(self) -> tuple:
+        """
+        获取新版本的行号范围
+
+        Returns:
+            (start_line, end_line) 起始行和结束行（包含）
+        """
+        if self.new_count == 0:
+            # 删除操作，新文件中没有对应行
+            return (0, 0)
+        return (self.new_start, self.new_start + self.new_count - 1)
+
+
+class FileDiffInfo(BaseModel):
+    """
+    文件的 Diff 信息
+
+    包含一个文件的所有修改块信息，用于 diff-only 审核模式
+
+    Attributes:
+        file_path: 文件路径（相对于仓库根目录）
+        hunks: 修改块列表
+        total_added: 新增行数统计
+        total_deleted: 删除行数统计
+        change_type: 文件级别的变更类型（added/modified/deleted/renamed）
+    """
+    file_path: str = Field(..., description="文件路径")
+    hunks: List[DiffHunk] = Field(default_factory=list, description="修改块列表")
+    total_added: int = Field(default=0, ge=0, description="新增行数")
+    total_deleted: int = Field(default=0, ge=0, description="删除行数")
+    change_type: str = Field(default="modified", description="变更类型")
+
+    def get_modified_line_ranges(self) -> List[tuple]:
+        """
+        获取所有修改的行号范围（新版本）
+
+        Returns:
+            [(start_line, end_line), ...] 行号范围列表（包含）
+        """
+        ranges = []
+        for hunk in self.hunks:
+            line_range = hunk.get_new_line_range()
+            if line_range != (0, 0):  # 排除删除操作
+                ranges.append(line_range)
+        return ranges
+
+    def has_modifications(self) -> bool:
+        """判断是否有实际修改（排除纯删除）"""
+        return any(hunk.new_count > 0 for hunk in self.hunks)

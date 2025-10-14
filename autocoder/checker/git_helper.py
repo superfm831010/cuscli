@@ -9,8 +9,12 @@ Git 文件获取辅助模块
 
 from typing import List, Optional, Dict
 import os
+import re
 from git import Repo, GitCommandError, BadName
 from loguru import logger
+
+# 导入 diff 相关的数据类型
+from autocoder.checker.types import DiffHunk, FileDiffInfo
 
 
 class GitFileHelper:
@@ -406,6 +410,327 @@ class GitFileHelper:
         except Exception as e:
             logger.error(f"获取 commit 信息失败: {e}")
             return {}
+
+    def get_staged_diff_info(self) -> Dict[str, FileDiffInfo]:
+        """
+        获取暂存区文件的 diff 信息（相对于 HEAD）
+
+        Returns:
+            {file_path: FileDiffInfo} 文件路径到 diff 信息的映射
+
+        Example:
+            >>> helper = GitFileHelper()
+            >>> diff_info = helper.get_staged_diff_info()
+            >>> for path, info in diff_info.items():
+            ...     print(f"{path}: {info.total_added} added, {info.total_deleted} deleted")
+        """
+        try:
+            # 获取暂存区与 HEAD 的 diff
+            try:
+                diff_index = self.repo.head.commit.diff()
+            except (GitCommandError, BadName, ValueError):
+                # 初始仓库，没有 HEAD，所有暂存文件都是新增
+                logger.debug("没有 HEAD，暂存区所有文件都是新增文件")
+                result = {}
+                staged_entries = [entry[0] for entry in self.repo.index.entries.keys()]
+                for file_path in staged_entries:
+                    abs_path = os.path.join(self.repo_path, file_path)
+                    if os.path.exists(abs_path):
+                        # 读取文件行数
+                        try:
+                            with open(abs_path, 'r', encoding='utf-8') as f:
+                                lines = f.readlines()
+                                line_count = len(lines)
+                            # 新增文件，整个文件都是修改
+                            hunk = DiffHunk(
+                                old_start=0,
+                                old_count=0,
+                                new_start=1,
+                                new_count=line_count,
+                                change_type="added"
+                            )
+                            result[file_path] = FileDiffInfo(
+                                file_path=file_path,
+                                hunks=[hunk],
+                                total_added=line_count,
+                                total_deleted=0,
+                                change_type="added"
+                            )
+                        except Exception as e:
+                            logger.warning(f"读取新增文件失败: {file_path}, {e}")
+                return result
+
+            # 解析 diff
+            result = {}
+            for diff_item in diff_index:
+                file_path = diff_item.b_path or diff_item.a_path
+
+                # 确定变更类型
+                if diff_item.new_file:
+                    change_type = "added"
+                elif diff_item.deleted_file:
+                    change_type = "deleted"
+                elif diff_item.renamed_file:
+                    change_type = "renamed"
+                else:
+                    change_type = "modified"
+
+                # 解析 diff hunks
+                hunks, total_added, total_deleted = self._parse_diff_hunks(diff_item.diff.decode('utf-8'))
+
+                result[file_path] = FileDiffInfo(
+                    file_path=file_path,
+                    hunks=hunks,
+                    total_added=total_added,
+                    total_deleted=total_deleted,
+                    change_type=change_type
+                )
+
+            logger.info(f"获取暂存区 diff 信息: {len(result)} 个文件")
+            return result
+
+        except Exception as e:
+            logger.error(f"获取暂存区 diff 信息失败: {e}", exc_info=True)
+            return {}
+
+    def get_unstaged_diff_info(self) -> Dict[str, FileDiffInfo]:
+        """
+        获取工作区修改文件的 diff 信息（相对于暂存区）
+
+        Returns:
+            {file_path: FileDiffInfo} 文件路径到 diff 信息的映射
+
+        Example:
+            >>> helper = GitFileHelper()
+            >>> diff_info = helper.get_unstaged_diff_info()
+        """
+        try:
+            # 获取工作区与暂存区的 diff
+            diff_working = self.repo.index.diff(None)
+
+            result = {}
+            for diff_item in diff_working:
+                file_path = diff_item.a_path
+
+                # 确定变更类型
+                if diff_item.new_file:
+                    change_type = "added"
+                elif diff_item.deleted_file:
+                    change_type = "deleted"
+                elif diff_item.renamed_file:
+                    change_type = "renamed"
+                else:
+                    change_type = "modified"
+
+                # 解析 diff hunks
+                hunks, total_added, total_deleted = self._parse_diff_hunks(diff_item.diff.decode('utf-8'))
+
+                result[file_path] = FileDiffInfo(
+                    file_path=file_path,
+                    hunks=hunks,
+                    total_added=total_added,
+                    total_deleted=total_deleted,
+                    change_type=change_type
+                )
+
+            logger.info(f"获取工作区 diff 信息: {len(result)} 个文件")
+            return result
+
+        except Exception as e:
+            logger.error(f"获取工作区 diff 信息失败: {e}", exc_info=True)
+            return {}
+
+    def get_commit_diff_info(self, commit_hash: str) -> Dict[str, FileDiffInfo]:
+        """
+        获取指定 commit 的 diff 信息（相对于父 commit）
+
+        Args:
+            commit_hash: commit 哈希值
+
+        Returns:
+            {file_path: FileDiffInfo} 文件路径到 diff 信息的映射
+
+        Example:
+            >>> helper = GitFileHelper()
+            >>> diff_info = helper.get_commit_diff_info("abc1234")
+        """
+        try:
+            commit = self.repo.commit(commit_hash)
+
+            # 如果是初始 commit，所有文件都是新增
+            if not commit.parents:
+                logger.debug(f"Commit {commit_hash} 是初始 commit")
+                result = {}
+                for item in commit.tree.traverse():
+                    if item.type == 'blob':
+                        file_path = item.path
+                        # 获取文件行数
+                        try:
+                            content = item.data_stream.read().decode('utf-8')
+                            line_count = content.count('\n') + 1
+                            hunk = DiffHunk(
+                                old_start=0,
+                                old_count=0,
+                                new_start=1,
+                                new_count=line_count,
+                                change_type="added"
+                            )
+                            result[file_path] = FileDiffInfo(
+                                file_path=file_path,
+                                hunks=[hunk],
+                                total_added=line_count,
+                                total_deleted=0,
+                                change_type="added"
+                            )
+                        except Exception as e:
+                            logger.warning(f"解析初始 commit 文件失败: {file_path}, {e}")
+                return result
+
+            # 与父节点对比
+            parent = commit.parents[0]
+            diff = parent.diff(commit)
+
+            result = {}
+            for diff_item in diff:
+                file_path = diff_item.b_path or diff_item.a_path
+
+                # 确定变更类型
+                if diff_item.new_file:
+                    change_type = "added"
+                elif diff_item.deleted_file:
+                    change_type = "deleted"
+                elif diff_item.renamed_file:
+                    change_type = "renamed"
+                else:
+                    change_type = "modified"
+
+                # 解析 diff hunks
+                hunks, total_added, total_deleted = self._parse_diff_hunks(diff_item.diff.decode('utf-8'))
+
+                result[file_path] = FileDiffInfo(
+                    file_path=file_path,
+                    hunks=hunks,
+                    total_added=total_added,
+                    total_deleted=total_deleted,
+                    change_type=change_type
+                )
+
+            logger.info(f"获取 commit {commit_hash[:7]} diff 信息: {len(result)} 个文件")
+            return result
+
+        except Exception as e:
+            logger.error(f"获取 commit diff 信息失败: {e}", exc_info=True)
+            return {}
+
+    def get_diff_between_commits(self, commit1: str, commit2: str = "HEAD") -> Dict[str, FileDiffInfo]:
+        """
+        获取两个 commit 之间的 diff 信息
+
+        Args:
+            commit1: 起始 commit
+            commit2: 结束 commit（默认 HEAD）
+
+        Returns:
+            {file_path: FileDiffInfo} 文件路径到 diff 信息的映射
+
+        Example:
+            >>> helper = GitFileHelper()
+            >>> diff_info = helper.get_diff_between_commits("main", "dev")
+        """
+        try:
+            c1 = self.repo.commit(commit1)
+            c2 = self.repo.commit(commit2)
+
+            logger.info(f"对比: {c1.hexsha[:7]}...{c2.hexsha[:7]}")
+
+            diff = c1.diff(c2)
+
+            result = {}
+            for diff_item in diff:
+                file_path = diff_item.b_path or diff_item.a_path
+
+                # 确定变更类型
+                if diff_item.new_file:
+                    change_type = "added"
+                elif diff_item.deleted_file:
+                    change_type = "deleted"
+                elif diff_item.renamed_file:
+                    change_type = "renamed"
+                else:
+                    change_type = "modified"
+
+                # 解析 diff hunks
+                hunks, total_added, total_deleted = self._parse_diff_hunks(diff_item.diff.decode('utf-8'))
+
+                result[file_path] = FileDiffInfo(
+                    file_path=file_path,
+                    hunks=hunks,
+                    total_added=total_added,
+                    total_deleted=total_deleted,
+                    change_type=change_type
+                )
+
+            logger.info(f"获取 diff 信息: {len(result)} 个文件")
+            return result
+
+        except Exception as e:
+            logger.error(f"获取 diff 信息失败: {e}", exc_info=True)
+            return {}
+
+    def _parse_diff_hunks(self, diff_text: str) -> tuple:
+        """
+        解析 git diff 文本，提取 hunks 信息
+
+        Args:
+            diff_text: git diff 输出文本
+
+        Returns:
+            (hunks, total_added, total_deleted) 元组
+
+        Example:
+            >>> hunks, added, deleted = helper._parse_diff_hunks(diff_text)
+        """
+        hunks = []
+        total_added = 0
+        total_deleted = 0
+
+        # 解析 diff hunk 头部：@@ -old_start,old_count +new_start,new_count @@
+        # 示例：@@ -10,5 +10,8 @@
+        hunk_pattern = re.compile(r'@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@')
+
+        for line in diff_text.split('\n'):
+            match = hunk_pattern.match(line)
+            if match:
+                old_start = int(match.group(1))
+                old_count = int(match.group(2)) if match.group(2) else 1
+                new_start = int(match.group(3))
+                new_count = int(match.group(4)) if match.group(4) else 1
+
+                # 判断变更类型
+                if old_count == 0:
+                    change_type = "added"
+                elif new_count == 0:
+                    change_type = "deleted"
+                else:
+                    change_type = "modified"
+
+                hunk = DiffHunk(
+                    old_start=old_start,
+                    old_count=old_count,
+                    new_start=new_start,
+                    new_count=new_count,
+                    change_type=change_type
+                )
+                hunks.append(hunk)
+
+            # 统计新增和删除的行数
+            elif line.startswith('+') and not line.startswith('+++'):
+                total_added += 1
+            elif line.startswith('-') and not line.startswith('---'):
+                total_deleted += 1
+
+        logger.debug(f"解析 diff hunks: {len(hunks)} 个 hunks, +{total_added}, -{total_deleted}")
+        return hunks, total_added, total_deleted
 
 
 class TempFileManager:

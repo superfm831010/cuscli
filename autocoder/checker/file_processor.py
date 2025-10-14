@@ -291,6 +291,243 @@ class FileProcessor:
 
         return chunks
 
+    def chunk_file_with_focus_lines(
+        self,
+        file_path: str,
+        focus_ranges: List[Tuple[int, int]],
+        context_lines: int = 5
+    ) -> List[CodeChunk]:
+        """
+        只提取指定行号范围（+ 上下文）进行分块（用于 diff-only 审核）
+
+        对每个关注范围添加上下文，合并相近的范围，然后只提取这些行进行审核。
+        这样可以大幅减少审核的代码量，提升效率。
+
+        Args:
+            file_path: 文件路径
+            focus_ranges: 关注的行号范围列表 [(start_line, end_line), ...]
+                          行号从 1 开始，包含 start_line 和 end_line
+            context_lines: 每个范围前后添加的上下文行数，默认 5
+
+        Returns:
+            代码块列表，每个块包含关注范围 + 上下文的代码
+
+        Raises:
+            FileNotFoundError: 文件不存在
+            UnicodeDecodeError: 文件编码错误
+
+        Examples:
+            >>> processor = FileProcessor()
+            >>> # 只审核第 10-20 行和第 50-60 行（加上下文）
+            >>> chunks = processor.chunk_file_with_focus_lines(
+            ...     "test.py",
+            ...     [(10, 20), (50, 60)],
+            ...     context_lines=5
+            ... )
+        """
+        if not focus_ranges:
+            logger.warning(f"No focus ranges provided, falling back to full file chunking")
+            return self.chunk_file(file_path)
+
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        # 读取文件内容
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+        except UnicodeDecodeError as e:
+            logger.error(f"Failed to read file {file_path}: {e}")
+            raise
+
+        total_lines = len(lines)
+
+        # 1. 为每个 focus range 添加上下文
+        expanded_ranges = []
+        for start, end in focus_ranges:
+            # 确保行号在有效范围内
+            start = max(1, start)
+            end = min(total_lines, end)
+
+            # 添加上下文
+            context_start = max(1, start - context_lines)
+            context_end = min(total_lines, end + context_lines)
+
+            expanded_ranges.append((context_start, context_end))
+
+        # 2. 合并重叠或相邻的范围
+        merged_ranges = self._merge_ranges(expanded_ranges)
+
+        logger.info(
+            f"Focus lines for {file_path}: "
+            f"{len(focus_ranges)} ranges -> {len(merged_ranges)} merged ranges "
+            f"(with {context_lines}-line context)"
+        )
+
+        # 3. 提取这些范围的行，并添加行号
+        extracted_lines = []
+        range_info = []  # 记录每个范围对应的行数索引
+
+        for start, end in merged_ranges:
+            range_start_idx = len(extracted_lines)
+
+            # 提取行并添加行号（保持原始行号）
+            for line_no in range(start, end + 1):
+                idx = line_no - 1  # 转换为 0-based 索引
+                if idx < len(lines):
+                    line_content = lines[idx].rstrip('\n')
+                    numbered_line = f"{line_no} {line_content}"
+                    extracted_lines.append(numbered_line)
+
+            range_end_idx = len(extracted_lines)
+            range_info.append((start, end, range_start_idx, range_end_idx))
+
+        if not extracted_lines:
+            logger.warning(f"No lines extracted for {file_path}, falling back to full file")
+            return self.chunk_file(file_path)
+
+        # 4. 计算提取内容的 token 数
+        extracted_content = '\n'.join(extracted_lines)
+        extracted_tokens = self.tokenizer.count_tokens(extracted_content)
+
+        logger.info(
+            f"Extracted {len(extracted_lines)}/{total_lines} lines "
+            f"({100 * len(extracted_lines) / total_lines:.1f}%), "
+            f"{extracted_tokens} tokens"
+        )
+
+        # 5. 如果提取的内容适合单个 chunk，直接返回
+        if extracted_tokens <= self.chunk_size:
+            # 计算整体的起始和结束行号
+            overall_start = merged_ranges[0][0]
+            overall_end = merged_ranges[-1][1]
+
+            return [
+                CodeChunk(
+                    content=extracted_content,
+                    start_line=overall_start,
+                    end_line=overall_end,
+                    chunk_index=0,
+                    file_path=file_path
+                )
+            ]
+
+        # 6. 需要分块：基于提取的行进行分块
+        logger.info(
+            f"Extracted content ({extracted_tokens} tokens) exceeds chunk size, "
+            f"splitting into chunks"
+        )
+
+        chunks = []
+        current_line = 0
+        chunk_index = 0
+
+        while current_line < len(extracted_lines):
+            # 计算当前 chunk 的结束行
+            end_line = self._calculate_chunk_end(
+                extracted_lines,
+                current_line,
+                self.chunk_size
+            )
+
+            # 创建 chunk
+            chunk_lines = extracted_lines[current_line:end_line]
+            chunk_content = '\n'.join(chunk_lines)
+
+            # 从 chunk 中提取实际的起始和结束行号
+            # 第一行格式："{line_no} {content}"
+            first_line = chunk_lines[0]
+            last_line = chunk_lines[-1]
+
+            import re
+            first_line_no = int(re.match(r'^(\d+)\s', first_line).group(1))
+            last_line_no = int(re.match(r'^(\d+)\s', last_line).group(1))
+
+            chunks.append(
+                CodeChunk(
+                    content=chunk_content,
+                    start_line=first_line_no,
+                    end_line=last_line_no,
+                    chunk_index=chunk_index,
+                    file_path=file_path
+                )
+            )
+
+            logger.debug(
+                f"Created focus chunk {chunk_index}: "
+                f"lines {first_line_no}-{last_line_no}"
+            )
+
+            # 移动到下一个 chunk（考虑重叠）
+            if end_line >= len(extracted_lines):
+                break
+
+            # 计算重叠的起始位置
+            if self.overlap > 0 and (end_line - current_line) > 1:
+                overlap_tokens = 0
+                overlap_lines = 0
+                idx = end_line - 1
+
+                while idx >= current_line and overlap_tokens < self.overlap:
+                    overlap_tokens += self.tokenizer.count_tokens(extracted_lines[idx])
+                    overlap_lines += 1
+                    idx -= 1
+
+                chunk_length = end_line - current_line
+                overlap_lines = min(overlap_lines, chunk_length - 1)
+
+                next_start = end_line - overlap_lines
+                if next_start <= current_line:
+                    next_start = current_line + 1
+
+                current_line = next_start
+            else:
+                current_line = end_line
+
+            chunk_index += 1
+
+        logger.info(f"Focus-based chunking: {len(chunks)} chunks created")
+        return chunks
+
+    def _merge_ranges(self, ranges: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+        """
+        合并重叠或相邻的行号范围
+
+        Args:
+            ranges: 行号范围列表 [(start, end), ...]
+
+        Returns:
+            合并后的范围列表
+
+        Example:
+            >>> processor = FileProcessor()
+            >>> ranges = [(1, 10), (8, 15), (20, 25)]
+            >>> merged = processor._merge_ranges(ranges)
+            >>> merged
+            [(1, 15), (20, 25)]
+        """
+        if not ranges:
+            return []
+
+        # 按起始行号排序
+        sorted_ranges = sorted(ranges, key=lambda x: x[0])
+
+        merged = [sorted_ranges[0]]
+
+        for current_start, current_end in sorted_ranges[1:]:
+            last_start, last_end = merged[-1]
+
+            # 如果当前范围与上一个范围重叠或相邻，则合并
+            if current_start <= last_end + 1:
+                # 合并：扩展上一个范围的结束位置
+                merged[-1] = (last_start, max(last_end, current_end))
+            else:
+                # 不重叠，添加为新范围
+                merged.append((current_start, current_end))
+
+        logger.debug(f"Merged {len(ranges)} ranges -> {len(merged)} ranges")
+        return merged
+
     def is_checkable(self, file_path: str) -> bool:
         """
         判断文件是否可检查
