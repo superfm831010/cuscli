@@ -363,26 +363,51 @@ class CodeCheckerPlugin(Plugin):
             # 初始化 GitFileHelper
             git_helper = GitFileHelper()
 
-            # 1. 添加常用的相对引用
-            relative_refs = [
-                ("HEAD", "HEAD (最新 commit)"),
-                ("HEAD~1", "HEAD~1 (前1个 commit)"),
-                ("HEAD~2", "HEAD~2 (前2个 commit)"),
-                ("HEAD~3", "HEAD~3 (前3个 commit)"),
-                ("HEAD~4", "HEAD~4 (前4个 commit)"),
-                ("HEAD~5", "HEAD~5 (前5个 commit)"),
-            ]
-
-            for ref, display in relative_refs:
-                completions.append((ref, display))
-
-            # 2. 获取最近10个 commits 的短哈希和消息
+            # 1. 获取本地未推送的 commits（优先显示）
+            local_commits = []
             try:
-                # 使用 GitPython 获取最近10个 commits
-                commits = list(git_helper.repo.iter_commits('HEAD', max_count=10))
+                # 检查是否有远程分支
+                repo = git_helper.repo
+                if repo.heads:
+                    current_branch = repo.active_branch
+                    # 尝试获取对应的远程跟踪分支
+                    if current_branch.tracking_branch():
+                        remote_branch = current_branch.tracking_branch()
+                        # 获取本地领先远程的 commits
+                        local_only = list(repo.iter_commits(f'{remote_branch.name}..{current_branch.name}'))
 
-                for i, commit in enumerate(commits):
+                        for commit in local_only:
+                            short_hash = commit.hexsha[:7]
+                            message = commit.message.strip().split('\n')[0]
+                            if len(message) > 45:
+                                message = message[:42] + "..."
+
+                            # 添加 [本地] 标记
+                            display = f"{short_hash} - [本地] {message}"
+                            local_commits.append((short_hash, display))
+
+                        logger.debug(f"找到 {len(local_commits)} 个本地未推送的 commits")
+            except Exception as e:
+                logger.debug(f"获取本地 commits 失败（可能没有远程分支）: {e}")
+
+            # 将本地 commits 添加到补全列表
+            completions.extend(local_commits)
+
+            # 2. 获取最近20个 commits 的短哈希和消息（排除已添加的本地 commits）
+            try:
+                # 使用 GitPython 获取最近20个 commits
+                commits = list(git_helper.repo.iter_commits('HEAD', max_count=20))
+
+                # 已添加的本地 commits 的哈希集合
+                local_hashes = {c[0] for c in local_commits}
+
+                for commit in commits:
                     short_hash = commit.hexsha[:7]
+
+                    # 跳过已经作为本地 commit 添加的
+                    if short_hash in local_hashes:
+                        continue
+
                     # 获取第一行 commit 消息
                     message = commit.message.strip().split('\n')[0]
                     # 截断过长的消息
@@ -396,7 +421,20 @@ class CodeCheckerPlugin(Plugin):
             except Exception as e:
                 logger.warning(f"获取 commits 失败: {e}")
 
-            # 3. 添加分支名
+            # 3. 添加常用的相对引用
+            relative_refs = [
+                ("HEAD", "HEAD (最新 commit)"),
+                ("HEAD~1", "HEAD~1 (前1个 commit)"),
+                ("HEAD~2", "HEAD~2 (前2个 commit)"),
+                ("HEAD~3", "HEAD~3 (前3个 commit)"),
+                ("HEAD~5", "HEAD~5 (前5个 commit)"),
+                ("HEAD~10", "HEAD~10 (前10个 commit)"),
+            ]
+
+            for ref, display in relative_refs:
+                completions.append((ref, display))
+
+            # 4. 添加分支名
             try:
                 branches = [b.name for b in git_helper.repo.branches]
                 for branch in branches[:5]:  # 最多显示5个分支
