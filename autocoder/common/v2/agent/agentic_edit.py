@@ -310,7 +310,7 @@ class AgenticEdit:
 
          **Batch Command Execution**: This tool also supports executing multiple commands in a single call using JSON, YAML, or newline-separated formats. By default, multiple commands run in parallel for better performance. Use serial execution when commands depend on each other.
          **Background Command Execution**: This tool also supports running commands in the background. Set the background parameter to 'true' for long-running processes (e.g., 'npm run dev') to keep the session responsive while the process continues running.
-         **Sub Agent Execution**: You can also delegate tasks to sub-agents using pipe syntax like `echo 'task description' | auto-coder.run --model {{ current_model }} --is-sub-agent` or `cat task_file.txt | auto-coder.run --model {{ current_model }} --is-sub-agent`. The --is-sub-agent flag indicates this agent is called by another agent rather than directly by a human.
+         **Sub Agent Execution**: You can also delegate tasks to sub-agents using pipe syntax like `echo 'task description' | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose` or `cat task_file.txt | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose`. The --is-sub-agent flag indicates this agent is called by another agent rather than directly by a human. The --verbose flag enables detailed logging for sub-agent execution progress.
 
          For command chaining, use the appropriate chaining syntax for the user's shell. Prefer to execute complex CLI commands over creating executable scripts, as they are more flexible and easier to run. Commands will be executed in the current working directory: {{current_project}}
 
@@ -1606,8 +1606,8 @@ class AgenticEdit:
 
          <execute_command>
          <command>[
-           "echo 'Create a header component with navigation menu in src/components/Header.tsx' | auto-coder.run --model {{ current_model }} --is-sub-agent",
-           "echo 'Create a footer component with copyright and links in src/components/Footer.tsx' | auto-coder.run --model {{ current_model }} --is-sub-agent",
+           "echo 'Create a header component with navigation menu in src/components/Header.tsx' | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose",
+           "echo 'Create a footer component with copyright and links in src/components/Footer.tsx' | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose",
          ]</command>
          <requires_approval>false</requires_approval>
          <timeout>300</timeout>
@@ -1628,8 +1628,8 @@ class AgenticEdit:
          <command>
          mode: parallel
          cmds:
-         - echo 'Create User model with TypeScript interfaces in src/models/User.ts. Include fields: id, username, email, password, createdAt, updatedAt' | auto-coder.run --model {{ current_model }} --is-sub-agent
-         - echo 'Implement UserService class in src/services/UserService.ts with methods: createUser, getUser, updateUser, deleteUser, listUsers' | auto-coder.run --model {{ current_model }} --is-sub-agent
+         - echo 'Create User model with TypeScript interfaces in src/models/User.ts. Include fields: id, username, email, password, createdAt, updatedAt' | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
+         - echo 'Implement UserService class in src/services/UserService.ts with methods: createUser, getUser, updateUser, deleteUser, listUsers' | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
          </command>
          <requires_approval>false</requires_approval>
          <timeout>600</timeout>
@@ -1649,18 +1649,18 @@ class AgenticEdit:
 
          ```bash
          # Stage 1: Create base structures (parallel)
-         echo "Create base interfaces and types" | auto-coder.run --model {{ current_model }} --is-sub-agent
-         echo "Set up project configuration files" | auto-coder.run --model {{ current_model }} --is-sub-agent
+         echo "Create base interfaces and types" | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
+         echo "Set up project configuration files" | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
 
          # Wait for Stage 1 completion, then...
 
          # Stage 2: Implement core logic (parallel)
-         echo "Implement services using the interfaces" | auto-coder.run --model {{ current_model }} --is-sub-agent
-         echo "Create API routes using the services" | auto-coder.run --model {{ current_model }} --is-sub-agent
+         echo "Implement services using the interfaces" | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
+         echo "Create API routes using the services" | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
 
          # Stage 3: Testing and documentation (parallel)
-         echo "Write tests for all services" | auto-coder.run --model {{ current_model }} --is-sub-agent
-         echo "Generate API documentation" | auto-coder.run --model {{ current_model }} --is-sub-agent
+         echo "Write tests for all services" | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
+         echo "Generate API documentation" | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
          ```
 
          {{sub_agents_content}}
