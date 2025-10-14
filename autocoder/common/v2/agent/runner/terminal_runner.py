@@ -144,6 +144,9 @@ class TerminalRunner(BaseRunner):
                     logger.info(f"当前会话总 tokens: {event.tokens_used}")
                     if event.tokens_used > event.pruned_tokens_used:
                         console.print(f"[dim]conversation tokens: {event.tokens_used} -> {event.pruned_tokens_used} (conversation round: {event.conversation_round})[/dim]")
+                        # 显示醒目的等待提示，让用户知道 Agent 正在长时间思考
+                        thinking_notice = get_message("agent_thinking_notice")
+                        console.print(f"\n[bold yellow]{thinking_notice}[/bold yellow]\n")
                     else:
                         console.print(f"[dim]conversation tokens: {event.tokens_used} (conversation round: {event.conversation_round})[/dim]")
                     
