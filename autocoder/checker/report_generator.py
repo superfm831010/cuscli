@@ -287,9 +287,21 @@ class ReportGenerator:
 **文件路径**: `{result.file_path}`
 **检查时间**: {result.check_time}
 **检查状态**: {status_icon} {result.status}
-**问题总数**: {result.get_total_issues()} 个
+"""
 
-## 📊 问题统计
+        # Phase 5: 显示审核模式和统计信息
+        if result.audit_mode:
+            audit_mode_icon = "🎯" if result.audit_mode == "diff-only" else "📄"
+            audit_mode_text = "Diff-Only（差异审核）" if result.audit_mode == "diff-only" else "全文件审核"
+            md += f"**审核模式**: {audit_mode_icon} {audit_mode_text}\n"
+
+            if result.audit_stats and result.audit_mode == "diff-only":
+                audit_summary = result.get_audit_summary()
+                if audit_summary:
+                    md += f"**审核范围**: {audit_summary}\n"
+
+        md += f"**问题总数**: {result.get_total_issues()} 个\n\n"
+        md += f"""## 📊 问题统计
 
 | 严重程度 | 数量 |
 |---------|------|
@@ -494,6 +506,32 @@ class ReportGenerator:
         md += f"| 已检查文件 | {batch_result.checked_files} |\n"
         md += f"| 完成率 | {batch_result.get_completion_rate():.1f}% |\n"
         md += f"| **总问题数** | **{batch_result.total_issues}** |\n\n"
+
+        # Phase 5: 显示审核模式统计
+        diff_only_files = [r for r in batch_result.file_results if r.audit_mode == "diff-only"]
+        full_files = [r for r in batch_result.file_results if r.audit_mode == "full"]
+
+        if diff_only_files:
+            md += "## 🎯 审核模式统计\n\n"
+            md += "| 审核模式 | 文件数 | 占比 |\n"
+            md += "|---------|-------|------|\n"
+            md += f"| 🎯 Diff-Only（差异审核） | {len(diff_only_files)} | {len(diff_only_files) / batch_result.total_files * 100:.1f}% |\n"
+            md += f"| 📄 全文件审核 | {len(full_files)} | {len(full_files) / batch_result.total_files * 100:.1f}% |\n\n"
+
+            # 计算 diff-only 模式的整体效率提升
+            total_audited = sum(r.audit_stats.get("audited_lines", 0) for r in diff_only_files if r.audit_stats)
+            total_lines = sum(r.audit_stats.get("total_lines", 0) for r in diff_only_files if r.audit_stats)
+
+            if total_lines > 0:
+                overall_coverage = int(total_audited / total_lines * 100)
+                efficiency_gain = 100 - overall_coverage
+
+                md += f"**Diff-Only 模式效率**:\n"
+                md += f"- 审核了 {total_audited:,}/{total_lines:,} 行代码\n"
+                md += f"- 覆盖率: {overall_coverage}%\n"
+                md += f"- 效率提升: 约 {efficiency_gain}% Token 节省\n\n"
+                md += "---\n\n"
+
 
         md += "## 🔍 问题分布\n\n"
         md += "| 严重程度 | 数量 | 占比 |\n"

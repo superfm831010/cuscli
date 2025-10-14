@@ -86,6 +86,8 @@ class FileCheckResult(BaseModel):
         info_count: 提示数量
         status: 检查状态（success/failed/skipped）
         error_message: 如果检查失败，记录错误信息
+        audit_mode: 审核模式（"full"全文件审核 或 "diff-only"差异审核，Phase 5新增）
+        audit_stats: 审核统计信息（Phase 5新增）
     """
     file_path: str = Field(..., description="文件路径")
     check_time: str = Field(..., description="检查时间")
@@ -95,6 +97,10 @@ class FileCheckResult(BaseModel):
     info_count: int = Field(default=0, ge=0, description="提示数量")
     status: str = Field(..., description="检查状态")
     error_message: Optional[str] = Field(default=None, description="错误信息")
+    audit_mode: Optional[str] = Field(default=None, description="审核模式: full/diff-only")
+    audit_stats: Optional[Dict[str, int]] = Field(
+        default=None, description="审核统计: audited_lines, total_lines, coverage_percentage"
+    )
 
     def get_total_issues(self) -> int:
         """获取问题总数"""
@@ -103,6 +109,26 @@ class FileCheckResult(BaseModel):
     def has_errors(self) -> bool:
         """是否有错误"""
         return self.error_count > 0
+
+    def get_audit_summary(self) -> Optional[str]:
+        """
+        获取审核统计摘要（Phase 5）
+
+        Returns:
+            格式化的审核统计字符串，如 "审核了 45/500 行 (9%)"
+            如果没有统计信息则返回 None
+        """
+        if not self.audit_stats:
+            return None
+
+        audited = self.audit_stats.get("audited_lines", 0)
+        total = self.audit_stats.get("total_lines", 0)
+        percentage = self.audit_stats.get("coverage_percentage", 0)
+
+        if total == 0:
+            return None
+
+        return f"审核了 {audited}/{total} 行 ({percentage}%)"
 
 
 class GitInfo(BaseModel):

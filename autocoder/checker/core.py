@@ -559,6 +559,38 @@ class CodeChecker:
 
             logger.info(f"文件 {file_path} 检查完成: 错误={error_count}, 警告={warning_count}, 提示={info_count}")
 
+            # Phase 5: 计算审核模式和统计信息
+            audit_mode = "diff-only" if (diff_info and diff_info.has_modifications()) else "full"
+            audit_stats = None
+
+            if audit_mode == "diff-only" and diff_info:
+                # 计算审核行数
+                audited_lines = sum(
+                    (end - start + 1)
+                    for start, end in diff_info.get_modified_line_ranges()
+                )
+                # 获取文件总行数
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        total_lines = sum(1 for _ in f)
+                except Exception as e:
+                    logger.warning(f"无法读取文件行数 {file_path}: {e}")
+                    total_lines = audited_lines  # 降级方案
+
+                # 计算覆盖率
+                coverage_percentage = int((audited_lines / total_lines * 100)) if total_lines > 0 else 0
+
+                audit_stats = {
+                    "audited_lines": audited_lines,
+                    "total_lines": total_lines,
+                    "coverage_percentage": coverage_percentage
+                }
+
+                logger.info(
+                    f"审核统计: 审核了 {audited_lines}/{total_lines} 行 "
+                    f"(覆盖率 {coverage_percentage}%)"
+                )
+
             return FileCheckResult(
                 file_path=file_path,
                 check_time=datetime.now().isoformat(),
@@ -566,7 +598,9 @@ class CodeChecker:
                 error_count=error_count,
                 warning_count=warning_count,
                 info_count=info_count,
-                status="success"
+                status="success",
+                audit_mode=audit_mode,  # Phase 5: 审核模式
+                audit_stats=audit_stats  # Phase 5: 审核统计
             )
 
         except Exception as e:
