@@ -1,0 +1,543 @@
+{
+    "check_id": "git_diff_e50b4a2_HEAD_20251014_065300",
+    "start_time": "2025-10-14T06:57:13.931488",
+    "end_time": "2025-10-14T06:57:13.931494",
+    "total_files": 3,
+    "checked_files": 2,
+    "total_issues": 54,
+    "total_errors": 15,
+    "total_warnings": 11,
+    "total_infos": 28,
+    "file_results": [
+        {
+            "file_path": "docs/二次开发记录.md",
+            "check_time": "2025-10-14T06:53:00.728703",
+            "issues": [],
+            "error_count": 0,
+            "warning_count": 0,
+            "info_count": 0,
+            "status": "skipped",
+            "error_message": null
+        },
+        {
+            "file_path": "test_git_completion.py",
+            "check_time": "2025-10-14T06:53:43.537775",
+            "issues": [
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 14,
+                    "line_end": 159,
+                    "description": "test_git_completion 方法行数为 146 行（159-14+1），超过 30 行限制",
+                    "suggestion": "将长方法拆分为多个小方法，如拆分为：获取本地commits、获取最近commits、显示补全列表等独立方法",
+                    "code_snippet": "def test_git_completion():\n    \"\"\"测试 Git 补全功能\"\"\"\n    print(\"=\" * 60)\n    # ... 146行代码"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 16,
+                    "line_end": 16,
+                    "description": "使用魔数 60，缺乏有意义的常量定义",
+                    "suggestion": "定义常量 SEPARATOR_LENGTH = 60，提高代码可读性",
+                    "code_snippet": "print(\"=\" * 60)"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 28,
+                    "line_end": 28,
+                    "description": "使用魔数 60，缺乏有意义的常量定义",
+                    "suggestion": "定义常量 SEPARATOR_LENGTH = 60",
+                    "code_snippet": "print(\"-\" * 60)"
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 31,
+                    "line_end": 56,
+                    "description": "发现复杂的嵌套结构，包含多层 if 嵌套和逻辑分支",
+                    "suggestion": "将嵌套逻辑抽取为独立方法，如 extract_local_commits()",
+                    "code_snippet": "if repo.heads:\n    current_branch = repo.active_branch\n    if current_branch.tracking_branch():\n        # 多层嵌套逻辑"
+                },
+                {
+                    "rule_id": "backend_059",
+                    "severity": "error",
+                    "line_start": 32,
+                    "line_end": 32,
+                    "description": "直接访问 repo.heads 属性，未进行空值检查",
+                    "suggestion": "添加空值检查或使用安全访问方式",
+                    "code_snippet": "if repo.heads:"
+                },
+                {
+                    "rule_id": "backend_059",
+                    "severity": "error",
+                    "line_start": 35,
+                    "line_end": 35,
+                    "description": "直接调用 current_branch.tracking_branch()，未检查 current_branch 是否为空",
+                    "suggestion": "添加空值检查，确保 current_branch 不为空",
+                    "code_snippet": "if current_branch.tracking_branch():"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 48,
+                    "line_end": 48,
+                    "description": "使用魔数 50 和 47，缺乏有意义的常量定义",
+                    "suggestion": "定义常量 MAX_MESSAGE_LENGTH = 50, TRUNCATE_LENGTH = 47",
+                    "code_snippet": "if len(message) > 50:\n    message = message[:47] + \"...\""
+                },
+                {
+                    "rule_id": "backend_010",
+                    "severity": "warning",
+                    "line_start": 48,
+                    "line_end": 49,
+                    "description": "发现重复的字符串截断逻辑，在多个地方出现相同代码",
+                    "suggestion": "抽取为独立方法 truncate_message(message, max_length)",
+                    "code_snippet": "if len(message) > 50:\n    message = message[:47] + \"...\""
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 69,
+                    "line_end": 84,
+                    "description": "发现复杂的循环嵌套和条件判断嵌套",
+                    "suggestion": "将循环逻辑抽取为独立方法，如 display_recent_commits()",
+                    "code_snippet": "for commit in commits:\n    if short_hash in local_commits:\n        continue\n    # 嵌套逻辑"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 78,
+                    "line_end": 78,
+                    "description": "使用魔数 50 和 47，缺乏有意义的常量定义",
+                    "suggestion": "定义常量 MAX_MESSAGE_LENGTH = 50, TRUNCATE_LENGTH = 47",
+                    "code_snippet": "if len(message) > 50:\n    message = message[:47] + \"...\""
+                },
+                {
+                    "rule_id": "backend_010",
+                    "severity": "warning",
+                    "line_start": 78,
+                    "line_end": 79,
+                    "description": "发现重复的字符串截断逻辑，与第48-49行代码重复",
+                    "suggestion": "使用统一的 truncate_message 方法",
+                    "code_snippet": "if len(message) > 50:\n    message = message[:47] + \"...\""
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 94,
+                    "line_end": 124,
+                    "description": "发现复杂的多层嵌套结构，包含 if 嵌套和循环嵌套",
+                    "suggestion": "将补全列表生成逻辑抽取为独立方法，如 generate_completions()",
+                    "code_snippet": "if repo.heads:\n    current_branch = repo.active_branch\n    if current_branch.tracking_branch():\n        for commit in local_only:\n            # 多层嵌套"
+                },
+                {
+                    "rule_id": "backend_059",
+                    "severity": "error",
+                    "line_start": 96,
+                    "line_end": 96,
+                    "description": "直接访问 repo.heads 和 repo.active_branch，未进行空值检查",
+                    "suggestion": "添加适当的空值检查逻辑",
+                    "code_snippet": "if repo.heads:\n    current_branch = repo.active_branch"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 104,
+                    "line_end": 104,
+                    "description": "使用魔数 45 和 42，缺乏有意义的常量定义",
+                    "suggestion": "定义常量 MAX_COMPLETION_LENGTH = 45, TRUNCATE_COMPLETION_LENGTH = 42",
+                    "code_snippet": "if len(message) > 45:\n    message = message[:42] + \"...\""
+                },
+                {
+                    "rule_id": "backend_010",
+                    "severity": "warning",
+                    "line_start": 104,
+                    "line_end": 105,
+                    "description": "发现重复的字符串截断逻辑，与前面代码逻辑类似",
+                    "suggestion": "使用统一的 truncate_message 方法，支持不同长度参数",
+                    "code_snippet": "if len(message) > 45:\n    message = message[:42] + \"...\""
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 119,
+                    "line_end": 119,
+                    "description": "使用魔数 50 和 47，缺乏有意义的常量定义",
+                    "suggestion": "定义常量 MAX_MESSAGE_LENGTH = 50, TRUNCATE_LENGTH = 47",
+                    "code_snippet": "if len(message) > 50:\n    message = message[:47] + \"...\""
+                },
+                {
+                    "rule_id": "backend_010",
+                    "severity": "warning",
+                    "line_start": 119,
+                    "line_end": 120,
+                    "description": "发现重复的字符串截断逻辑，与前面代码重复",
+                    "suggestion": "使用统一的 truncate_message 方法",
+                    "code_snippet": "if len(message) > 50:\n    message = message[:47] + \"...\""
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 126,
+                    "line_end": 133,
+                    "description": "使用魔数 1, 2, 3, 5, 10，缺乏有意义的常量定义",
+                    "suggestion": "定义常量 REFERENCE_OFFSETS = [1, 2, 3, 5, 10]",
+                    "code_snippet": "relative_refs = [\n    (\"HEAD\", \"HEAD (最新 commit)\"),\n    (\"HEAD~1\", \"HEAD~1 (前1个 commit)\"),\n    # ... 其他魔数"
+                },
+                {
+                    "rule_id": "backend_018",
+                    "severity": "info",
+                    "line_start": 153,
+                    "line_end": 157,
+                    "description": "异常处理中直接打印堆栈跟踪，不符合日志规范",
+                    "suggestion": "使用日志系统记录异常，而不是直接打印",
+                    "code_snippet": "except Exception as e:\n    print(f\"❌ 测试失败: {e}\")\n    import traceback\n    traceback.print_exc()"
+                },
+                {
+                    "rule_id": "backend_025",
+                    "severity": "error",
+                    "line_start": 156,
+                    "line_end": 156,
+                    "description": "使用 traceback.print_exc() 输出异常堆栈，不符合异常处理规范",
+                    "suggestion": "使用日志系统记录异常，或抛出适当的业务异常",
+                    "code_snippet": "traceback.print_exc()"
+                }
+            ],
+            "error_count": 4,
+            "warning_count": 7,
+            "info_count": 9,
+            "status": "success",
+            "error_message": null
+        },
+        {
+            "file_path": "autocoder/plugins/code_checker_plugin.py",
+            "check_time": "2025-10-14T06:57:13.917865",
+            "issues": [
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 1118,
+                    "line_end": 1134,
+                    "description": "发现复杂的if-else嵌套结构，嵌套层数达到4层（if-try-if-else），超过规定的3层阈值",
+                    "suggestion": "将内层逻辑抽取为独立方法，如将共识阈值验证逻辑抽取为_validate_consensus_threshold方法",
+                    "code_snippet": "if options.get(\"consensus\") is not None:\n    try:\n        value = float(options[\"consensus\"])\n        if 0 < value <= 1:\n            self.checker_defaults[\"consensus\"] = value\n            updated = True\n        else:\n            print(\"⚠️  共识阈值需在 (0,1] 区间，保持原值\")\n    except (TypeError, ValueError):\n        print(f\"⚠️  无效的共识阈值: {options['consensus']}，保持原值\")"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 1120,
+                    "line_end": 1120,
+                    "description": "发现魔数1，用于重复次数的最小值验证",
+                    "suggestion": "定义为常量MIN_REPEAT_COUNT = 1，提高代码可读性",
+                    "code_snippet": "self.checker_defaults[\"repeat\"] = max(1, int(options[\"repeat\"]))"
+                },
+                {
+                    "rule_id": "backend_025",
+                    "severity": "error",
+                    "line_start": 1123,
+                    "line_end": 1123,
+                    "description": "直接使用print输出错误信息，未使用日志系统",
+                    "suggestion": "应使用logger.error或logger.warning记录错误信息",
+                    "code_snippet": "print(f\"⚠️  无效的重复次数: {options['repeat']}，保持原值\")"
+                },
+                {
+                    "rule_id": "backend_037",
+                    "severity": "warning",
+                    "line_start": 1123,
+                    "line_end": 1134,
+                    "description": "多个地方使用print输出警告信息，应使用适当的日志级别",
+                    "suggestion": "将print语句改为logger.warning，统一日志管理",
+                    "code_snippet": "print(f\"⚠️  无效的重复次数: {options['repeat']}，保持原值\")\nprint(\"⚠️  共识阈值需在 (0,1] 区间，保持原值\")\nprint(f\"⚠️  无效的共识阈值: {options['consensus']}，保持原值\")"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 1128,
+                    "line_end": 1128,
+                    "description": "发现魔数0和1，用于共识阈值范围验证",
+                    "suggestion": "定义为常量MIN_CONSENSUS = 0.0, MAX_CONSENSUS = 1.0",
+                    "code_snippet": "if 0 < value <= 1:"
+                },
+                {
+                    "rule_id": "backend_025",
+                    "severity": "error",
+                    "line_start": 1132,
+                    "line_end": 1132,
+                    "description": "直接使用print输出错误信息，未使用日志系统",
+                    "suggestion": "应使用logger.error或logger.warning记录错误信息",
+                    "code_snippet": "print(\"⚠️  共识阈值需在 (0,1] 区间，保持原值\")"
+                },
+                {
+                    "rule_id": "backend_025",
+                    "severity": "error",
+                    "line_start": 1134,
+                    "line_end": 1134,
+                    "description": "直接使用print输出错误信息，未使用日志系统",
+                    "suggestion": "应使用logger.error或logger.warning记录错误信息",
+                    "code_snippet": "print(f\"⚠️  无效的共识阈值: {options['consensus']}，保持原值\")"
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 1166,
+                    "line_end": 1186,
+                    "description": "发现复杂的while-if-else嵌套结构，嵌套层数达到4层，超过规定的3层阈值",
+                    "suggestion": "将选项解析逻辑抽取为独立方法，如_parse_repeat_option和_parse_consensus_option方法",
+                    "code_snippet": "i = 0\nwhile i < len(tokens):\n    token = tokens[i]\n    if token == \"/repeat\" and i + 1 < len(tokens):\n        try:\n            options[\"repeat\"] = int(tokens[i + 1])\n        except ValueError:\n            print(f\"⚠️  无效的重复次数: {tokens[i + 1]}，保持当前默认值\")\n        i += 2\n    elif token == \"/consensus\" and i + 1 < len(tokens):\n        try:\n            options[\"consensus\"] = float(tokens[i + 1])\n        except ValueError:\n            print(f\"⚠️  无效的共识阈值: {tokens[i + 1]}，保持当前默认值\")\n        i += 2\n    else:\n        i += 1"
+                },
+                {
+                    "rule_id": "backend_059",
+                    "severity": "error",
+                    "line_start": 1169,
+                    "line_end": 1169,
+                    "description": "直接访问tokens[i + 1]可能存在数组越界风险",
+                    "suggestion": "应在访问前检查i + 1是否小于len(tokens)",
+                    "code_snippet": "if token == \"/repeat\" and i + 1 < len(tokens):"
+                },
+                {
+                    "rule_id": "backend_025",
+                    "severity": "error",
+                    "line_start": 1173,
+                    "line_end": 1175,
+                    "description": "直接使用print输出错误信息，未使用日志系统",
+                    "suggestion": "应使用logger.error或logger.warning记录错误信息",
+                    "code_snippet": "print(\n    f\"⚠️  无效的重复次数: {tokens[i + 1]}，保持当前默认值\"\n)"
+                },
+                {
+                    "rule_id": "backend_059",
+                    "severity": "error",
+                    "line_start": 1177,
+                    "line_end": 1177,
+                    "description": "直接访问tokens[i + 1]可能存在数组越界风险",
+                    "suggestion": "应在访问前检查i + 1是否小于len(tokens)",
+                    "code_snippet": "elif token == \"/consensus\" and i + 1 < len(tokens):"
+                },
+                {
+                    "rule_id": "backend_025",
+                    "severity": "error",
+                    "line_start": 1181,
+                    "line_end": 1183,
+                    "description": "直接使用print输出错误信息，未使用日志系统",
+                    "suggestion": "应使用logger.error或logger.warning记录错误信息",
+                    "code_snippet": "print(\n    f\"⚠️  无效的共识阈值: {tokens[i + 1]}，保持当前默认值\"\n)"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 1198,
+                    "line_end": 1198,
+                    "description": "发现魔数1，用于重复次数的最小值验证",
+                    "suggestion": "定义为常量MIN_REPEAT_COUNT = 1",
+                    "code_snippet": "repeat_value = max(1, int(repeat))"
+                },
+                {
+                    "rule_id": "backend_025",
+                    "severity": "error",
+                    "line_start": 1203,
+                    "line_end": 1205,
+                    "description": "直接使用print输出错误信息，未使用日志系统",
+                    "suggestion": "应使用logger.error或logger.warning记录错误信息",
+                    "code_snippet": "print(\n    f\"⚠️  重复次数无效({repeat})，继续使用默认值 {self.checker_defaults['repeat']}\"\n)"
+                },
+                {
+                    "rule_id": "backend_025",
+                    "severity": "error",
+                    "line_start": 1212,
+                    "line_end": 1214,
+                    "description": "直接使用print输出错误信息，未使用日志系统",
+                    "suggestion": "应使用logger.error或logger.warning记录错误信息",
+                    "code_snippet": "print(\n    f\"⚠️  共识阈值无效({consensus})，继续使用默认值 {self.checker_defaults['consensus']}\"\n)"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 1216,
+                    "line_end": 1216,
+                    "description": "发现魔数0和1，用于共识阈值范围验证",
+                    "suggestion": "定义为常量MIN_CONSENSUS = 0.0, MAX_CONSENSUS = 1.0",
+                    "code_snippet": "if consensus_value <= 0 or consensus_value > 1:"
+                },
+                {
+                    "rule_id": "backend_025",
+                    "severity": "error",
+                    "line_start": 1217,
+                    "line_end": 1219,
+                    "description": "直接使用print输出错误信息，未使用日志系统",
+                    "suggestion": "应使用logger.error或logger.warning记录错误信息",
+                    "code_snippet": "print(\n    f\"⚠️  共识阈值需在 (0,1] 区间，已回退到默认值 {self.checker_defaults['consensus']}\"\n)"
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 1228,
+                    "line_end": 1311,
+                    "description": "方法_show_batch_summary行数为84行（1311-1228+1=84），超过30行限制",
+                    "suggestion": "将方法拆分为多个小方法，如_split_statistics、_show_issue_summary、_display_file_ranking等",
+                    "code_snippet": "def _show_batch_summary(self, results: List, report_dir: str, failed_reports: List = None) -> None:\n    # ... 84行代码 ..."
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 1241,
+                    "line_end": 1241,
+                    "description": "发现魔数60，用于分隔线长度",
+                    "suggestion": "定义为常量SEPARATOR_LENGTH = 60",
+                    "code_snippet": "print(\"=\" * 60)"
+                },
+                {
+                    "rule_id": "backend_022",
+                    "severity": "warning",
+                    "line_start": 1241,
+                    "line_end": 1241,
+                    "description": "使用字符串乘法进行重复拼接，虽然性能影响小但不符合最佳实践",
+                    "suggestion": "对于固定长度的分隔线，可考虑使用预定义的常量字符串",
+                    "code_snippet": "print(\"=\" * 60)"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 1277,
+                    "line_end": 1277,
+                    "description": "发现魔数5，用于显示问题最多的文件数量限制",
+                    "suggestion": "定义为常量MAX_ISSUE_FILES_DISPLAY = 5",
+                    "code_snippet": "for i, (file_path, count) in enumerate(files_with_issues_list[:5], 1):"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 1280,
+                    "line_end": 1281,
+                    "description": "发现魔数50和47，用于路径显示截断",
+                    "suggestion": "定义为常量MAX_DISPLAY_PATH_LENGTH = 50, ELLIPSIS_LENGTH = 47",
+                    "code_snippet": "if len(display_path) > 50:\n    display_path = \"...\" + display_path[-47:]"
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 1312,
+                    "line_end": 1489,
+                    "description": "方法_resume_check行数为178行（1489-1312+1=178），严重超过30行限制",
+                    "suggestion": "将恢复检查逻辑拆分为多个方法，如_load_check_state、_setup_progress_display、_execute_resumed_check等",
+                    "code_snippet": "def _resume_check(self, args: str) -> None:\n    # ... 178行代码 ..."
+                },
+                {
+                    "rule_id": "backend_018",
+                    "severity": "info",
+                    "line_start": 1316,
+                    "line_end": 1320,
+                    "description": "存在TODO注释，表明功能尚未完全实现",
+                    "suggestion": "完成后应删除或更新TODO注释",
+                    "code_snippet": "# 如果没有提供 check_id，列出可恢复的检查\nif not check_id:\n    self._list_resumable_checks()\n    return"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 1370,
+                    "line_end": 1370,
+                    "description": "发现魔数5，用于默认并发数",
+                    "suggestion": "定义为常量DEFAULT_WORKERS = 5",
+                    "code_snippet": "workers = state.config.get(\"workers\", 5)"
+                },
+                {
+                    "rule_id": "backend_018",
+                    "severity": "info",
+                    "line_start": 1461,
+                    "line_end": 1462,
+                    "description": "存在TODO注释，表明汇总报告生成逻辑需要完善",
+                    "suggestion": "完成后应删除TODO注释",
+                    "code_snippet": "# 生成汇总报告（注意：这里只包含本次恢复的结果）\n# TODO: 如果需要完整汇总，需要加载之前的结果并合并"
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 1490,
+                    "line_end": 1538,
+                    "description": "方法_list_resumable_checks行数为49行（1538-1490+1=49），超过30行限制",
+                    "suggestion": "将列表显示逻辑抽取为独立方法，如_format_check_status、_display_check_list等",
+                    "code_snippet": "def _list_resumable_checks(self) -> None:\n    # ... 49行代码 ..."
+                },
+                {
+                    "rule_id": "backend_018",
+                    "severity": "info",
+                    "line_start": 1546,
+                    "line_end": 1549,
+                    "description": "存在TODO注释和未实现的功能占位符",
+                    "suggestion": "实现功能后应删除TODO注释和占位代码",
+                    "code_snippet": "# TODO: Task 7.x - 实现报告查看\nprint(\"⚠️  /check /report 功能即将实现\")\nprint(f\"   参数: {args}\")"
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 1678,
+                    "line_end": 1715,
+                    "description": "方法_check_git_unstaged行数为38行（1715-1678+1=38），超过30行限制",
+                    "suggestion": "将核心检查逻辑抽取为独立方法，保持主方法简洁",
+                    "code_snippet": "def _check_git_unstaged(self, args: List[str]) -> None:\n    # ... 38行代码 ..."
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 1716,
+                    "line_end": 1788,
+                    "description": "方法_check_git_commit行数为73行（1788-1716+1=73），超过30行限制",
+                    "suggestion": "将commit信息获取、文件准备、检查执行等逻辑拆分为独立方法",
+                    "code_snippet": "def _check_git_commit(self, args: List[str]) -> None:\n    # ... 73行代码 ..."
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 1789,
+                    "line_end": 1861,
+                    "description": "方法_check_git_diff行数为73行（1861-1789+1=73），超过30行限制",
+                    "suggestion": "将diff处理、文件准备、检查执行等逻辑拆分为独立方法",
+                    "code_snippet": "def _check_git_diff(self, args: List[str]) -> None:\n    # ... 73行代码 ..."
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 1875,
+                    "line_end": 1875,
+                    "description": "发现魔数5，用于默认并发数",
+                    "suggestion": "定义为常量DEFAULT_WORKERS = 5",
+                    "code_snippet": "\"workers\": 5  # 默认并发数"
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 2003,
+                    "line_end": 2190,
+                    "description": "方法_execute_batch_check行数为188行（2190-2003+1=188），严重超过30行限制",
+                    "suggestion": "这是典型的长方法，应拆分为_setup_check_environment、_prepare_git_info、_execute_concurrent_check、_generate_reports等多个方法",
+                    "code_snippet": "def _execute_batch_check(self, files: List[str], check_type: str, options: Dict[str, Any], temp_manager: Optional[TempFileManager] = None) -> None:\n    # ... 188行代码 ..."
+                },
+                {
+                    "rule_id": "backend_062",
+                    "severity": "error",
+                    "line_start": 2144,
+                    "line_end": 2149,
+                    "description": "直接访问diff_parts数组元素，未检查数组长度",
+                    "suggestion": "应在访问前检查数组长度，避免IndexError",
+                    "code_snippet": "git_info = GitInfo(\n    type=\"diff\",\n    commit1=diff_parts[0] if len(diff_parts) > 0 else \"\",\n    commit2=diff_parts[1] if len(diff_parts) > 1 else \"HEAD\",\n    files_changed=len(files)\n)"
+                }
+            ],
+            "error_count": 11,
+            "warning_count": 4,
+            "info_count": 19,
+            "status": "success",
+            "error_message": null
+        }
+    ],
+    "git_info": {
+        "type": "diff",
+        "branch": null,
+        "commit_hash": null,
+        "short_hash": null,
+        "message": null,
+        "author": null,
+        "date": null,
+        "commit1": "e50b4a2",
+        "commit2": "HEAD",
+        "files_changed": 3
+    }
+}

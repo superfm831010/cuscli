@@ -1,0 +1,372 @@
+{
+    "check_id": "git_commit_585d503_20251014_064802",
+    "start_time": "2025-10-14T06:51:00.826562",
+    "end_time": "2025-10-14T06:51:00.826568",
+    "total_files": 3,
+    "checked_files": 2,
+    "total_issues": 35,
+    "total_errors": 12,
+    "total_warnings": 5,
+    "total_infos": 18,
+    "file_results": [
+        {
+            "file_path": "docs/二次开发记录.md",
+            "check_time": "2025-10-14T06:48:02.657058",
+            "issues": [],
+            "error_count": 0,
+            "warning_count": 0,
+            "info_count": 0,
+            "status": "skipped",
+            "error_message": null
+        },
+        {
+            "file_path": "test_git_completion.py",
+            "check_time": "2025-10-14T06:49:00.934087",
+            "issues": [
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 14,
+                    "line_end": 159,
+                    "description": "方法 test_git_completion() 行数过多，实际行数为 146 行（159-14+1），超过30行限制",
+                    "suggestion": "建议将方法拆分为多个小方法，如：test_local_commits()、test_recent_commits()、test_completion_preview() 等",
+                    "code_snippet": "def test_git_completion():\n    \"\"\"测试 Git 补全功能\"\"\"\n    print(\"=\" * 60)\n    # ... 146行代码"
+                },
+                {
+                    "rule_id": "backend_022",
+                    "severity": "warning",
+                    "line_start": 16,
+                    "line_end": 18,
+                    "description": "发现字符串拼接使用乘法操作，虽然不是循环但应使用更清晰的格式化方式",
+                    "suggestion": "建议使用字符串格式化方法，如 print(\"=\" * 60) 可以改为 print(\"{:=^60}\".format(\"\"))",
+                    "code_snippet": "print(\"=\" * 60)\nprint(\"测试 Git Commit 补全功能\")\nprint(\"=\" * 60)"
+                },
+                {
+                    "rule_id": "backend_059",
+                    "severity": "error",
+                    "line_start": 24,
+                    "line_end": 24,
+                    "description": "变量 repo 可能为 None，但没有进行空值检查",
+                    "suggestion": "建议在使用 repo 前进行空值检查，如 if repo is not None:",
+                    "code_snippet": "repo = git_helper.repo"
+                },
+                {
+                    "rule_id": "backend_027",
+                    "severity": "error",
+                    "line_start": 30,
+                    "line_end": 30,
+                    "description": "变量 local_commits 初始化为空列表，但在多个分支中可能被使用，存在空值风险",
+                    "suggestion": "建议确保在所有使用 local_commits 的地方都进行了空值检查",
+                    "code_snippet": "local_commits = []"
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 30,
+                    "line_end": 56,
+                    "description": "发现复杂的 if-else 嵌套结构，嵌套层数超过3层",
+                    "suggestion": "建议将内层逻辑抽取为独立方法，简化嵌套结构",
+                    "code_snippet": "if repo.heads:\n    current_branch = repo.active_branch\n    if current_branch.tracking_branch():\n        # 嵌套逻辑\n    else:\n        # 嵌套逻辑\nelse:\n    # 嵌套逻辑"
+                },
+                {
+                    "rule_id": "backend_059",
+                    "severity": "error",
+                    "line_start": 32,
+                    "line_end": 33,
+                    "description": "repo.active_branch 可能为 None，但没有进行空值检查",
+                    "suggestion": "建议在使用 current_branch 前进行空值检查",
+                    "code_snippet": "current_branch = repo.active_branch"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 45,
+                    "line_end": 45,
+                    "description": "发现魔数 '10'，应抽取为常量",
+                    "suggestion": "建议定义常量 MAX_LOCAL_COMMITS_DISPLAY = 10",
+                    "code_snippet": "for i, commit in enumerate(local_only[:10], 1):"
+                },
+                {
+                    "rule_id": "backend_010",
+                    "severity": "warning",
+                    "line_start": 45,
+                    "line_end": 52,
+                    "description": "发现重复的代码逻辑，与第101-109行、第112-123行的commit处理逻辑重复",
+                    "suggestion": "建议抽取commit处理逻辑为独立方法，如 format_commit_display(commit, is_local=False)",
+                    "code_snippet": "for i, commit in enumerate(local_only[:10], 1):\n    short_hash = commit.hexsha[:7]\n    message = commit.message.strip().split('\\n')[0]\n    if len(message) > 50:\n        message = message[:47] + \"...\"\n    print(f\"   {i}. {short_hash} - [本地] {message}\")\n    local_commits.append(short_hash)"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 48,
+                    "line_end": 49,
+                    "description": "发现魔数 '50'，应抽取为常量",
+                    "suggestion": "建议定义常量 MAX_MESSAGE_LENGTH = 50",
+                    "code_snippet": "if len(message) > 50:"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 64,
+                    "line_end": 64,
+                    "description": "发现魔数 '20'，应抽取为常量",
+                    "suggestion": "建议定义常量 MAX_COMMITS_TO_FETCH = 20",
+                    "code_snippet": "commits = list(repo.iter_commits('HEAD', max_count=20))"
+                },
+                {
+                    "rule_id": "backend_027",
+                    "severity": "error",
+                    "line_start": 69,
+                    "line_end": 69,
+                    "description": "变量 count 初始化为0，但在循环中可能被修改，存在数值风险",
+                    "suggestion": "建议使用更安全的计数方式，或确保 count 在所有分支中都有正确的值",
+                    "code_snippet": "count = 0"
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 69,
+                    "line_end": 84,
+                    "description": "发现复杂的 if-else 嵌套结构，嵌套层数超过3层",
+                    "suggestion": "建议将内层逻辑抽取为独立方法，简化嵌套结构",
+                    "code_snippet": "for commit in commits:\n    if short_hash in local_commits:\n        continue\n    if count <= 10:\n        # 嵌套逻辑"
+                },
+                {
+                    "rule_id": "backend_060",
+                    "severity": "error",
+                    "line_start": 74,
+                    "line_end": 74,
+                    "description": "变量 local_commits 在多个逻辑分支中使用，但空值检查不一致",
+                    "suggestion": "建议在所有使用 local_commits 的地方都进行一致的空值检查",
+                    "code_snippet": "if short_hash in local_commits:"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 82,
+                    "line_end": 82,
+                    "description": "发现魔数 '10'，应抽取为常量",
+                    "suggestion": "建议定义常量 MAX_RECENT_COMMITS_DISPLAY = 10",
+                    "code_snippet": "if count <= 10:"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 88,
+                    "line_end": 88,
+                    "description": "发现魔数 '15'，应抽取为常量",
+                    "suggestion": "建议定义常量 MAX_COMPLETIONS_PREVIEW = 15",
+                    "code_snippet": "print(\"3. 补全列表预览（前15项）\")"
+                },
+                {
+                    "rule_id": "backend_027",
+                    "severity": "error",
+                    "line_start": 91,
+                    "line_end": 91,
+                    "description": "变量 completions 初始化为空列表，但在多个分支中可能被使用，存在空值风险",
+                    "suggestion": "建议确保在所有使用 completions 的地方都进行了空值检查",
+                    "code_snippet": "completions = []"
+                },
+                {
+                    "rule_id": "backend_027",
+                    "severity": "error",
+                    "line_start": 94,
+                    "line_end": 94,
+                    "description": "变量 local_hashes 初始化为空集合，但在多个分支中可能被使用，存在空值风险",
+                    "suggestion": "建议确保在所有使用 local_hashes 的地方都进行了空值检查",
+                    "code_snippet": "local_hashes = set()"
+                },
+                {
+                    "rule_id": "backend_006",
+                    "severity": "warning",
+                    "line_start": 94,
+                    "line_end": 123,
+                    "description": "发现复杂的 if-else 嵌套结构，嵌套层数超过3层",
+                    "suggestion": "建议将内层逻辑抽取为独立方法，简化嵌套结构",
+                    "code_snippet": "if repo.heads:\n    current_branch = repo.active_branch\n    if current_branch.tracking_branch():\n        for commit in local_only:\n            if len(message) > 45:\n                # 嵌套逻辑"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 104,
+                    "line_end": 105,
+                    "description": "发现魔数 '45'，应抽取为常量",
+                    "suggestion": "建议定义常量 MAX_LOCAL_MESSAGE_LENGTH = 45",
+                    "code_snippet": "if len(message) > 45:"
+                },
+                {
+                    "rule_id": "backend_060",
+                    "severity": "error",
+                    "line_start": 115,
+                    "line_end": 115,
+                    "description": "变量 local_hashes 在多个逻辑分支中使用，但空值检查不一致",
+                    "suggestion": "建议在所有使用 local_hashes 的地方都进行一致的空值检查",
+                    "code_snippet": "if short_hash in local_hashes:"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 119,
+                    "line_end": 120,
+                    "description": "发现魔数 '50'，应抽取为常量",
+                    "suggestion": "建议定义常量 MAX_RECENT_MESSAGE_LENGTH = 50",
+                    "code_snippet": "if len(message) > 50:"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 138,
+                    "line_end": 138,
+                    "description": "发现魔数 '5'，应抽取为常量",
+                    "suggestion": "建议定义常量 MAX_BRANCHES_DISPLAY = 5",
+                    "code_snippet": "for branch in branches[:5]:"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 142,
+                    "line_end": 142,
+                    "description": "发现魔数 '15'，应抽取为常量",
+                    "suggestion": "建议定义常量 MAX_COMPLETIONS_SHOW = 15",
+                    "code_snippet": "for i, (ref, display) in enumerate(completions[:15], 1):"
+                },
+                {
+                    "rule_id": "backend_018",
+                    "severity": "info",
+                    "line_start": 155,
+                    "line_end": 156,
+                    "description": "发现注释掉的代码（traceback.print_exc()）",
+                    "suggestion": "建议删除注释掉的代码，或明确注释原因",
+                    "code_snippet": "import traceback\ntraceback.print_exc()"
+                },
+                {
+                    "rule_id": "backend_025",
+                    "severity": "error",
+                    "line_start": 155,
+                    "line_end": 156,
+                    "description": "发现直接使用 print_exc() 输出异常堆栈，没有使用日志系统",
+                    "suggestion": "建议使用日志系统记录异常，如 logging.exception(\"测试失败\")",
+                    "code_snippet": "import traceback\ntraceback.print_exc()"
+                }
+            ],
+            "error_count": 9,
+            "warning_count": 5,
+            "info_count": 11,
+            "status": "success",
+            "error_message": null
+        },
+        {
+            "file_path": "autocoder/plugins/code_checker_plugin.py",
+            "check_time": "2025-10-14T06:51:00.820362",
+            "issues": [
+                {
+                    "rule_id": "backend_018",
+                    "severity": "info",
+                    "line_start": 1,
+                    "line_end": 13,
+                    "description": "模块文档字符串内容不够详细，缺少关键信息如参数说明、返回值、异常等",
+                    "suggestion": "完善文档字符串，添加详细的参数说明、返回值、异常信息等",
+                    "code_snippet": "\"\"\"\nCode Checker Plugin for Chat Auto Coder.\n提供代码规范检查功能的插件。\n...\n作者: Claude AI\n创建时间: 2025-10-10\n\"\"\""
+                },
+                {
+                    "rule_id": "backend_020",
+                    "severity": "info",
+                    "line_start": 15,
+                    "line_end": 24,
+                    "description": "存在未使用的导入：shlex、datetime、GitInfo",
+                    "suggestion": "删除未使用的导入语句",
+                    "code_snippet": "import os\nimport shlex\nfrom typing import Any, Callable, Dict, List, Optional, Tuple\nfrom datetime import datetime\n\nfrom autocoder.plugins import Plugin, PluginManager\nfrom loguru import logger\nfrom autocoder.checker.git_helper import GitFileHelper, TempFileManager\nfrom autocoder.checker.types import GitInfo"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 59,
+                    "line_end": 61,
+                    "description": "存在魔数 1 和 1.0，应抽取为常量",
+                    "suggestion": "定义常量如 DEFAULT_REPEAT = 1, DEFAULT_CONSENSUS = 1.0",
+                    "code_snippet": "self.checker_defaults = {\n    \"repeat\": 1,\n    \"consensus\": 1.0,  # 单次调用模式，快速检查\n}"
+                },
+                {
+                    "rule_id": "backend_027",
+                    "severity": "error",
+                    "line_start": 324,
+                    "line_end": 348,
+                    "description": "方法 _complete_check_id 可能返回空列表，调用方需要处理空值情况",
+                    "suggestion": "确保方法始终返回非空列表，或调用方进行空值检查",
+                    "code_snippet": "def _complete_check_id(self, current_input: str) -> List[Tuple[str, str]]:\n    \"\"\"\n    补全 check_id（可恢复的检查）\n    ...\n        return completions"
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 457,
+                    "line_end": 498,
+                    "description": "方法 handle_check 行数过多，实际行数为 42 行（498-457+1），超过 30 行限制",
+                    "suggestion": "将方法拆分为多个小方法，如 _route_subcommand、_show_help 等",
+                    "code_snippet": "def handle_check(self, args: str) -> None:\n    \"\"\"\n    处理 /check 命令\n    ...\n    else:\n        print(f\"❌ 未知的子命令: {subcommand}\")\n        self._show_help()"
+                },
+                {
+                    "rule_id": "backend_059",
+                    "severity": "error",
+                    "line_start": 478,
+                    "line_end": 480,
+                    "description": "parts 列表可能为空，直接访问 parts[0] 和 parts[1] 存在空指针风险",
+                    "suggestion": "添加空值检查，确保列表长度足够",
+                    "code_snippet": "parts = args.split(maxsplit=1)\nsubcommand = parts[0]\nsub_args = parts[1] if len(parts) > 1 else \"\""
+                },
+                {
+                    "rule_id": "backend_009",
+                    "severity": "info",
+                    "line_start": 701,
+                    "line_end": 1016,
+                    "description": "方法 _check_folder 行数过多，实际行数为 316 行（1016-701+1），严重超过 30 行限制",
+                    "suggestion": "将方法拆分为多个小方法，如 _scan_files、_setup_check_task、_process_files_concurrent、_generate_reports 等",
+                    "code_snippet": "def _check_folder(self, args: str) -> None:\n    \"\"\"\n    检查目录\n    ...\n            logger.error(f\"检查目录失败: {e}\", exc_info=True)"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 815,
+                    "line_end": 815,
+                    "description": "存在魔数 100，应抽取为常量",
+                    "suggestion": "定义常量如 SNAPSHOT_INTERVAL = 100",
+                    "code_snippet": "snapshot_interval = 100  # 每100个文件生成一次快照"
+                },
+                {
+                    "rule_id": "backend_013",
+                    "severity": "info",
+                    "line_start": 1028,
+                    "line_end": 1033,
+                    "description": "存在多个魔数：\".\"、5、None，应抽取为常量",
+                    "suggestion": "定义常量如 DEFAULT_PATH = \".\", DEFAULT_WORKERS = 5",
+                    "code_snippet": "options = {\n    \"path\": \".\",\n    \"extensions\": None,\n    \"ignored\": None,\n    \"workers\": 5,\n    \"repeat\": None,\n    \"consensus\": None,\n}"
+                },
+                {
+                    "rule_id": "backend_062",
+                    "severity": "error",
+                    "line_start": 1105,
+                    "line_end": 1106,
+                    "description": "shlex.split(args) 结果可能为空，直接访问 tokens 存在数组越界风险",
+                    "suggestion": "添加长度检查 before accessing tokens",
+                    "code_snippet": "tokens = shlex.split(args)\n\nif not tokens:\n    print(\"当前默认设置：\")"
+                }
+            ],
+            "error_count": 3,
+            "warning_count": 0,
+            "info_count": 7,
+            "status": "success",
+            "error_message": null
+        }
+    ],
+    "git_info": {
+        "type": "commit",
+        "branch": null,
+        "commit_hash": "585d5030230f2fab048ed769e82c11777678647c",
+        "short_hash": "585d503",
+        "message": "feat(checker): 优化 check git 补全，突出显示本地未推送的 commits\n\n- 增加 commits 显示数量从 10 到 20\n- 添加本地未推送 commits 检测，优先显示并标记 [本地]\n- 调整补全列表顺序：本地commits → 最近commits → 相对引用 → 分支\n- 添加去重逻辑，避免本地 commits 重复显示\n- 优化相对引用，添加 HEAD~10\n- 添加测试脚本 test_git_completion.py\n\n这解决了用户反馈的\"看不到本地提交的 commit\"问题。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
+        "author": "superfm831010 <superfm831010@gmail.com>",
+        "date": "2025-10-14T06:35:55+00:00",
+        "commit1": null,
+        "commit2": null,
+        "files_changed": 3
+    }
+}

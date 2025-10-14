@@ -604,7 +604,8 @@ def convert_config_value(key, value):
         else:
             return value
     else:
-        print(f"Invalid configuration key: {key}")
+        # 记录警告但不阻塞处理，跳过无效的配置键
+        global_logger.warning(f"Skipping invalid configuration key: '{key}' with value '{value}'")
         return None
 
 
@@ -1635,7 +1636,13 @@ def index_build():
         "exclude_files": memory.get("exclude_files", []),
     }
 
+    # 过滤并转换配置项
     for key, value in conf.items():
+        # 跳过包含空格的无效配置键（可能是配置文件损坏导致）
+        if ' ' in key:
+            global_logger.warning(f"Skipping invalid configuration key with spaces: '{key}'")
+            continue
+
         converted_value = convert_config_value(key, value)
         if converted_value is not None:
             yaml_config[key] = converted_value

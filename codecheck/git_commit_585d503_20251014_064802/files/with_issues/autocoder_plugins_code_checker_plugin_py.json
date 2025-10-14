@@ -1,0 +1,101 @@
+{
+    "file_path": "autocoder/plugins/code_checker_plugin.py",
+    "check_time": "2025-10-14T06:51:00.820362",
+    "issues": [
+        {
+            "rule_id": "backend_018",
+            "severity": "info",
+            "line_start": 1,
+            "line_end": 13,
+            "description": "模块文档字符串内容不够详细，缺少关键信息如参数说明、返回值、异常等",
+            "suggestion": "完善文档字符串，添加详细的参数说明、返回值、异常信息等",
+            "code_snippet": "\"\"\"\nCode Checker Plugin for Chat Auto Coder.\n提供代码规范检查功能的插件。\n...\n作者: Claude AI\n创建时间: 2025-10-10\n\"\"\""
+        },
+        {
+            "rule_id": "backend_020",
+            "severity": "info",
+            "line_start": 15,
+            "line_end": 24,
+            "description": "存在未使用的导入：shlex、datetime、GitInfo",
+            "suggestion": "删除未使用的导入语句",
+            "code_snippet": "import os\nimport shlex\nfrom typing import Any, Callable, Dict, List, Optional, Tuple\nfrom datetime import datetime\n\nfrom autocoder.plugins import Plugin, PluginManager\nfrom loguru import logger\nfrom autocoder.checker.git_helper import GitFileHelper, TempFileManager\nfrom autocoder.checker.types import GitInfo"
+        },
+        {
+            "rule_id": "backend_013",
+            "severity": "info",
+            "line_start": 59,
+            "line_end": 61,
+            "description": "存在魔数 1 和 1.0，应抽取为常量",
+            "suggestion": "定义常量如 DEFAULT_REPEAT = 1, DEFAULT_CONSENSUS = 1.0",
+            "code_snippet": "self.checker_defaults = {\n    \"repeat\": 1,\n    \"consensus\": 1.0,  # 单次调用模式，快速检查\n}"
+        },
+        {
+            "rule_id": "backend_027",
+            "severity": "error",
+            "line_start": 324,
+            "line_end": 348,
+            "description": "方法 _complete_check_id 可能返回空列表，调用方需要处理空值情况",
+            "suggestion": "确保方法始终返回非空列表，或调用方进行空值检查",
+            "code_snippet": "def _complete_check_id(self, current_input: str) -> List[Tuple[str, str]]:\n    \"\"\"\n    补全 check_id（可恢复的检查）\n    ...\n        return completions"
+        },
+        {
+            "rule_id": "backend_009",
+            "severity": "info",
+            "line_start": 457,
+            "line_end": 498,
+            "description": "方法 handle_check 行数过多，实际行数为 42 行（498-457+1），超过 30 行限制",
+            "suggestion": "将方法拆分为多个小方法，如 _route_subcommand、_show_help 等",
+            "code_snippet": "def handle_check(self, args: str) -> None:\n    \"\"\"\n    处理 /check 命令\n    ...\n    else:\n        print(f\"❌ 未知的子命令: {subcommand}\")\n        self._show_help()"
+        },
+        {
+            "rule_id": "backend_059",
+            "severity": "error",
+            "line_start": 478,
+            "line_end": 480,
+            "description": "parts 列表可能为空，直接访问 parts[0] 和 parts[1] 存在空指针风险",
+            "suggestion": "添加空值检查，确保列表长度足够",
+            "code_snippet": "parts = args.split(maxsplit=1)\nsubcommand = parts[0]\nsub_args = parts[1] if len(parts) > 1 else \"\""
+        },
+        {
+            "rule_id": "backend_009",
+            "severity": "info",
+            "line_start": 701,
+            "line_end": 1016,
+            "description": "方法 _check_folder 行数过多，实际行数为 316 行（1016-701+1），严重超过 30 行限制",
+            "suggestion": "将方法拆分为多个小方法，如 _scan_files、_setup_check_task、_process_files_concurrent、_generate_reports 等",
+            "code_snippet": "def _check_folder(self, args: str) -> None:\n    \"\"\"\n    检查目录\n    ...\n            logger.error(f\"检查目录失败: {e}\", exc_info=True)"
+        },
+        {
+            "rule_id": "backend_013",
+            "severity": "info",
+            "line_start": 815,
+            "line_end": 815,
+            "description": "存在魔数 100，应抽取为常量",
+            "suggestion": "定义常量如 SNAPSHOT_INTERVAL = 100",
+            "code_snippet": "snapshot_interval = 100  # 每100个文件生成一次快照"
+        },
+        {
+            "rule_id": "backend_013",
+            "severity": "info",
+            "line_start": 1028,
+            "line_end": 1033,
+            "description": "存在多个魔数：\".\"、5、None，应抽取为常量",
+            "suggestion": "定义常量如 DEFAULT_PATH = \".\", DEFAULT_WORKERS = 5",
+            "code_snippet": "options = {\n    \"path\": \".\",\n    \"extensions\": None,\n    \"ignored\": None,\n    \"workers\": 5,\n    \"repeat\": None,\n    \"consensus\": None,\n}"
+        },
+        {
+            "rule_id": "backend_062",
+            "severity": "error",
+            "line_start": 1105,
+            "line_end": 1106,
+            "description": "shlex.split(args) 结果可能为空，直接访问 tokens 存在数组越界风险",
+            "suggestion": "添加长度检查 before accessing tokens",
+            "code_snippet": "tokens = shlex.split(args)\n\nif not tokens:\n    print(\"当前默认设置：\")"
+        }
+    ],
+    "error_count": 3,
+    "warning_count": 0,
+    "info_count": 7,
+    "status": "success",
+    "error_message": null
+}

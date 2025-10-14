@@ -1,0 +1,191 @@
+{
+    "file_path": "test_git_completion.py",
+    "check_time": "2025-10-14T06:53:43.537775",
+    "issues": [
+        {
+            "rule_id": "backend_009",
+            "severity": "info",
+            "line_start": 14,
+            "line_end": 159,
+            "description": "test_git_completion 方法行数为 146 行（159-14+1），超过 30 行限制",
+            "suggestion": "将长方法拆分为多个小方法，如拆分为：获取本地commits、获取最近commits、显示补全列表等独立方法",
+            "code_snippet": "def test_git_completion():\n    \"\"\"测试 Git 补全功能\"\"\"\n    print(\"=\" * 60)\n    # ... 146行代码"
+        },
+        {
+            "rule_id": "backend_013",
+            "severity": "info",
+            "line_start": 16,
+            "line_end": 16,
+            "description": "使用魔数 60，缺乏有意义的常量定义",
+            "suggestion": "定义常量 SEPARATOR_LENGTH = 60，提高代码可读性",
+            "code_snippet": "print(\"=\" * 60)"
+        },
+        {
+            "rule_id": "backend_013",
+            "severity": "info",
+            "line_start": 28,
+            "line_end": 28,
+            "description": "使用魔数 60，缺乏有意义的常量定义",
+            "suggestion": "定义常量 SEPARATOR_LENGTH = 60",
+            "code_snippet": "print(\"-\" * 60)"
+        },
+        {
+            "rule_id": "backend_006",
+            "severity": "warning",
+            "line_start": 31,
+            "line_end": 56,
+            "description": "发现复杂的嵌套结构，包含多层 if 嵌套和逻辑分支",
+            "suggestion": "将嵌套逻辑抽取为独立方法，如 extract_local_commits()",
+            "code_snippet": "if repo.heads:\n    current_branch = repo.active_branch\n    if current_branch.tracking_branch():\n        # 多层嵌套逻辑"
+        },
+        {
+            "rule_id": "backend_059",
+            "severity": "error",
+            "line_start": 32,
+            "line_end": 32,
+            "description": "直接访问 repo.heads 属性，未进行空值检查",
+            "suggestion": "添加空值检查或使用安全访问方式",
+            "code_snippet": "if repo.heads:"
+        },
+        {
+            "rule_id": "backend_059",
+            "severity": "error",
+            "line_start": 35,
+            "line_end": 35,
+            "description": "直接调用 current_branch.tracking_branch()，未检查 current_branch 是否为空",
+            "suggestion": "添加空值检查，确保 current_branch 不为空",
+            "code_snippet": "if current_branch.tracking_branch():"
+        },
+        {
+            "rule_id": "backend_013",
+            "severity": "info",
+            "line_start": 48,
+            "line_end": 48,
+            "description": "使用魔数 50 和 47，缺乏有意义的常量定义",
+            "suggestion": "定义常量 MAX_MESSAGE_LENGTH = 50, TRUNCATE_LENGTH = 47",
+            "code_snippet": "if len(message) > 50:\n    message = message[:47] + \"...\""
+        },
+        {
+            "rule_id": "backend_010",
+            "severity": "warning",
+            "line_start": 48,
+            "line_end": 49,
+            "description": "发现重复的字符串截断逻辑，在多个地方出现相同代码",
+            "suggestion": "抽取为独立方法 truncate_message(message, max_length)",
+            "code_snippet": "if len(message) > 50:\n    message = message[:47] + \"...\""
+        },
+        {
+            "rule_id": "backend_006",
+            "severity": "warning",
+            "line_start": 69,
+            "line_end": 84,
+            "description": "发现复杂的循环嵌套和条件判断嵌套",
+            "suggestion": "将循环逻辑抽取为独立方法，如 display_recent_commits()",
+            "code_snippet": "for commit in commits:\n    if short_hash in local_commits:\n        continue\n    # 嵌套逻辑"
+        },
+        {
+            "rule_id": "backend_013",
+            "severity": "info",
+            "line_start": 78,
+            "line_end": 78,
+            "description": "使用魔数 50 和 47，缺乏有意义的常量定义",
+            "suggestion": "定义常量 MAX_MESSAGE_LENGTH = 50, TRUNCATE_LENGTH = 47",
+            "code_snippet": "if len(message) > 50:\n    message = message[:47] + \"...\""
+        },
+        {
+            "rule_id": "backend_010",
+            "severity": "warning",
+            "line_start": 78,
+            "line_end": 79,
+            "description": "发现重复的字符串截断逻辑，与第48-49行代码重复",
+            "suggestion": "使用统一的 truncate_message 方法",
+            "code_snippet": "if len(message) > 50:\n    message = message[:47] + \"...\""
+        },
+        {
+            "rule_id": "backend_006",
+            "severity": "warning",
+            "line_start": 94,
+            "line_end": 124,
+            "description": "发现复杂的多层嵌套结构，包含 if 嵌套和循环嵌套",
+            "suggestion": "将补全列表生成逻辑抽取为独立方法，如 generate_completions()",
+            "code_snippet": "if repo.heads:\n    current_branch = repo.active_branch\n    if current_branch.tracking_branch():\n        for commit in local_only:\n            # 多层嵌套"
+        },
+        {
+            "rule_id": "backend_059",
+            "severity": "error",
+            "line_start": 96,
+            "line_end": 96,
+            "description": "直接访问 repo.heads 和 repo.active_branch，未进行空值检查",
+            "suggestion": "添加适当的空值检查逻辑",
+            "code_snippet": "if repo.heads:\n    current_branch = repo.active_branch"
+        },
+        {
+            "rule_id": "backend_013",
+            "severity": "info",
+            "line_start": 104,
+            "line_end": 104,
+            "description": "使用魔数 45 和 42，缺乏有意义的常量定义",
+            "suggestion": "定义常量 MAX_COMPLETION_LENGTH = 45, TRUNCATE_COMPLETION_LENGTH = 42",
+            "code_snippet": "if len(message) > 45:\n    message = message[:42] + \"...\""
+        },
+        {
+            "rule_id": "backend_010",
+            "severity": "warning",
+            "line_start": 104,
+            "line_end": 105,
+            "description": "发现重复的字符串截断逻辑，与前面代码逻辑类似",
+            "suggestion": "使用统一的 truncate_message 方法，支持不同长度参数",
+            "code_snippet": "if len(message) > 45:\n    message = message[:42] + \"...\""
+        },
+        {
+            "rule_id": "backend_013",
+            "severity": "info",
+            "line_start": 119,
+            "line_end": 119,
+            "description": "使用魔数 50 和 47，缺乏有意义的常量定义",
+            "suggestion": "定义常量 MAX_MESSAGE_LENGTH = 50, TRUNCATE_LENGTH = 47",
+            "code_snippet": "if len(message) > 50:\n    message = message[:47] + \"...\""
+        },
+        {
+            "rule_id": "backend_010",
+            "severity": "warning",
+            "line_start": 119,
+            "line_end": 120,
+            "description": "发现重复的字符串截断逻辑，与前面代码重复",
+            "suggestion": "使用统一的 truncate_message 方法",
+            "code_snippet": "if len(message) > 50:\n    message = message[:47] + \"...\""
+        },
+        {
+            "rule_id": "backend_013",
+            "severity": "info",
+            "line_start": 126,
+            "line_end": 133,
+            "description": "使用魔数 1, 2, 3, 5, 10，缺乏有意义的常量定义",
+            "suggestion": "定义常量 REFERENCE_OFFSETS = [1, 2, 3, 5, 10]",
+            "code_snippet": "relative_refs = [\n    (\"HEAD\", \"HEAD (最新 commit)\"),\n    (\"HEAD~1\", \"HEAD~1 (前1个 commit)\"),\n    # ... 其他魔数"
+        },
+        {
+            "rule_id": "backend_018",
+            "severity": "info",
+            "line_start": 153,
+            "line_end": 157,
+            "description": "异常处理中直接打印堆栈跟踪，不符合日志规范",
+            "suggestion": "使用日志系统记录异常，而不是直接打印",
+            "code_snippet": "except Exception as e:\n    print(f\"❌ 测试失败: {e}\")\n    import traceback\n    traceback.print_exc()"
+        },
+        {
+            "rule_id": "backend_025",
+            "severity": "error",
+            "line_start": 156,
+            "line_end": 156,
+            "description": "使用 traceback.print_exc() 输出异常堆栈，不符合异常处理规范",
+            "suggestion": "使用日志系统记录异常，或抛出适当的业务异常",
+            "code_snippet": "traceback.print_exc()"
+        }
+    ],
+    "error_count": 4,
+    "warning_count": 7,
+    "info_count": 9,
+    "status": "success",
+    "error_message": null
+}
