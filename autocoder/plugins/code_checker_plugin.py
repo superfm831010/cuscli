@@ -267,26 +267,42 @@ class CodeCheckerPlugin(Plugin):
             return self._complete_git_commits(current_input)
 
         elif command == "/check /git /diff":
-            # Git diff 补全
-            # 解析当前输入，判断是第一个还是第二个 commit 参数
+            # Git diff 补全 - 支持两个 commit 参数
             tokens = shlex.split(current_input)
             base_tokens = command.split()  # ["/check", "/git", "/diff"]
 
-            # 如果光标在第一个 commit 参数位置或之前
-            # tokens 示例: ["/check", "/git", "/diff"] 或 ["/check", "/git", "/diff", "HEAD"]
-            if len(tokens) <= len(base_tokens) + 1:
-                # 补全第一个 commit
-                return self._complete_git_commits(current_input)
+            # 计算已输入的非选项参数数量（不以 / 开头的参数）
+            non_option_args = []
+            for i in range(len(base_tokens), len(tokens)):
+                if not tokens[i].startswith('/'):
+                    non_option_args.append(tokens[i])
+
+            # 判断当前应该补全第几个 commit
+            # 关键：先检查是否有尾部空格，判断用户是否完成当前参数输入
+            has_trailing_space = current_input != current_input.rstrip()
+
+            if has_trailing_space:
+                # 末尾有空格，说明当前参数已完成，准备输入下一个
+                if len(non_option_args) == 0:
+                    # 还没有输入任何 commit，补全第一个
+                    return self._complete_git_commits(current_input)
+                elif len(non_option_args) == 1:
+                    # 已有1个 commit，补全第二个
+                    return self._complete_git_commits(current_input)
+                else:
+                    # 已经有两个 commit 了，不再补全 commit（可能要补全选项）
+                    return []
             else:
-                # 判断第二个参数是否是选项（以 / 开头）
-                second_arg = tokens[len(base_tokens)]  # diff 后的第一个参数
-                if len(tokens) > len(base_tokens) + 1:
-                    third_token = tokens[len(base_tokens) + 1]
-                    # 如果第三个 token 以 / 开头，说明第二个参数已经是选项，不再补全
-                    if third_token.startswith('/'):
-                        return []
-                # 补全第二个 commit
-                return self._complete_git_commits(current_input)
+                # 末尾没有空格，正在输入当前参数
+                if len(non_option_args) == 0:
+                    # 正在输入第一个 commit
+                    return self._complete_git_commits(current_input)
+                elif len(non_option_args) == 1:
+                    # 正在输入第二个 commit
+                    return self._complete_git_commits(current_input)
+                else:
+                    # 正在输入第三个参数（可能是选项），不补全 commit
+                    return []
 
         return []
 

@@ -376,12 +376,7 @@ class EnhancedCompleter(Completer):
         return None
 
     def _process_command_completions(self, command, current_input, completions):
-        """处理通用命令补全"""
-        # 提取子命令前缀
-        # 注意：这里需要根据命令的层级来提取子命令前缀
-        # 例如：command="/git /github", current_input="/git /github /setup"
-        # 应该提取 "/setup" 作为子命令前缀
-
+        """处理通用命令补全，支持多个并行选项和非选项参数（如 commit hash）"""
         # 计算命令前缀的单词数
         command_parts_count = len(command.split())
 
@@ -389,13 +384,26 @@ class EnhancedCompleter(Completer):
         parts = current_input.split()
         cmd_prefix = ""
 
-        # 如果输入的部分数大于命令的部分数，说明用户开始输入子命令了
+        # 获取已输入的选项（只统计以 / 开头的）
+        entered_options = set()
         if len(parts) > command_parts_count:
-            # 获取命令之后的部分作为子命令前缀
-            cmd_prefix = " ".join(parts[command_parts_count:])
+            for part in parts[command_parts_count:]:
+                if part.startswith("/"):
+                    entered_options.add(part)
 
-        # 对于任何命令，当子命令前缀为空或与补全选项匹配时，都显示补全
+        # 判断最后一个词是否是选项前缀
+        if len(parts) > command_parts_count:
+            last_word = parts[-1]
+            # 只有以 / 开头的才作为选项前缀，否则显示所有可用选项
+            if last_word.startswith("/"):
+                cmd_prefix = last_word
+
+        # 补全选项
         for completion in completions:
+            # 过滤掉已经输入的选项，避免重复补全
+            if completion in entered_options:
+                continue
+
             if cmd_prefix == "" or completion.startswith(cmd_prefix):
                 # 只提供未输入部分作为补全
                 remaining_text = completion[len(cmd_prefix) :]

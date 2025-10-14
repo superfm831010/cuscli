@@ -1110,17 +1110,24 @@ class PluginManager:
 
         # 分割当前输入
         parts = current_input.split()
-        existing_input = ""
 
-        # 如果输入的部分数大于命令的部分数，说明用户开始输入参数了
-        if len(parts) > command_parts_count:
-            # 获取命令之后的第一个部分作为补全前缀
-            existing_input = parts[command_parts_count]
+        # 判断是否有尾部空格
+        has_trailing_space = current_input != current_input.rstrip()
 
-        # 只提供未输入部分作为补全
+        # 确定当前正在输入的词（前缀）
+        if has_trailing_space:
+            # 有空格，说明当前词已完成，新词的前缀为空
+            existing_input = ""
+        elif len(parts) > command_parts_count:
+            # 无空格，取最后一个词作为前缀
+            existing_input = parts[-1]
+        else:
+            existing_input = ""
+
+        # 只提供匹配前缀的补全
         for completion_text, display_text in completions:
             if completion_text.startswith(existing_input):
-                remaining_text = completion_text[len(existing_input) :]
+                remaining_text = completion_text[len(existing_input):]
                 processed_completions.append((remaining_text, display_text))
 
         return processed_completions
