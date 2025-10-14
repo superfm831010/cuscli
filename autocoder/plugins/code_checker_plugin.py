@@ -217,10 +217,10 @@ class CodeCheckerPlugin(Plugin):
             "/check /folder": ["/path", "/ext", "/ignore", "/workers", "/repeat", "/consensus"],
             "/check /config": ["/repeat", "/consensus"],
             "/check /git": ["/staged", "/unstaged", "/commit", "/diff"],
-            "/check /git /staged": ["/repeat", "/consensus", "/workers"],
-            "/check /git /unstaged": ["/repeat", "/consensus", "/workers"],
-            "/check /git /commit": ["/repeat", "/consensus", "/workers"],
-            "/check /git /diff": ["/repeat", "/consensus", "/workers"],
+            "/check /git /staged": ["/repeat", "/consensus", "/workers", "/diff-only"],
+            "/check /git /unstaged": ["/repeat", "/consensus", "/workers", "/diff-only"],
+            "/check /git /commit": ["/repeat", "/consensus", "/workers", "/diff-only"],
+            "/check /git /diff": ["/repeat", "/consensus", "/workers", "/diff-only"],
         }
 
     def get_dynamic_completions(
@@ -1661,6 +1661,35 @@ Git 引用格式 (commit/diff 命令支持):
             # 解析选项
             options = self._parse_git_check_options(args)
 
+            # Phase 3: 如果启用了 diff-only 模式，获取 diff info
+            if options.get("diff_only"):
+                print("🎯 Diff-Only 模式：将仅审核修改的代码行")
+                print()
+
+                try:
+                    # 获取 diff 信息
+                    diff_info_dict = git_helper.get_staged_diff_info()
+
+                    if not diff_info_dict:
+                        print("⚠️  无法获取 diff 信息，将使用全文件审核模式")
+                    else:
+                        # 计算审核范围统计
+                        total_audit_lines = 0
+                        for file_path, diff_info in diff_info_dict.items():
+                            if diff_info.has_modifications():
+                                for hunk in diff_info.hunks:
+                                    total_audit_lines += hunk.new_count
+
+                        # 传递 diff_info 到执行函数
+                        options['diff_info_dict'] = diff_info_dict
+
+                        print(f"📊 审核范围：约 {total_audit_lines} 行修改代码（+ 上下文）")
+                        print()
+                except Exception as e:
+                    logger.warning(f"获取 diff 信息失败: {e}，使用全文件审核模式")
+                    print(f"⚠️  获取 diff 信息失败，将使用全文件审核模式")
+                    print()
+
             # 执行检查（复用现有逻辑）
             self._execute_batch_check(
                 files=files,
@@ -1699,6 +1728,35 @@ Git 引用格式 (commit/diff 命令支持):
             print()
 
             options = self._parse_git_check_options(args)
+
+            # Phase 3: 如果启用了 diff-only 模式，获取 diff info
+            if options.get("diff_only"):
+                print("🎯 Diff-Only 模式：将仅审核修改的代码行")
+                print()
+
+                try:
+                    # 获取 diff 信息
+                    diff_info_dict = git_helper.get_unstaged_diff_info()
+
+                    if not diff_info_dict:
+                        print("⚠️  无法获取 diff 信息，将使用全文件审核模式")
+                    else:
+                        # 计算审核范围统计
+                        total_audit_lines = 0
+                        for file_path, diff_info in diff_info_dict.items():
+                            if diff_info.has_modifications():
+                                for hunk in diff_info.hunks:
+                                    total_audit_lines += hunk.new_count
+
+                        # 传递 diff_info 到执行函数
+                        options['diff_info_dict'] = diff_info_dict
+
+                        print(f"📊 审核范围：约 {total_audit_lines} 行修改代码（+ 上下文）")
+                        print()
+                except Exception as e:
+                    logger.warning(f"获取 diff 信息失败: {e}，使用全文件审核模式")
+                    print(f"⚠️  获取 diff 信息失败，将使用全文件审核模式")
+                    print()
 
             self._execute_batch_check(
                 files=files,
@@ -1768,6 +1826,35 @@ Git 引用格式 (commit/diff 命令支持):
 
             options = self._parse_git_check_options(option_args)
             options['commit_info'] = commit_info  # 传递 commit 信息用于报告
+
+            # Phase 3: 如果启用了 diff-only 模式，获取 diff info
+            if options.get("diff_only"):
+                print("🎯 Diff-Only 模式：将仅审核修改的代码行")
+                print()
+
+                try:
+                    # 获取 diff 信息
+                    diff_info_dict = git_helper.get_commit_diff_info(commit_hash)
+
+                    if not diff_info_dict:
+                        print("⚠️  无法获取 diff 信息，将使用全文件审核模式")
+                    else:
+                        # 计算审核范围统计
+                        total_audit_lines = 0
+                        for file_path, diff_info in diff_info_dict.items():
+                            if diff_info.has_modifications():
+                                for hunk in diff_info.hunks:
+                                    total_audit_lines += hunk.new_count
+
+                        # 传递 diff_info 到执行函数
+                        options['diff_info_dict'] = diff_info_dict
+
+                        print(f"📊 审核范围：约 {total_audit_lines} 行修改代码（+ 上下文）")
+                        print()
+                except Exception as e:
+                    logger.warning(f"获取 diff 信息失败: {e}，使用全文件审核模式")
+                    print(f"⚠️  获取 diff 信息失败，将使用全文件审核模式")
+                    print()
 
             # Phase 3: 传递 temp_manager 以便检查后自动清理
             self._execute_batch_check(
@@ -1842,6 +1929,35 @@ Git 引用格式 (commit/diff 命令支持):
             options = self._parse_git_check_options(option_args)
             options['diff_info'] = f"{commit1}...{commit2}"
 
+            # Phase 3: 如果启用了 diff-only 模式，获取 diff info
+            if options.get("diff_only"):
+                print("🎯 Diff-Only 模式：将仅审核修改的代码行")
+                print()
+
+                try:
+                    # 获取 diff 信息
+                    diff_info_dict = git_helper.get_diff_between_commits(commit1, commit2)
+
+                    if not diff_info_dict:
+                        print("⚠️  无法获取 diff 信息，将使用全文件审核模式")
+                    else:
+                        # 计算审核范围统计
+                        total_audit_lines = 0
+                        for file_path, diff_info in diff_info_dict.items():
+                            if diff_info.has_modifications():
+                                for hunk in diff_info.hunks:
+                                    total_audit_lines += hunk.new_count
+
+                        # 传递 diff_info 到执行函数
+                        options['diff_info_dict'] = diff_info_dict
+
+                        print(f"📊 审核范围：约 {total_audit_lines} 行修改代码（+ 上下文）")
+                        print()
+                except Exception as e:
+                    logger.warning(f"获取 diff 信息失败: {e}，使用全文件审核模式")
+                    print(f"⚠️  获取 diff 信息失败，将使用全文件审核模式")
+                    print()
+
             # Phase 3: 传递 temp_manager 以便检查后自动清理
             self._execute_batch_check(
                 files=prepared_files,
@@ -1867,12 +1983,13 @@ Git 引用格式 (commit/diff 命令支持):
             args: 参数列表
 
         Returns:
-            选项字典 {repeat, consensus, workers}
+            选项字典 {repeat, consensus, workers, diff_only}
         """
         options = {
             "repeat": None,
             "consensus": None,
-            "workers": 5  # 默认并发数
+            "workers": 5,  # 默认并发数
+            "diff_only": False  # Phase 3: diff-only 模式
         }
 
         i = 0
@@ -1897,6 +2014,10 @@ Git 引用格式 (commit/diff 命令支持):
                 except ValueError:
                     print(f"⚠️  无效的并发数: {args[i + 1]}")
                 i += 2
+            elif arg == "/diff-only":
+                # Phase 3: 启用 diff-only 模式
+                options["diff_only"] = True
+                i += 1
             else:
                 i += 1
 
@@ -2017,6 +2138,15 @@ Git 引用格式 (commit/diff 命令支持):
             temp_manager: 临时文件管理器（Phase 3: 用于历史文件检查）
         """
         workers = options.get("workers", 5)
+
+        # Phase 3: 提取 diff_info_dict（如果存在）
+        diff_info_dict = options.get("diff_info_dict")
+        if diff_info_dict:
+            logger.info(f"Diff-Only 模式：{len(diff_info_dict)} 个文件有 diff 信息")
+            # 注意：实际使用 diff_info 进行焦点审核需要在 Phase 4 中实现
+            # 当前阶段只是记录信息，实际审核仍为全文件模式
+        else:
+            logger.info("全文件审核模式")
 
         # 确保 checker 已初始化
         self._ensure_checker()
