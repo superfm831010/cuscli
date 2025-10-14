@@ -713,9 +713,9 @@ class CodeCheckerPlugin(Plugin):
                                 issues_found=kwargs.get("issues_found", 0)
                             )
                         elif step == "merge_done":
-                            # 文件检查完成，清除chunk和LLM显示
-                            progress_display.remove_chunk_task()
-                            progress_display.remove_llm_task()
+                            # 并发场景下，保留最新活动信息，不立即清空
+                            # 这样用户可以持续看到检查详情（虽然会在不同文件间切换）
+                            pass
 
                 try:
                     with progress_display.display_progress():
@@ -1268,9 +1268,9 @@ class CodeCheckerPlugin(Plugin):
                             issues_found=kwargs.get("issues_found", 0)
                         )
                     elif step == "merge_done":
-                        # 文件检查完成，清除chunk和LLM显示
-                        progress_display.remove_chunk_task()
-                        progress_display.remove_llm_task()
+                        # 并发场景下，保留最新活动信息，不立即清空
+                        # 这样用户可以持续看到检查详情（虽然会在不同文件间切换）
+                        pass
 
             results = []
             with progress_display.display_progress():
@@ -1945,9 +1945,9 @@ class CodeCheckerPlugin(Plugin):
                             issues_found=kwargs.get("issues_found", 0)
                         )
                     elif step == "merge_done":
-                        # 文件检查完成，清除chunk和LLM显示
-                        progress_display.remove_chunk_task()
-                        progress_display.remove_llm_task()
+                        # 并发场景下，保留最新活动信息，不立即清空
+                        # 这样用户可以持续看到检查详情（虽然会在不同文件间切换）
+                        pass
 
             with progress_display.display_progress():
                 progress_display.update_file_progress(

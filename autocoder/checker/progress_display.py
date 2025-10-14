@@ -138,7 +138,8 @@ class ProgressDisplay:
 
             lines.append(llm_text)
 
-            # 添加参数说明行
+        # 参数说明（移到条件块外，检查进行中时始终显示）
+        if self.current_state["total_files"] > 0:
             repeat = self.current_state["llm_repeat"]
             consensus = self.current_state["llm_consensus"]
             param_text = f"⚙️  repeat={repeat} (↑值=↑准确↓速度), consensus={consensus:.2f} (↑值=↓误报↑漏报) | 修改: /check /config"
