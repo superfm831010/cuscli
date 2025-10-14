@@ -342,7 +342,7 @@ class ToolsManager:
         2. **REQUIRED**: Always use a custom sub agent to create tools and set a proper timeout for sub agent task, e.g. 1800s. - never create tools directly
         3. **STRONGLY RECOMMENDED**: Prefer Go for building tools， here is the steps:
            - Create a tool project in {{ autocoder_home }}/.auto-coder/tool_repos
-           - Ask the subagent to develop and build the binary in the tool directory (with proper timeout). The command should like this: cd <tool directory> && echo '<prompt>' | auto-coder.run --model <model_name> --is-sub-agent
+           - Ask the subagent to develop and build the binary in the tool directory (with proper timeout). The command should like this: cd <tool directory> && echo '<prompt>' | auto-coder.run --model <model_name> --is-sub-agent --verbose
            - Copy the final binary to `./.auto-coder/.autocodertools/` after completion
            - If no binary is found in the directory, request the subagent to rebuild the tool
         """
