@@ -674,6 +674,49 @@ class CodeCheckerPlugin(Plugin):
                     consensus=self.checker.llm_consensus_ratio
                 )
 
+                # 创建线程安全的并发进度回调
+                from threading import Lock
+                update_lock = Lock()
+
+                def concurrent_progress_callback(step: str, **kwargs):
+                    """并发场景下的进度回调（线程安全）"""
+                    with update_lock:
+                        if step == "chunked":
+                            progress_display.update_chunk_progress(
+                                total_chunks=kwargs.get("total_chunks", 0),
+                                completed_chunks=0
+                            )
+                        elif step == "chunk_start":
+                            progress_display.update_chunk_progress(
+                                current_chunk=kwargs.get("chunk_index", 0),
+                                chunk_info={
+                                    "start_line": kwargs.get("start_line"),
+                                    "end_line": kwargs.get("end_line"),
+                                    "tokens": kwargs.get("tokens"),
+                                }
+                            )
+                        elif step == "chunk_done":
+                            progress_display.update_chunk_progress(
+                                completed_chunks=kwargs.get("chunk_index", 0) + 1
+                            )
+                        elif step == "llm_call_start":
+                            progress_display.update_llm_progress(
+                                event="start",
+                                attempt=kwargs.get("attempt", 1),
+                                total_attempts=kwargs.get("total_attempts", 1)
+                            )
+                        elif step == "llm_call_end":
+                            progress_display.update_llm_progress(
+                                event="end",
+                                attempt=kwargs.get("attempt", 1),
+                                duration=kwargs.get("duration", 0.0),
+                                issues_found=kwargs.get("issues_found", 0)
+                            )
+                        elif step == "merge_done":
+                            # 文件检查完成，清除chunk和LLM显示
+                            progress_display.remove_chunk_task()
+                            progress_display.remove_llm_task()
+
                 try:
                     with progress_display.display_progress():
                         # 初始化文件级进度
@@ -682,8 +725,11 @@ class CodeCheckerPlugin(Plugin):
                             completed_files=0
                         )
 
-                        # Task 9.2: 使用并发检查
-                        for idx, result in enumerate(self.checker.check_files_concurrent(files, max_workers=workers), 1):
+                        # Task 9.2: 使用并发检查（传递进度回调）
+                        for idx, result in enumerate(
+                            self.checker.check_files_concurrent(files, max_workers=workers, progress_callback=concurrent_progress_callback),
+                            1
+                        ):
                             results.append(result)
 
                             # 立即保存结果到持久化存储（防止数据丢失）
@@ -1183,6 +1229,49 @@ class CodeCheckerPlugin(Plugin):
                 consensus=self.checker.llm_consensus_ratio
             )
 
+            # 创建线程安全的并发进度回调
+            from threading import Lock
+            update_lock = Lock()
+
+            def concurrent_progress_callback(step: str, **kwargs):
+                """并发场景下的进度回调（线程安全）"""
+                with update_lock:
+                    if step == "chunked":
+                        progress_display.update_chunk_progress(
+                            total_chunks=kwargs.get("total_chunks", 0),
+                            completed_chunks=0
+                        )
+                    elif step == "chunk_start":
+                        progress_display.update_chunk_progress(
+                            current_chunk=kwargs.get("chunk_index", 0),
+                            chunk_info={
+                                "start_line": kwargs.get("start_line"),
+                                "end_line": kwargs.get("end_line"),
+                                "tokens": kwargs.get("tokens"),
+                            }
+                        )
+                    elif step == "chunk_done":
+                        progress_display.update_chunk_progress(
+                            completed_chunks=kwargs.get("chunk_index", 0) + 1
+                        )
+                    elif step == "llm_call_start":
+                        progress_display.update_llm_progress(
+                            event="start",
+                            attempt=kwargs.get("attempt", 1),
+                            total_attempts=kwargs.get("total_attempts", 1)
+                        )
+                    elif step == "llm_call_end":
+                        progress_display.update_llm_progress(
+                            event="end",
+                            attempt=kwargs.get("attempt", 1),
+                            duration=kwargs.get("duration", 0.0),
+                            issues_found=kwargs.get("issues_found", 0)
+                        )
+                    elif step == "merge_done":
+                        # 文件检查完成，清除chunk和LLM显示
+                        progress_display.remove_chunk_task()
+                        progress_display.remove_llm_task()
+
             results = []
             with progress_display.display_progress():
                 # 初始化文件级进度
@@ -1191,8 +1280,11 @@ class CodeCheckerPlugin(Plugin):
                     completed_files=0
                 )
 
-                # Task 9.2: 使用并发检查
-                for idx, result in enumerate(self.checker.check_files_concurrent(state.remaining_files, max_workers=workers), 1):
+                # Task 9.2: 使用并发检查（传递进度回调）
+                for idx, result in enumerate(
+                    self.checker.check_files_concurrent(state.remaining_files, max_workers=workers, progress_callback=concurrent_progress_callback),
+                    1
+                ):
                     results.append(result)
 
                     # 更新进度
@@ -1814,15 +1906,58 @@ class CodeCheckerPlugin(Plugin):
                 consensus=self.checker.llm_consensus_ratio
             )
 
+            # 创建线程安全的并发进度回调
+            from threading import Lock
+            update_lock = Lock()
+
+            def concurrent_progress_callback(step: str, **kwargs):
+                """并发场景下的进度回调（线程安全）"""
+                with update_lock:
+                    if step == "chunked":
+                        progress_display.update_chunk_progress(
+                            total_chunks=kwargs.get("total_chunks", 0),
+                            completed_chunks=0
+                        )
+                    elif step == "chunk_start":
+                        progress_display.update_chunk_progress(
+                            current_chunk=kwargs.get("chunk_index", 0),
+                            chunk_info={
+                                "start_line": kwargs.get("start_line"),
+                                "end_line": kwargs.get("end_line"),
+                                "tokens": kwargs.get("tokens"),
+                            }
+                        )
+                    elif step == "chunk_done":
+                        progress_display.update_chunk_progress(
+                            completed_chunks=kwargs.get("chunk_index", 0) + 1
+                        )
+                    elif step == "llm_call_start":
+                        progress_display.update_llm_progress(
+                            event="start",
+                            attempt=kwargs.get("attempt", 1),
+                            total_attempts=kwargs.get("total_attempts", 1)
+                        )
+                    elif step == "llm_call_end":
+                        progress_display.update_llm_progress(
+                            event="end",
+                            attempt=kwargs.get("attempt", 1),
+                            duration=kwargs.get("duration", 0.0),
+                            issues_found=kwargs.get("issues_found", 0)
+                        )
+                    elif step == "merge_done":
+                        # 文件检查完成，清除chunk和LLM显示
+                        progress_display.remove_chunk_task()
+                        progress_display.remove_llm_task()
+
             with progress_display.display_progress():
                 progress_display.update_file_progress(
                     total_files=len(files),
                     completed_files=0
                 )
 
-                # 并发检查
+                # 并发检查（传递进度回调）
                 for idx, result in enumerate(
-                    self.checker.check_files_concurrent(files, max_workers=workers),
+                    self.checker.check_files_concurrent(files, max_workers=workers, progress_callback=concurrent_progress_callback),
                     1
                 ):
                     # Phase 3: 如果使用了临时文件，恢复原始路径（用于报告）

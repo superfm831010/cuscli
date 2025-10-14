@@ -606,7 +606,8 @@ class CodeChecker:
         )
 
     def check_files_concurrent(
-        self, files: List[str], max_workers: int = 5, file_timeout: int = 600
+        self, files: List[str], max_workers: int = 5, file_timeout: int = 600,
+        progress_callback: Optional[callable] = None
     ) -> Generator[FileCheckResult, None, None]:
         """
         并发检查多个文件
@@ -620,6 +621,8 @@ class CodeChecker:
             files: 文件路径列表
             max_workers: 最大并发数（默认: 5）
             file_timeout: 单个文件检查的最大超时时间(秒),默认 600 秒(10分钟)
+            progress_callback: 可选的进度回调函数，用于报告检查进度（注意：并发场景下，
+                回调会被多个线程同时调用，需要确保线程安全）
 
         Yields:
             FileCheckResult: 每个文件的检查结果（按完成顺序）
@@ -637,9 +640,9 @@ class CodeChecker:
 
         # 使用 ThreadPoolExecutor 并发检查
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # 提交所有任务(传递 file_timeout 参数)
+            # 提交所有任务(传递 file_timeout 和 progress_callback 参数)
             future_to_file = {
-                executor.submit(self.check_file, file_path, file_timeout): file_path
+                executor.submit(self.check_file, file_path, file_timeout, progress_callback): file_path
                 for file_path in files
             }
 
