@@ -93,14 +93,14 @@ class RunAgentic:
             conversation_config.query = task_query
 
         # 5. 确保对话ID存在
-        conversation_id = self._ensure_conversation_id(conversation_config)
+        self._ensure_conversation_id(conversation_config)
 
         # 6. 执行任务
         self._execute_runner(llm, args, conversation_config, task_query, cancel_token)
 
         # 7. 刷新文件列表
         self._refresh_completer()
-        return conversation_id
+        return conversation_config.conversation_id
 
     @byzerllm.prompt()
     def _filter_query_reminder(self) -> str:
@@ -435,7 +435,17 @@ class RunAgentic:
         Returns:
             str: 对话ID
         """
-        if not conversation_config.conversation_id:
+        if conversation_config.action == ConversationAction.RESUME and not conversation_config.conversation_id:
+            conversation_manager = get_conversation_manager()
+            conversation_id = conversation_manager.get_current_conversation_id()
+            if not conversation_id:
+                conversation_id = conversation_manager.create_conversation(
+                    name=conversation_config.query or "New Conversation",
+                    description=conversation_config.query or "New Conversation",
+                )
+            conversation_config.conversation_id = conversation_id
+
+        if conversation_config.action == ConversationAction.NEW:
             conversation_manager = get_conversation_manager()
             conversation_id = conversation_manager.create_conversation(
                 name=conversation_config.query or "New Conversation",
