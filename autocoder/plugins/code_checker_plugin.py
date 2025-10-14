@@ -223,6 +223,59 @@ class CodeCheckerPlugin(Plugin):
             "/check /git /diff": ["/repeat", "/consensus", "/workers", "/diff-only"],
         }
 
+    def _get_option_completions(
+        self, command: str, current_input: str
+    ) -> List[Tuple[str, str]]:
+        """
+        获取命令的选项补全（如 /repeat、/consensus、/workers、/diff-only）
+
+        Args:
+            command: 命令，如 "/check /git /diff"
+            current_input: 当前完整输入
+
+        Returns:
+            补全选项列表 [(补全文本, 显示文本), ...]
+        """
+        # 从 get_completions() 获取该命令的选项列表
+        completions_dict = self.get_completions()
+        options = completions_dict.get(command, [])
+
+        if not options:
+            return []
+
+        # 解析当前输入，获取已经输入的选项
+        tokens = shlex.split(current_input)
+        base_tokens = command.split()
+
+        # 提取已经输入的选项（以 / 开头的参数）
+        existing_options = set()
+        for i in range(len(base_tokens), len(tokens)):
+            if tokens[i].startswith('/'):
+                existing_options.add(tokens[i])
+
+        # 判断当前是否在输入选项（末尾是否有正在输入的选项前缀）
+        prefix = ""
+        if current_input.endswith(" "):
+            # 末尾有空格，前缀为空
+            prefix = ""
+        elif len(tokens) > len(base_tokens):
+            # 检查最后一个 token 是否是选项前缀
+            last_token = tokens[-1]
+            if last_token.startswith('/'):
+                prefix = last_token
+
+        # 过滤掉已输入的选项，并匹配前缀
+        suggestions: List[Tuple[str, str]] = []
+        for option in options:
+            # 跳过已经输入过的选项
+            if option in existing_options:
+                continue
+            # 匹配前缀
+            if not prefix or option.startswith(prefix):
+                suggestions.append((option, option))
+
+        return suggestions
+
     def get_dynamic_completions(
         self, command: str, current_input: str
     ) -> List[Tuple[str, str]]:
@@ -263,11 +316,44 @@ class CodeCheckerPlugin(Plugin):
             return suggestions
 
         elif command == "/check /git /commit":
-            # Git commit 补全
-            return self._complete_git_commits(current_input)
+            # Git commit 补全 - 先补全 commit，然后补全选项
+            tokens = shlex.split(current_input)
+            base_tokens = command.split()  # ["/check", "/git", "/commit"]
+
+            # 计算已输入的非选项参数数量（不以 / 开头的参数）
+            non_option_args = []
+            for i in range(len(base_tokens), len(tokens)):
+                if not tokens[i].startswith('/'):
+                    non_option_args.append(tokens[i])
+
+            # 判断当前应该补全什么
+            has_trailing_space = current_input != current_input.rstrip()
+
+            if has_trailing_space:
+                # 末尾有空格，说明当前参数已完成
+                if len(non_option_args) == 0:
+                    # 还没有输入 commit，补全 commit
+                    return self._complete_git_commits(current_input)
+                else:
+                    # 已有 commit，补全选项
+                    return self._get_option_completions(command, current_input)
+            else:
+                # 末尾没有空格，正在输入当前参数
+                if len(non_option_args) == 0:
+                    # 正在输入 commit
+                    return self._complete_git_commits(current_input)
+                else:
+                    # 正在输入选项或其他参数
+                    last_token = tokens[-1]
+                    if last_token.startswith('/'):
+                        # 正在输入选项，返回选项补全
+                        return self._get_option_completions(command, current_input)
+                    else:
+                        # 可能在继续输入 commit hash，不补全
+                        return []
 
         elif command == "/check /git /diff":
-            # Git diff 补全 - 支持两个 commit 参数
+            # Git diff 补全 - 支持两个 commit 参数，然后补全选项
             tokens = shlex.split(current_input)
             base_tokens = command.split()  # ["/check", "/git", "/diff"]
 
@@ -290,8 +376,8 @@ class CodeCheckerPlugin(Plugin):
                     # 已有1个 commit，补全第二个
                     return self._complete_git_commits(current_input)
                 else:
-                    # 已经有两个 commit 了，不再补全 commit（可能要补全选项）
-                    return []
+                    # 已经有两个 commit 了，补全选项
+                    return self._get_option_completions(command, current_input)
             else:
                 # 末尾没有空格，正在输入当前参数
                 if len(non_option_args) == 0:
@@ -301,8 +387,14 @@ class CodeCheckerPlugin(Plugin):
                     # 正在输入第二个 commit
                     return self._complete_git_commits(current_input)
                 else:
-                    # 正在输入第三个参数（可能是选项），不补全 commit
-                    return []
+                    # 正在输入第三个参数
+                    last_token = tokens[-1]
+                    if last_token.startswith('/'):
+                        # 正在输入选项，返回选项补全
+                        return self._get_option_completions(command, current_input)
+                    else:
+                        # 可能在继续输入 commit hash，不补全
+                        return []
 
         return []
 
