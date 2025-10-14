@@ -36,6 +36,8 @@ class CodeCheckerPlugin(Plugin):
         "/check /resume",
         "/check /config",
         "/check /folder",
+        "/check /git /commit",
+        "/check /git /diff",
     ]
 
     def __init__(
@@ -260,6 +262,32 @@ class CodeCheckerPlugin(Plugin):
 
             return suggestions
 
+        elif command == "/check /git /commit":
+            # Git commit 补全
+            return self._complete_git_commits(current_input)
+
+        elif command == "/check /git /diff":
+            # Git diff 补全
+            # 解析当前输入，判断是第一个还是第二个 commit 参数
+            tokens = shlex.split(current_input)
+            base_tokens = command.split()  # ["/check", "/git", "/diff"]
+
+            # 如果光标在第一个 commit 参数位置或之前
+            # tokens 示例: ["/check", "/git", "/diff"] 或 ["/check", "/git", "/diff", "HEAD"]
+            if len(tokens) <= len(base_tokens) + 1:
+                # 补全第一个 commit
+                return self._complete_git_commits(current_input)
+            else:
+                # 判断第二个参数是否是选项（以 / 开头）
+                second_arg = tokens[len(base_tokens)]  # diff 后的第一个参数
+                if len(tokens) > len(base_tokens) + 1:
+                    third_token = tokens[len(base_tokens) + 1]
+                    # 如果第三个 token 以 / 开头，说明第二个参数已经是选项，不再补全
+                    if third_token.startswith('/'):
+                        return []
+                # 补全第二个 commit
+                return self._complete_git_commits(current_input)
+
         return []
 
     def _complete_file_path(self, current_input: str) -> List[Tuple[str, str]]:
@@ -319,6 +347,75 @@ class CodeCheckerPlugin(Plugin):
 
         return completions
 
+    def _complete_git_commits(self, current_input: str) -> List[Tuple[str, str]]:
+        """
+        补全 git commits（用于 /check /git /commit 和 /check /git /diff）
+
+        Args:
+            current_input: 当前输入
+
+        Returns:
+            补全选项列表 [(完整引用, 显示文本), ...]
+        """
+        completions = []
+
+        try:
+            # 初始化 GitFileHelper
+            git_helper = GitFileHelper()
+
+            # 1. 添加常用的相对引用
+            relative_refs = [
+                ("HEAD", "HEAD (最新 commit)"),
+                ("HEAD~1", "HEAD~1 (前1个 commit)"),
+                ("HEAD~2", "HEAD~2 (前2个 commit)"),
+                ("HEAD~3", "HEAD~3 (前3个 commit)"),
+                ("HEAD~4", "HEAD~4 (前4个 commit)"),
+                ("HEAD~5", "HEAD~5 (前5个 commit)"),
+            ]
+
+            for ref, display in relative_refs:
+                completions.append((ref, display))
+
+            # 2. 获取最近10个 commits 的短哈希和消息
+            try:
+                # 使用 GitPython 获取最近10个 commits
+                commits = list(git_helper.repo.iter_commits('HEAD', max_count=10))
+
+                for i, commit in enumerate(commits):
+                    short_hash = commit.hexsha[:7]
+                    # 获取第一行 commit 消息
+                    message = commit.message.strip().split('\n')[0]
+                    # 截断过长的消息
+                    if len(message) > 50:
+                        message = message[:47] + "..."
+
+                    # 格式化显示
+                    display = f"{short_hash} - {message}"
+                    completions.append((short_hash, display))
+
+            except Exception as e:
+                logger.warning(f"获取 commits 失败: {e}")
+
+            # 3. 添加分支名
+            try:
+                branches = [b.name for b in git_helper.repo.branches]
+                for branch in branches[:5]:  # 最多显示5个分支
+                    completions.append((branch, f"{branch} (分支)"))
+            except Exception as e:
+                logger.warning(f"获取分支失败: {e}")
+
+        except Exception as e:
+            logger.warning(f"Git 补全失败: {e}")
+            # 降级：返回基本的相对引用
+            completions = [
+                ("HEAD", "HEAD"),
+                ("HEAD~1", "HEAD~1"),
+                ("HEAD~2", "HEAD~2"),
+                ("HEAD~3", "HEAD~3"),
+            ]
+
+        return completions
+
     def handle_check(self, args: str) -> None:
         """
         处理 /check 命令
@@ -375,8 +472,14 @@ class CodeCheckerPlugin(Plugin):
 
   /check /git /staged [options]        - 检查暂存区文件 (NEW)
   /check /git /unstaged [options]      - 检查工作区修改 (NEW)
-  /check /git /commit <hash> [options] - 检查指定 commit (NEW)
-  /check /git /diff <c1> [c2] [opts]   - 检查 commit 差异 (NEW)
+  /check /git /commit <ref> [options]  - 检查指定 commit (NEW)
+  /check /git /diff <ref1> [ref2] [opts] - 检查 commit 差异 (NEW)
+
+Git 引用格式 (commit/diff 命令支持):
+  HEAD, HEAD~N                         - 相对引用 (HEAD~1=前1个commit)
+  <branch>                             - 分支名 (如 main, dev)
+  <tag>                                - 标签名 (如 v1.0.0)
+  <hash>                               - 完整或短哈希值 (如 abc1234)
 
 /check /folder 选项:
   /path <dir>                          - 指定检查目录（默认: 当前目录）
@@ -397,9 +500,17 @@ class CodeCheckerPlugin(Plugin):
   /check /folder
   /check /folder /path src /ext .py
   /check /folder /path src /ext .py /ignore tests,__pycache__ /repeat 3
-  /check /git /staged
-  /check /git /commit abc1234 /repeat 3
-  /check /git /diff main dev
+
+  # Git 检查示例
+  /check /git /staged                    # 检查暂存区
+  /check /git /unstaged                  # 检查工作区修改
+  /check /git /commit HEAD               # 检查最新 commit
+  /check /git /commit HEAD~1             # 检查前1个 commit
+  /check /git /commit main               # 检查 main 分支最新 commit
+  /check /git /commit abc1234            # 使用哈希值
+  /check /git /diff HEAD~3 HEAD          # 检查最近3个 commits
+  /check /git /diff main dev             # 检查两个分支的差异
+
   /check /resume check_20250110_143022
   /check /report check_20250110_143022
         """
