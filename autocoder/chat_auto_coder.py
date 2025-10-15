@@ -86,6 +86,45 @@ import argparse
 import time
 
 
+def print_warning_box(message: str, width: int = 78, color: str = "\033[1;33m"):
+    """
+    打印带有完整边框的警告消息框
+
+    Args:
+        message: 要显示的消息文本
+        width: 边框宽度（默认78，为80字符终端留出边距）
+        color: ANSI颜色代码（默认黄色加粗）
+    """
+    import textwrap
+
+    reset = "\033[0m"
+    text_color = "\033[1;31m"  # 红色加粗用于文字
+
+    # 计算内容宽度（边框占用4个字符：左边"║ "和右边" ║"）
+    content_width = width - 4
+
+    # 使用 textwrap 自动换行
+    lines = []
+    for line in message.split('\n'):
+        if line.strip():
+            wrapped = textwrap.wrap(line, width=content_width,
+                                   break_long_words=False,
+                                   break_on_hyphens=False)
+            lines.extend(wrapped)
+
+    # 打印顶部边框
+    print(f"{color}╔{'═' * (width - 2)}╗{reset}")
+
+    # 打印每行内容（带左右边框）
+    for line in lines:
+        # 使用 ljust 左对齐并填充空格
+        padded_line = line.ljust(content_width)
+        print(f"{color}║{reset} {text_color}{padded_line}{reset} {color}║{reset}")
+
+    # 打印底部边框
+    print(f"{color}╚{'═' * (width - 2)}╝{reset}")
+
+
 class TaskEvent:
     def __init__(self):
         self.state = "idle"  # idle, pending, started, running, completed
@@ -1233,9 +1272,8 @@ async def run_app():
         print()
 
     # 显示模型能力要求警告（醒目格式）
-    print("\033[1;33m" + "=" * 80 + "\033[0m")
-    print(f"\033[1;31m{get_message('model_capability_warning')}\033[0m")
-    print("\033[1;33m" + "=" * 80 + "\033[0m")
+    print()
+    print_warning_box(get_message('model_capability_warning'), width=78, color="\033[1;33m")
     print()
 
     show_help()
