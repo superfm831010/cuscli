@@ -33,7 +33,7 @@ def read_readme():
 
 setup(
     name='cuscli',
-    version='0.9.0b0',  # Beta 测试版本 (PEP 440 合法格式)
+    version='0.9.0b1',  # Beta 测试版本 (PEP 440 合法格式)
     author='superfm831010 (Based on allwefantasy/auto-coder)',
     author_email='superfm831010@gmail.com',
     description='Cuscli: AI-powered coding assistant tool with custom enhancements (Beta Version)',
