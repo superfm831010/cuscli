@@ -1232,6 +1232,12 @@ async def run_app():
             print(f"  - {name} (v{plugin.version}): {plugin.description}")
         print()
 
+    # 显示模型能力要求警告（醒目格式）
+    print("\033[1;33m" + "=" * 80 + "\033[0m")
+    print(f"\033[1;31m{get_message('model_capability_warning')}\033[0m")
+    print("\033[1;33m" + "=" * 80 + "\033[0m")
+    print()
+
     show_help()
 
     # 启动后台任务（传递 session 对象以便刷新工具栏）
