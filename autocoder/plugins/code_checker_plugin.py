@@ -92,6 +92,37 @@ class CodeCheckerPlugin(Plugin):
             print(f"⚠️  代码检查插件初始化失败: {e}")
             return False
 
+    def _normalize_path(self, path: str) -> str:
+        """
+        标准化文件路径，处理跨平台路径格式
+
+        解决Windows下 shlex.split() 破坏相对路径（如 .\file.py）的问题。
+
+        Args:
+            path: 原始路径字符串
+
+        Returns:
+            标准化后的路径（相对路径保持相对，绝对路径保持绝对）
+
+        Examples:
+            >>> self._normalize_path(".\file.py")  # Windows
+            "file.py"
+            >>> self._normalize_path("./file.py")  # Unix
+            "file.py"
+            >>> self._normalize_path("file.py")
+            "file.py"
+        """
+        if not path:
+            return path
+
+        # 移除前后空白
+        path = path.strip()
+
+        # 标准化路径分隔符（统一为当前系统的分隔符）
+        path = os.path.normpath(path)
+
+        return path
+
     def _ensure_checker(self):
         """
         确保 checker 已初始化
@@ -400,7 +431,7 @@ class CodeCheckerPlugin(Plugin):
 
     def _complete_file_path(self, current_input: str) -> List[Tuple[str, str]]:
         """
-        补全文件路径
+        补全文件路径（支持Windows和Unix路径格式）
 
         Args:
             current_input: 当前输入
@@ -411,16 +442,24 @@ class CodeCheckerPlugin(Plugin):
         parts = current_input.split()
         prefix = parts[-1] if len(parts) > 2 else ""
 
+        # 标准化路径前缀（处理 Windows 的 .\ 或 Unix 的 ./ 前缀）
+        normalized_prefix = self._normalize_path(prefix) if prefix else ""
+
         # 获取目录和文件前缀
-        dir_path = os.path.dirname(prefix) or "."
-        file_prefix = os.path.basename(prefix)
+        dir_path = os.path.dirname(normalized_prefix) or "."
+        file_prefix = os.path.basename(normalized_prefix)
 
         completions = []
+        # 确保目录路径也被标准化
+        dir_path = self._normalize_path(dir_path)
+
         if os.path.isdir(dir_path):
             try:
                 for entry in os.listdir(dir_path):
                     if entry.startswith(file_prefix):
                         full_path = os.path.join(dir_path, entry)
+                        # 标准化完整路径
+                        full_path = self._normalize_path(full_path)
                         # 目录添加 /，文件不添加
                         display = entry + ("/" if os.path.isdir(full_path) else "")
                         completions.append((full_path, display))
@@ -683,6 +722,9 @@ Git 引用格式 (commit/diff 命令支持):
             print("❌ 请指定文件路径")
             print("用法: /check /file <filepath> [/repeat <次数>] [/consensus <0-1>]")
             return
+
+        # 标准化路径（处理 Windows 下 .\file.py 等相对路径）
+        file_path = self._normalize_path(file_path)
 
         # 检查文件是否存在
         if not os.path.exists(file_path):
@@ -1150,7 +1192,8 @@ Git 引用格式 (commit/diff 命令支持):
             part = parts[i]
 
             if part == "/path" and i + 1 < len(parts):
-                options["path"] = parts[i + 1]
+                # 标准化路径（处理 Windows 下的相对路径）
+                options["path"] = self._normalize_path(parts[i + 1])
                 i += 2
             elif part == "/ext" and i + 1 < len(parts):
                 # 扩展名列表，逗号分隔
