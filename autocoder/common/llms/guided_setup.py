@@ -11,6 +11,7 @@ from rich.prompt import Confirm, Prompt
 from typing import Optional, Dict
 from .manager import LLMManager
 from .connection_test import ModelConnectionTester
+from .schema import DEFAULT_API_KEY
 
 
 def guide_first_model_setup() -> Optional[str]:
@@ -114,9 +115,15 @@ def _prompt_model_info(console: Console) -> Optional[Dict]:
         return None
 
     # API Key (可选)
-    console.print("\n[cyan]4. API Key[/cyan] (可选，留空跳过)")
-    console.print("   [dim]提示：API Key 将加密保存到 ~/.auto-coder/keys/ 目录[/dim]")
+    console.print("\n[cyan]4. API Key[/cyan] (可选，留空将使用默认值)")
+    console.print("   [dim]提示：如果接口不需要Key，可以直接留空[/dim]")
+    console.print("   [dim]API Key 将加密保存到 ~/.auto-coder/keys/ 目录[/dim]")
     api_key = prompt("   Key: ", is_password=True).strip()
+
+    # 如果用户留空，使用默认Key
+    if not api_key:
+        api_key = DEFAULT_API_KEY
+        console.print("   [yellow]未输入Key，将使用默认值（适用于不需要Key的接口）[/yellow]")
 
     # 构建模型配置
     model_config = {
@@ -161,7 +168,10 @@ def _confirm_model_config(console: Console, model_config: Dict) -> bool:
     table.add_row("模型类型", model_config["model_type"])
 
     if model_config.get("api_key"):
-        table.add_row("API Key", "******（已设置）")
+        if model_config["api_key"] == DEFAULT_API_KEY:
+            table.add_row("API Key", "[yellow]（不需要Key）[/yellow]")
+        else:
+            table.add_row("API Key", "******（已设置）")
     else:
         table.add_row("API Key", "[dim]（未设置）[/dim]")
 
@@ -189,9 +199,9 @@ def _test_model_connection(console: Console, model_config: Dict) -> str:
         border_style="cyan"
     ))
 
-    # 如果没有 API Key，提示跳过测试
-    if not model_config.get("api_key"):
-        console.print("[yellow]⚠️  未配置 API Key，跳过连接测试[/yellow]")
+    # 如果没有 API Key 或使用默认Key，提示跳过测试
+    if not model_config.get("api_key") or model_config.get("api_key") == DEFAULT_API_KEY:
+        console.print("[yellow]⚠️  未配置 API Key 或使用默认Key，跳过连接测试[/yellow]")
         return "success"
 
     # 执行连接测试

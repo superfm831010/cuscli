@@ -1,7 +1,7 @@
 import byzerllm
 from typing import Union, List, Optional
 
-from .schema import LLMModel
+from .schema import LLMModel, DEFAULT_API_KEY
 
 
 class LLMFactory:
@@ -26,6 +26,10 @@ class LLMFactory:
         api_key = model.get_api_key()
         if not api_key:
             raise ValueError(f"Model {model.name} has no API key configured")
+
+        # 如果是默认Key，表示不需要真实的Key，使用空字符串
+        if api_key == DEFAULT_API_KEY:
+            api_key = ""
         
         if product_mode == "pro":
             # Pro 模式：使用 ByzerLLM.from_default_model

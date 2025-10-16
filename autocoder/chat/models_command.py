@@ -14,6 +14,7 @@ from autocoder.common.result_manager import ResultManager
 from autocoder.common.model_speed_tester import render_speed_test_in_terminal
 from autocoder.utils.llms import get_single_llm
 from autocoder.common.core_config import get_memory_manager
+from autocoder.common.llms.schema import DEFAULT_API_KEY
 
 def handle_models_command(query: str):
     """    
@@ -125,9 +126,20 @@ def handle_models_command(query: str):
             for m in sorted_models:
                 # Check if model has API key
                 has_key = llm_manager.has_key(m.name)
+                api_key_value = m.get_api_key()
+                is_default_key = (api_key_value == DEFAULT_API_KEY)
+
                 name = m.name
-                if has_key:
+                if has_key and not is_default_key:
                     name = f"{name} *"
+
+                # API Key显示逻辑
+                if is_default_key:
+                    key_display = "不需要"
+                elif has_key:
+                    key_display = "✓"
+                else:
+                    key_display = "✗"
 
                 table.add_row(
                     name,
@@ -135,7 +147,7 @@ def handle_models_command(query: str):
                     m.base_url,
                     f"{m.input_price:.2f}",
                     f"{m.output_price:.2f}",
-                    "✓" if has_key else "✗"
+                    key_display
                 )
             console.print(table)
             
@@ -313,10 +325,13 @@ def handle_models_command(query: str):
 
     elif subcmd == "/add":
         # Support both simplified and legacy formats
-        args = query.strip().split(" ")               
+        args = query.strip().split(" ")
         if len(args) == 2:
             # Simplified: /models /add <name> <api_key>
-            name, api_key = args[0], args[1]            
+            name, api_key = args[0], args[1]
+            # 如果api_key为空，使用默认key
+            if not api_key or api_key.strip() == "":
+                api_key = DEFAULT_API_KEY
             result = llm_manager.update_model_with_api_key(name, api_key)
             if result:
                 result_manager.add_result(content=f"models_added: {name}", meta={
@@ -388,9 +403,11 @@ def handle_models_command(query: str):
             "max_output_tokens": int(data_dict.get("max_output_tokens", "8096"))
         }
 
-        # Add API key if provided
-        if "api_key" in data_dict:
+        # Add API key if provided, 否则使用默认key
+        if "api_key" in data_dict and data_dict["api_key"].strip():
             final_model["api_key"] = data_dict["api_key"]
+        else:
+            final_model["api_key"] = DEFAULT_API_KEY
 
         llm_manager.add_models([final_model])
         printer.print_in_terminal("models_add_model_success", style="green", name=data_dict["name"])

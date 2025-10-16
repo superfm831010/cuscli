@@ -13,7 +13,7 @@ from rich.live import Live
 
 import byzerllm
 
-from .schema import LLMModel
+from .schema import LLMModel, DEFAULT_API_KEY
 from .factory import LLMFactory
 
 
@@ -91,6 +91,10 @@ class ModelConnectionTester:
             api_key = model.get_api_key()
             if not api_key:
                 return False, "未配置 API Key"
+
+            # 如果使用默认Key，跳过测试
+            if api_key == DEFAULT_API_KEY:
+                return True, "模型不需要 API Key，跳过连接测试"
 
             # 3. 创建 LLM 实例
             try:
