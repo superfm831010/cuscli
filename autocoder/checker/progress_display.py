@@ -1,5 +1,5 @@
 """
-进度显示管理器（优化版）
+进度显示管理器（优化版，支持跨平台终端）
 
 提供简洁清晰的多层级进度显示，用于代码检查任务。
 
@@ -7,12 +7,15 @@
 - 只有主进度显示完整进度条
 - Chunk和LLM信息用紧凑文本显示
 - 减少视觉干扰，提高信息密度
+- 支持终端兼容性：自动检测并降级为legacy模式
 
 作者: Claude AI
 创建时间: 2025-10-13
+修改时间: 2025-01-16 (增加终端兼容性)
 """
 
 import time
+import sys
 from typing import Optional, Dict, Any
 from datetime import datetime
 from contextlib import contextmanager
@@ -34,19 +37,32 @@ from rich.panel import Panel
 
 class ProgressDisplay:
     """
-    进度显示管理器（优化版）
+    进度显示管理器（优化版，支持跨平台终端）
 
     使用更简洁的布局，减少冗余信息。
+    自动检测终端能力，在不兼容的终端上降级为legacy模式。
     """
 
-    def __init__(self, console: Optional[Console] = None):
+    def __init__(self, console: Optional[Console] = None, legacy_mode: Optional[bool] = None):
         """
         初始化进度显示管理器
 
         Args:
             console: Rich Console实例，如果为None则创建新实例
+            legacy_mode: 是否使用legacy模式(逐行打印)
+                - None: 自动检测终端能力决定
+                - True: 强制使用legacy模式
+                - False: 强制使用标准模式(Rich Live更新)
         """
         self.console = console or Console()
+
+        # 检测终端能力，决定是否使用legacy模式
+        if legacy_mode is None:
+            from autocoder.common.terminal_compat import get_terminal_capability
+            term = get_terminal_capability()
+            self.legacy_mode = term.should_use_legacy_mode()
+        else:
+            self.legacy_mode = legacy_mode
 
         # 进度条实例（只用于主进度）
         self.progress = Progress(
@@ -98,6 +114,10 @@ class ProgressDisplay:
 
         # Live display
         self.live = None
+
+        # Legacy模式：定期打印状态
+        self.last_print_time = 0
+        self.print_interval = 2.0  # 每2秒打印一次状态
 
     def _create_status_text(self) -> Text:
         """创建状态文本（Chunk和LLM信息）"""
@@ -173,20 +193,80 @@ class ProgressDisplay:
                 # 执行任务
                 pass
         """
-        self.live = Live(
-            self._create_display_group(),
-            console=self.console,
-            refresh_per_second=4,
-            transient=False
-        )
-
-        with self.live:
+        if self.legacy_mode:
+            # Legacy模式：不使用Live更新，只在退出时简单提示
             yield self
+            # 退出时打印最终状态
+            self._print_legacy_status(final=True)
+        else:
+            # 标准模式：使用Rich Live原地更新
+            self.live = Live(
+                self._create_display_group(),
+                console=self.console,
+                refresh_per_second=4,
+                transient=False
+            )
+
+            with self.live:
+                yield self
 
     def _update_display(self):
         """更新显示内容"""
-        if self.live:
+        if self.legacy_mode:
+            # Legacy模式：定期打印状态而非原地更新
+            self._print_legacy_status_if_needed()
+        elif self.live:
+            # 标准模式：使用Rich Live原地更新
             self.live.update(self._create_display_group())
+
+    def _print_legacy_status_if_needed(self):
+        """Legacy模式：定期打印状态（防止刷屏）"""
+        current_time = time.time()
+
+        # 距离上次打印超过间隔时间才打印
+        if current_time - self.last_print_time >= self.print_interval:
+            self._print_legacy_status()
+            self.last_print_time = current_time
+
+    def _print_legacy_status(self, final: bool = False):
+        """Legacy模式：打印当前状态(纯文本,逐行追加)"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+
+        # 文件进度
+        if self.current_state["total_files"] > 0:
+            completed = self.current_state["completed_files"]
+            total = self.current_state["total_files"]
+            percentage = (completed / total * 100) if total > 0 else 0
+
+            status_parts = [f"[{timestamp}] 检查进度: {completed}/{total} ({percentage:.1f}%)"]
+
+            # 速度信息
+            if self.current_state["files_per_minute"] > 0:
+                status_parts.append(f"速度: {self.current_state['files_per_minute']:.1f} files/min")
+
+            # Chunk信息
+            if self.current_state["total_chunks"] > 0:
+                chunk_idx = self.current_state["current_chunk"] + 1
+                total_chunks = self.current_state["total_chunks"]
+                status_parts.append(f"Chunk {chunk_idx}/{total_chunks}")
+
+            # LLM调用信息
+            if self.current_state["llm_total_attempts"] > 0:
+                llm_attempt = self.current_state["llm_current_attempt"]
+                llm_total = self.current_state["llm_total_attempts"]
+                status_parts.append(f"LLM {llm_attempt}/{llm_total}")
+
+                if self.current_state["llm_last_duration"] > 0:
+                    status_parts.append(f"{self.current_state['llm_last_duration']:.1f}s")
+
+            # 组合并打印
+            status_line = " | ".join(status_parts)
+
+            # 如果是最终状态，额外标注
+            if final:
+                status_line += " [完成]"
+
+            print(status_line, flush=True)
 
     def update_file_progress(
         self,
@@ -241,18 +321,20 @@ class ProgressDisplay:
                 description = f"📄 检查文件: {file_name}"
 
         # 更新或创建任务
-        if self.main_task_id is None:
-            self.main_task_id = self.progress.add_task(
-                description,
-                total=self.current_state["total_files"] or None
-            )
-        else:
-            self.progress.update(
-                self.main_task_id,
-                completed=self.current_state["completed_files"],
-                total=self.current_state["total_files"] or None,
-                description=description
-            )
+        if not self.legacy_mode:
+            # 标准模式：更新Rich进度条
+            if self.main_task_id is None:
+                self.main_task_id = self.progress.add_task(
+                    description,
+                    total=self.current_state["total_files"] or None
+                )
+            else:
+                self.progress.update(
+                    self.main_task_id,
+                    completed=self.current_state["completed_files"],
+                    total=self.current_state["total_files"] or None,
+                    description=description
+                )
 
         self._update_display()
 

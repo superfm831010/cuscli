@@ -88,15 +88,32 @@ import time
 
 def print_warning_box(message: str, width: int = 78, color: str = "\033[1;33m"):
     """
-    打印带有完整边框的警告消息框
+    打印带有完整边框的警告消息框(支持终端兼容性)
 
     Args:
         message: 要显示的消息文本
         width: 边框宽度（默认78，为80字符终端留出边距）
         color: ANSI颜色代码（默认黄色加粗）
     """
-    reset = "\033[0m"
-    text_color = "\033[1;31m"  # 红色加粗用于文字
+    from autocoder.common.terminal_compat import get_terminal_capability
+
+    term = get_terminal_capability()
+
+    # 根据终端能力选择边框字符
+    if term.supports_unicode():
+        # Unicode框线字符
+        top_left, top_right = "╔", "╗"
+        bottom_left, bottom_right = "╚", "╝"
+        horizontal, vertical = "═", "║"
+    else:
+        # 纯ASCII字符
+        top_left, top_right = "+", "+"
+        bottom_left, bottom_right = "+", "+"
+        horizontal, vertical = "=", "|"
+
+    reset = "\033[0m" if term.ansi_support else ""
+    text_color = "\033[1;31m" if term.ansi_support else ""  # 红色加粗用于文字
+    box_color = color if term.ansi_support else ""
 
     # 计算内容宽度（边框占用4个字符：左边"║ "和右边" ║"）
     content_width = width - 4
@@ -160,7 +177,7 @@ def print_warning_box(message: str, width: int = 78, color: str = "\033[1;33m"):
             lines.extend(wrapped)
 
     # 打印顶部边框
-    print(f"{color}╔{'═' * (width - 2)}╗{reset}")
+    print(f"{box_color}{top_left}{horizontal * (width - 2)}{top_right}{reset}")
 
     # 打印每行内容（带左右边框）
     for line in lines:
@@ -169,10 +186,10 @@ def print_warning_box(message: str, width: int = 78, color: str = "\033[1;33m"):
         # 计算需要填充的空格数
         padding_needed = content_width - line_display_width
         padded_line = line + ' ' * padding_needed
-        print(f"{color}║{reset} {text_color}{padded_line}{reset} {color}║{reset}")
+        print(f"{box_color}{vertical}{reset} {text_color}{padded_line}{reset} {box_color}{vertical}{reset}")
 
     # 打印底部边框
-    print(f"{color}╚{'═' * (width - 2)}╝{reset}")
+    print(f"{box_color}{bottom_left}{horizontal * (width - 2)}{bottom_right}{reset}")
 
 
 class TaskEvent:
@@ -1301,9 +1318,15 @@ async def run_app():
         }
     )
 
-    # 显示启动信息
-    print(
-        f"""\033[1;32m  ██████╗██╗   ██╗███████╗          ██████╗██╗     ██╗
+    # 显示启动信息 - 根据终端能力自适应
+    from autocoder.common.terminal_compat import get_terminal_capability
+
+    term = get_terminal_capability()
+
+    if term.supports_unicode() and term.ansi_support:
+        # 终端支持Unicode和ANSI,显示彩色ASCII logo
+        print(
+            f"""\033[1;32m  ██████╗██╗   ██╗███████╗          ██████╗██╗     ██╗
  ██╔════╝██║   ██║██╔════╝         ██╔════╝██║     ██║
  ██║     ██║   ██║███████╗ ██████  ██║     ██║     ██║
  ██║     ██║   ██║╚════██║         ██║     ██║     ██║
@@ -1311,7 +1334,16 @@ async def run_app():
   ╚═════╝ ╚═════╝ ╚══════╝          ╚═════╝╚══════╝╚═╝
                                              {__version__}
                             Produced by 黄埔海关科技处\033[0m"""
-    )
+        )
+    else:
+        # 降级为纯ASCII logo(兼容传统Windows终端)
+        print(f"""
+  ====================================
+   CUS-CLI - Custom CLI Tool
+   Version: {__version__}
+   Produced by 黄埔海关科技处
+  ====================================
+""")
     print(f"\033[1;34m{get_message('type_help_to_see_commands')}\033[0m\n")
 
     # 显示插件信息
