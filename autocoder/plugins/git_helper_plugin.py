@@ -919,6 +919,7 @@ class GitHelperPlugin(Plugin):
             console.print("\n[cyan]2. GitLab 地址[/cyan]")
             console.print("   [dim]公网 GitLab: https://gitlab.com[/dim]")
             console.print("   [dim]私有部署: https://gitlab.example.com[/dim]")
+            console.print("   [dim]内网 GitLab: http://10.x.x.x （会自动添加 /api/v4）[/dim]")
             base_url_input = (await async_input("   地址: ")).strip()
 
             if not base_url_input:
@@ -1174,6 +1175,7 @@ class GitHelperPlugin(Plugin):
                     "Content-Type": "application/json"
                 }
 
+                # 尝试标准 GitLab API 端点 /user
                 response = requests.get(
                     f"{config.base_url}/user",
                     headers=headers,
@@ -1181,6 +1183,7 @@ class GitHelperPlugin(Plugin):
                     timeout=config.timeout
                 )
 
+                # 标准 API 成功
                 if response.status_code == 200:
                     data = response.json()
                     username = data.get("username", "未知")
@@ -1215,13 +1218,63 @@ class GitHelperPlugin(Plugin):
 
                     console.print()
 
-                elif response.status_code == 401:
-                    console.print("[red]❌ 认证失败[/red]")
-                    console.print("   Token 无效或已过期\n")
+                # 标准 API 失败，尝试内网 GitLab API 端点 /version
+                elif response.status_code in [401, 403, 404]:
+                    console.print(f"[yellow]⚠️  标准端点 /user 访问失败 (HTTP {response.status_code})[/yellow]")
+                    console.print("[yellow]   尝试内网 GitLab API 端点...[/yellow]\n")
 
-                elif response.status_code == 403:
-                    console.print("[red]❌ 访问被拒绝[/red]")
-                    console.print("   Token 权限不足\n")
+                    # 尝试 /version 端点（内网 GitLab 可能使用这个端点）
+                    version_response = requests.get(
+                        f"{config.base_url}/version",
+                        headers=headers,
+                        verify=config.verify_ssl,
+                        timeout=config.timeout
+                    )
+
+                    if version_response.status_code == 200:
+                        version_data = version_response.json()
+                        gitlab_version = version_data.get("version", "未知")
+
+                        # 更新最后测试时间
+                        config.update_last_tested()
+                        self.platform_manager.save_configs()
+
+                        # 显示成功信息
+                        console.print("[green]✅ 连接成功！（内网 GitLab）[/green]\n")
+                        console.print(f"[bold]GitLab 版本信息：[/bold]")
+                        console.print(f"  版本: {gitlab_version}")
+                        console.print(f"  API 路径: {config.base_url}")
+                        console.print(f"\n[dim]💡 检测到内网 GitLab，API 路径结构可能与标准 GitLab 不同[/dim]")
+
+                        # 尝试访问项目端点验证 token 权限
+                        try:
+                            projects_response = requests.get(
+                                f"{config.base_url}/version/projects",
+                                headers=headers,
+                                verify=config.verify_ssl,
+                                timeout=config.timeout
+                            )
+                            if projects_response.status_code == 200:
+                                console.print(f"[dim]   Token 权限验证: ✓ 可访问项目列表[/dim]")
+                        except:
+                            pass
+
+                        console.print()
+
+                    elif version_response.status_code == 401:
+                        console.print("[red]❌ 认证失败[/red]")
+                        console.print("   Token 无效或已过期\n")
+
+                    elif version_response.status_code == 403:
+                        console.print("[red]❌ 访问被拒绝[/red]")
+                        console.print("   Token 权限不足\n")
+
+                    else:
+                        console.print(f"[red]❌ 连接失败[/red]")
+                        console.print(f"   HTTP {version_response.status_code}: {version_response.reason}\n")
+                        console.print("[yellow]💡 提示：[/yellow]")
+                        console.print("   1. 请确认 Token 有效且权限充足")
+                        console.print("   2. 如果是内网 GitLab，请咨询管理员确认正确的 API 端点\n")
 
                 else:
                     console.print(f"[red]❌ 连接失败[/red]")
