@@ -33,10 +33,10 @@ def read_readme():
 
 setup(
     name='cuscli',
-    version='0.9.0b1',  # Beta 测试版本 (PEP 440 合法格式)
+    version='1.0.40',  # 版本 1.0.40 - GitLab 内网 API 兼容性改进
     author='superfm831010 (Based on allwefantasy/auto-coder)',
     author_email='superfm831010@gmail.com',
-    description='Cuscli: AI-powered coding assistant tool with custom enhancements (Beta Version)',
+    description='Cuscli: AI-powered coding assistant tool with custom enhancements',
     long_description=read_readme(),
     long_description_content_type='text/markdown',
     url='https://github.com/superfm831010/cuscli',
