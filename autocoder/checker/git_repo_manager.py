@@ -57,8 +57,10 @@ class GitRepoManager:
         Returns:
             GitPlatformManager 实例
         """
-        # 尝试从默认位置加载配置
-        config_file = Path.home() / ".auto-coder" / "plugins" / "git_helper_config.json"
+        # 使用与 GitHelperPlugin 相同的配置路径
+        # 插件系统使用: ~/.auto-coder/plugins/{plugin_id}/config.json
+        # GitHelperPlugin 的 plugin_id 是 "autocoder.plugins.GitHelperPlugin"
+        config_file = Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.GitHelperPlugin" / "config.json"
         manager = GitPlatformManager(config_file=str(config_file) if config_file.exists() else None)
         return manager
 
