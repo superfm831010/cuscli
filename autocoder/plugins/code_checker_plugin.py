@@ -432,43 +432,91 @@ class CodeCheckerPlugin(Plugin):
                         return []
 
         elif command == "/check /git /repo":
-            # Phase 6: Git 远程仓库补全
+            # Phase 6: Git 远程仓库补全 - 支持多级补全
             tokens = shlex.split(current_input)
             base_tokens = command.split()  # ["/check", "/git", "/repo"]
 
-            # 计算已输入的非选项参数数量（不以 / 开头的参数）
+            # 解析已输入的参数和选项
+            # 格式: /check /git /repo <url> [/branch <name>] [/tag <name>] [/commit <hash>] [其他选项]
             non_option_args = []
+            option_params = {}  # 记录每个选项及其参数，如 {"/branch": "main", "/tag": None}
+
+            current_option = None
             for i in range(len(base_tokens), len(tokens)):
-                if not tokens[i].startswith('/'):
-                    non_option_args.append(tokens[i])
+                token = tokens[i]
+                if token.startswith('/'):
+                    # 这是一个选项
+                    current_option = token
+                    option_params[token] = None  # 初始化，尚未赋值
+                else:
+                    # 这是一个参数
+                    if current_option:
+                        # 这是当前选项的参数值
+                        option_params[current_option] = token
+                        current_option = None  # 清空，准备下一个选项
+                    else:
+                        # 这是非选项参数（如 repo_url）
+                        non_option_args.append(token)
 
             has_trailing_space = current_input != current_input.rstrip()
 
+            # 提取仓库 URL
+            repo_url = non_option_args[0] if non_option_args else None
+
+            # 判断当前应该补全什么
             if has_trailing_space:
-                # 末尾有空格
-                if len(non_option_args) == 0:
-                    # 还没有输入 repo_url，不补全（用户需要手动输入 URL）
+                # 末尾有空格，说明当前参数已完成
+                if not repo_url:
+                    # 还没有输入 repo_url，不补全
                     return []
+
+                # 检查最后一个选项是否需要补全参数
+                if current_option:
+                    # 最后一个 token 是选项，需要补全该选项的参数
+                    if current_option == "/branch":
+                        return self._complete_remote_branches(repo_url, current_input)
+                    elif current_option == "/tag":
+                        return self._complete_remote_tags(repo_url, current_input)
+                    elif current_option == "/commit":
+                        return self._complete_remote_commits(repo_url, current_input)
+                    else:
+                        # 其他选项不需要参数补全，继续补全下一个选项
+                        return self._get_option_completions(command, current_input)
                 else:
-                    # 已有 repo_url，补全选项
+                    # 没有待补全的选项参数，补全下一个选项
                     return self._get_option_completions(command, current_input)
             else:
-                # 末尾没有空格
-                if len(non_option_args) == 0:
+                # 末尾没有空格，正在输入当前参数
+                if not repo_url:
                     # 正在输入 repo_url，不补全
                     return []
+
+                last_token = tokens[-1] if tokens else ""
+
+                if last_token.startswith('/'):
+                    # 正在输入选项，返回选项补全
+                    return self._get_option_completions(command, current_input)
                 else:
-                    # 正在输入选项或其他参数
-                    last_token = tokens[-1]
-                    if last_token.startswith('/'):
-                        # 正在输入选项，返回选项补全
-                        return self._get_option_completions(command, current_input)
+                    # 正在输入选项的参数值
+                    # 找到这个参数对应的选项
+                    param_option = None
+                    for i in range(len(tokens) - 1, len(base_tokens) - 1, -1):
+                        if tokens[i].startswith('/'):
+                            param_option = tokens[i]
+                            break
+
+                    if param_option == "/branch":
+                        return self._complete_remote_branches(repo_url, current_input)
+                    elif param_option == "/tag":
+                        return self._complete_remote_tags(repo_url, current_input)
+                    elif param_option == "/commit":
+                        return self._complete_remote_commits(repo_url, current_input)
                     else:
                         # 可能在继续输入其他参数，不补全
                         return []
 
         elif command == "/check /git /repo-diff":
-            # Phase 6: Git 远程仓库差异补全
+            # Phase 6: Git 远程仓库差异补全 - 使用远程引用补全
             tokens = shlex.split(current_input)
             base_tokens = command.split()  # ["/check", "/git", "/repo-diff"]
 
@@ -480,17 +528,20 @@ class CodeCheckerPlugin(Plugin):
 
             has_trailing_space = current_input != current_input.rstrip()
 
+            # 提取仓库 URL（第一个非选项参数）
+            repo_url = non_option_args[0] if non_option_args else None
+
             if has_trailing_space:
                 # 末尾有空格
                 if len(non_option_args) == 0:
                     # 还没有输入 repo_url，不补全
                     return []
                 elif len(non_option_args) == 1:
-                    # 输入了 repo_url，正在输入 version1，补全 commit
-                    return self._complete_git_commits(current_input)
+                    # 输入了 repo_url，正在输入 version1，补全远程引用
+                    return self._complete_remote_refs(repo_url, current_input)
                 elif len(non_option_args) == 2:
-                    # 输入了 version1，正在输入 version2，补全 commit
-                    return self._complete_git_commits(current_input)
+                    # 输入了 version1，正在输入 version2，补全远程引用
+                    return self._complete_remote_refs(repo_url, current_input)
                 else:
                     # 已有全部参数，补全选项
                     return self._get_option_completions(command, current_input)
@@ -500,11 +551,11 @@ class CodeCheckerPlugin(Plugin):
                     # 正在输入 repo_url，不补全
                     return []
                 elif len(non_option_args) == 1:
-                    # 正在输入 version1，补全 commit
-                    return self._complete_git_commits(current_input)
+                    # 正在输入 version1，补全远程引用
+                    return self._complete_remote_refs(repo_url, current_input)
                 elif len(non_option_args) == 2:
-                    # 正在输入 version2，补全 commit
-                    return self._complete_git_commits(current_input)
+                    # 正在输入 version2，补全远程引用
+                    return self._complete_remote_refs(repo_url, current_input)
                 else:
                     # 正在输入选项或其他参数
                     last_token = tokens[-1]
@@ -686,6 +737,253 @@ class CodeCheckerPlugin(Plugin):
                 ("HEAD~2", "HEAD~2"),
                 ("HEAD~3", "HEAD~3"),
             ]
+
+        return completions
+
+    def _parse_repo_url_from_input(self, current_input: str) -> Optional[str]:
+        """
+        从输入中提取仓库 URL
+
+        Args:
+            current_input: 当前输入，如 "/check /git /repo https://github.com/user/repo.git /branch"
+
+        Returns:
+            仓库 URL，如果未找到则返回 None
+        """
+        try:
+            tokens = shlex.split(current_input)
+            base_tokens = ["/check", "/git", "/repo"]
+
+            # 查找第一个非选项参数（不以 / 开头）
+            for i in range(len(base_tokens), len(tokens)):
+                if not tokens[i].startswith('/'):
+                    # 找到了仓库 URL
+                    return tokens[i]
+
+            return None
+        except Exception as e:
+            logger.warning(f"解析仓库 URL 失败: {e}")
+            return None
+
+    def _complete_remote_branches(self, repo_url: str, current_input: str) -> List[Tuple[str, str]]:
+        """
+        补全远程仓库的分支名
+
+        Args:
+            repo_url: 远程仓库 URL
+            current_input: 当前输入
+
+        Returns:
+            补全选项列表 [(分支名, 显示文本), ...]
+        """
+        completions = []
+
+        try:
+            # 使用 TempFileManager 获取远程仓库信息
+            from autocoder.checker.git_helper import TempFileManager
+
+            temp_mgr = TempFileManager()
+            git_info = temp_mgr.get_or_clone_repo(repo_url)
+
+            if git_info and git_info.repo:
+                # 获取远程分支列表
+                remote_branches = []
+                for ref in git_info.repo.remote().refs:
+                    # 过滤掉 HEAD
+                    if ref.name != 'origin/HEAD':
+                        # 移除 'origin/' 前缀
+                        branch_name = ref.name.replace('origin/', '')
+                        remote_branches.append(branch_name)
+
+                # 获取当前输入的分支前缀
+                tokens = shlex.split(current_input)
+                prefix = ""
+
+                # 查找 /branch 选项后的参数
+                for i, token in enumerate(tokens):
+                    if token == "/branch" and i + 1 < len(tokens):
+                        # 如果 /branch 后面还有内容，取最后一个 token 作为前缀
+                        if not current_input.endswith(" "):
+                            prefix = tokens[-1]
+                        break
+
+                # 过滤匹配的分支
+                for branch in remote_branches:
+                    if not prefix or branch.startswith(prefix):
+                        display = f"{branch} (远程分支)"
+                        completions.append((branch, display))
+
+                logger.debug(f"找到 {len(completions)} 个远程分支")
+
+        except Exception as e:
+            logger.warning(f"获取远程分支失败: {e}")
+
+        return completions
+
+    def _complete_remote_tags(self, repo_url: str, current_input: str) -> List[Tuple[str, str]]:
+        """
+        补全远程仓库的标签名
+
+        Args:
+            repo_url: 远程仓库 URL
+            current_input: 当前输入
+
+        Returns:
+            补全选项列表 [(标签名, 显示文本), ...]
+        """
+        completions = []
+
+        try:
+            # 使用 TempFileManager 获取远程仓库信息
+            from autocoder.checker.git_helper import TempFileManager
+
+            temp_mgr = TempFileManager()
+            git_info = temp_mgr.get_or_clone_repo(repo_url)
+
+            if git_info and git_info.repo:
+                # 获取标签列表
+                tags = [tag.name for tag in git_info.repo.tags]
+
+                # 获取当前输入的标签前缀
+                tokens = shlex.split(current_input)
+                prefix = ""
+
+                # 查找 /tag 选项后的参数
+                for i, token in enumerate(tokens):
+                    if token == "/tag" and i + 1 < len(tokens):
+                        # 如果 /tag 后面还有内容，取最后一个 token 作为前缀
+                        if not current_input.endswith(" "):
+                            prefix = tokens[-1]
+                        break
+
+                # 过滤匹配的标签
+                for tag in tags:
+                    if not prefix or tag.startswith(prefix):
+                        display = f"{tag} (远程标签)"
+                        completions.append((tag, display))
+
+                logger.debug(f"找到 {len(completions)} 个远程标签")
+
+        except Exception as e:
+            logger.warning(f"获取远程标签失败: {e}")
+
+        return completions
+
+    def _complete_remote_commits(self, repo_url: str, current_input: str, ref: str = "HEAD") -> List[Tuple[str, str]]:
+        """
+        补全远程仓库的 commits
+
+        Args:
+            repo_url: 远程仓库 URL
+            current_input: 当前输入
+            ref: 引用点（默认 HEAD），可以是分支名或标签名
+
+        Returns:
+            补全选项列表 [(commit hash, 显示文本), ...]
+        """
+        completions = []
+
+        try:
+            # 使用 TempFileManager 获取远程仓库信息
+            from autocoder.checker.git_helper import TempFileManager
+
+            temp_mgr = TempFileManager()
+            git_info = temp_mgr.get_or_clone_repo(repo_url)
+
+            if git_info and git_info.repo:
+                # 获取最近20个 commits
+                commits = list(git_info.repo.iter_commits(ref, max_count=20))
+
+                for commit in commits:
+                    short_hash = commit.hexsha[:7]
+                    # 获取第一行 commit 消息
+                    message = commit.message.strip().split('\n')[0]
+                    # 截断过长的消息
+                    if len(message) > 50:
+                        message = message[:47] + "..."
+
+                    # 格式化显示
+                    display = f"{short_hash} - {message} (远程)"
+                    completions.append((short_hash, display))
+
+                # 添加常用的相对引用
+                relative_refs = [
+                    ("HEAD", "HEAD (最新 commit)"),
+                    ("HEAD~1", "HEAD~1 (前1个 commit)"),
+                    ("HEAD~2", "HEAD~2 (前2个 commit)"),
+                    ("HEAD~3", "HEAD~3 (前3个 commit)"),
+                    ("HEAD~5", "HEAD~5 (前5个 commit)"),
+                ]
+
+                for ref_name, display in relative_refs:
+                    completions.append((ref_name, display))
+
+                logger.debug(f"找到 {len(completions)} 个远程 commits")
+
+        except Exception as e:
+            logger.warning(f"获取远程 commits 失败: {e}")
+
+        return completions
+
+    def _complete_remote_refs(self, repo_url: str, current_input: str) -> List[Tuple[str, str]]:
+        """
+        补全远程仓库的通用引用（分支、标签、commits的组合）
+
+        用于 /repo-diff 等命令，提供更灵活的补全选项
+
+        Args:
+            repo_url: 远程仓库 URL
+            current_input: 当前输入
+
+        Returns:
+            补全选项列表 [(引用, 显示文本), ...]
+        """
+        completions = []
+
+        try:
+            # 使用 TempFileManager 获取远程仓库信息
+            from autocoder.checker.git_helper import TempFileManager
+
+            temp_mgr = TempFileManager()
+            git_info = temp_mgr.get_or_clone_repo(repo_url)
+
+            if git_info and git_info.repo:
+                # 1. 添加远程分支
+                for ref in git_info.repo.remote().refs:
+                    if ref.name != 'origin/HEAD':
+                        branch_name = ref.name.replace('origin/', '')
+                        display = f"{branch_name} (远程分支)"
+                        completions.append((branch_name, display))
+
+                # 2. 添加标签
+                for tag in git_info.repo.tags[:10]:  # 最多显示10个标签
+                    display = f"{tag.name} (远程标签)"
+                    completions.append((tag.name, display))
+
+                # 3. 添加最近的 commits（前10个）
+                commits = list(git_info.repo.iter_commits('HEAD', max_count=10))
+                for commit in commits:
+                    short_hash = commit.hexsha[:7]
+                    message = commit.message.strip().split('\n')[0]
+                    if len(message) > 45:
+                        message = message[:42] + "..."
+                    display = f"{short_hash} - {message} (远程)"
+                    completions.append((short_hash, display))
+
+                # 4. 添加常用的相对引用
+                relative_refs = [
+                    ("HEAD", "HEAD (最新 commit)"),
+                    ("HEAD~1", "HEAD~1 (前1个 commit)"),
+                    ("HEAD~2", "HEAD~2 (前2个 commit)"),
+                    ("HEAD~3", "HEAD~3 (前3个 commit)"),
+                ]
+                for ref_name, display in relative_refs:
+                    completions.append((ref_name, display))
+
+                logger.debug(f"找到 {len(completions)} 个远程引用")
+
+        except Exception as e:
+            logger.warning(f"获取远程引用失败: {e}")
 
         return completions
 
