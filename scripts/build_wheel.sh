@@ -142,16 +142,16 @@ fi
 
 # 获取当前版本号（从 autocoder/version.py 读取）
 get_version() {
-    $PYTHON_CMD -c "
+    $PYTHON_CMD -c '
 import re
-with open('autocoder/version.py', 'r', encoding='utf-8') as f:
+with open("autocoder/version.py", "r", encoding="utf-8") as f:
     content = f.read()
-    match = re.search(r"^__version__\s*=\s*['\"]([^'\"]+)['\"]", content, re.MULTILINE)
+    match = re.search(r"^__version__\s*=\s*[\"'"'"']([^\"'"'"']+)[\"'"'"']", content, re.MULTILINE)
     if match:
         print(match.group(1))
     else:
-        print('unknown')
-"
+        print("unknown")
+'
 }
 
 # 升级版本号（满10进1规则）
