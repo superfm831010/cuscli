@@ -112,7 +112,7 @@ class GitRepoManager:
                 f"⚠️  未找到匹配的 Git 平台配置或 token\n"
                 f"   仓库 URL: {repo_url}\n"
                 f"   将尝试使用 Git 凭证助手进行认证（可能需要输入账号密码）\n"
-                f"   提示：可使用 '/git /config' 命令配置 GitLab/GitHub token 以避免重复输入"
+                f"   提示：可使用 '/git /gitlab /setup' 或 '/git /github /setup' 命令配置 token 以避免重复输入"
             )
 
         auth_url = self._build_auth_url(repo_url, config) if config else repo_url
@@ -270,11 +270,11 @@ class GitRepoManager:
                     hint += (
                         f"2. 输入的账号密码是否正确\n"
                         f"3. 是否有权限访问该仓库\n"
-                        f"提示：可使用 '/git /config' 命令配置 token 以避免每次输入"
+                        f"提示：可使用 '/git /gitlab /setup' 或 '/git /github /setup' 命令配置 token 以避免每次输入"
                     )
                 else:
                     hint += (
-                        f"2. 是否已配置 Git 平台认证（使用 /git /config 命令）\n"
+                        f"2. 是否已配置 Git 平台认证（使用 '/git /gitlab /setup' 或 '/git /github /setup' 命令）\n"
                         f"3. Token 是否有效且有权限访问该仓库"
                     )
 
@@ -363,11 +363,11 @@ class GitRepoManager:
                     hint += (
                         f"1. 输入的账号密码是否正确\n"
                         f"2. 是否有权限访问该仓库\n"
-                        f"提示：可使用 '/git /config' 命令配置 token 以避免每次输入"
+                        f"提示：可使用 '/git /gitlab /setup' 或 '/git /github /setup' 命令配置 token 以避免每次输入"
                     )
                 else:
                     hint += (
-                        f"1. 是否已配置 Git 平台认证（使用 /git /config 命令）\n"
+                        f"1. 是否已配置 Git 平台认证（使用 '/git /gitlab /setup' 或 '/git /github /setup' 命令）\n"
                         f"2. Token 是否有效且有权限访问该仓库"
                     )
 
