@@ -6,6 +6,7 @@ Provides convenient Git commands and information display.
 import os
 import subprocess
 import asyncio
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from autocoder.plugins import Plugin, PluginManager
@@ -91,7 +92,11 @@ class GitHelperPlugin(Plugin):
 
     def __init__(self, manager: PluginManager, config: Optional[Dict[str, Any]] = None, config_path: Optional[str] = None):
         """Initialize the Git helper plugin."""
-        super().__init__(manager, config, config_path)
+        config_dir = Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.GitHelperPlugin"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_file = config_dir / "config.json"
+        super().__init__(manager, config, str(config_file))
+        self.config_path = str(config_file)
 
         self.git_available = self._check_git_available()
         self.default_branch = self.config.get("default_branch", "main")

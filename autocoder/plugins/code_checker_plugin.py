@@ -2963,10 +2963,9 @@ Git 引用格式 (commit/diff 命令支持):
 
             # 初始化 Git 平台配置管理器
             from pathlib import Path
-            config_file = Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.git_helper_plugin.GitHelperPlugin" / "config.json"
-            platform_manager = GitPlatformManager(
-                config_file=str(config_file) if config_file.exists() else None
-            )
+            config_file = Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.GitHelperPlugin" / "config.json"
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+            platform_manager = GitPlatformManager(config_file=str(config_file))
 
             # 初始化仓库管理器
             repo_manager = GitRepoManager(platform_manager)
@@ -3258,10 +3257,9 @@ Git 引用格式 (commit/diff 命令支持):
 
             # 初始化 Git 平台配置管理器
             from pathlib import Path
-            config_file = Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.git_helper_plugin.GitHelperPlugin" / "config.json"
-            platform_manager = GitPlatformManager(
-                config_file=str(config_file) if config_file.exists() else None
-            )
+            config_file = Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.GitHelperPlugin" / "config.json"
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+            platform_manager = GitPlatformManager(config_file=str(config_file))
 
             # 初始化仓库管理器
             repo_manager = GitRepoManager(platform_manager)

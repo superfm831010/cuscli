@@ -11,7 +11,7 @@ def test_config_loading():
     print("=== 测试配置文件加载 ===")
 
     # 检查正确的配置文件路径
-    correct_config = Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.git_helper_plugin.GitHelperPlugin" / "config.json"
+    correct_config = Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.GitHelperPlugin" / "config.json"
     print(f"检查配置文件路径: {correct_config}")
     print(f"配置文件存在: {correct_config.exists()}")
 
@@ -105,7 +105,7 @@ def test_error_messages():
             print("✅ 正确：code_checker_plugin.py 不再包含错误的配置路径")
 
         # 检查是否包含正确的配置路径
-        if "autocoder.plugins.git_helper_plugin.GitHelperPlugin" in content:
+        if "autocoder.plugins.GitHelperPlugin" in content:
             print("✅ 正确：code_checker_plugin.py 包含正确的配置路径")
         else:
             print("⚠️  警告：code_checker_plugin.py 可能缺少正确的配置路径")

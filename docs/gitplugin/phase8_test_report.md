@@ -293,8 +293,8 @@ Status: 401 Unauthorized
 
 **文件路径**:
 ```
-/projects/cuscli/.auto-coder/plugins/
-  autocoder.plugins.git_helper_plugin.GitHelperPlugin/
+~/.auto-coder/plugins/
+  autocoder.plugins.GitHelperPlugin/
     config.json
 ```
 
@@ -469,7 +469,7 @@ gAAAAABo7MI7JP7GeIzjg3bMMoEH2qcrpQ2iLIcdaJLHUlwstJU69da_...
 操作系统: Linux 5.15.0-157-generic
 Python: 3.x
 工作目录: /projects/cuscli
-配置目录: .auto-coder/plugins/autocoder.plugins.git_helper_plugin.GitHelperPlugin/
+配置目录: ~/.auto-coder/plugins/autocoder.plugins.GitHelperPlugin/
 测试时间: 2025-10-13 09:08:59 - 09:12:30
 测试用户: superfmfm (Rex Fan)
 GitLab 版本: 18.5.0-pre

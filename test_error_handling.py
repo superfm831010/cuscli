@@ -6,6 +6,7 @@
 import sys
 sys.path.insert(0, '/projects/cuscli')
 
+from pathlib import Path
 from autocoder.common.git_platform_config import GitPlatformConfig, GitPlatformManager
 import requests
 from rich.console import Console
@@ -30,7 +31,7 @@ def test_error_handling():
         border_style="yellow"
     ))
 
-    config_file = "/projects/cuscli/.auto-coder/plugins/autocoder.plugins.git_helper_plugin.GitHelperPlugin/config.json"
+    config_file = str(Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.GitHelperPlugin" / "config.json")
     manager = GitPlatformManager(config_file)
 
     # 测试 1: 无效 Token

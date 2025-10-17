@@ -6,6 +6,7 @@ GitLab 集成测试脚本
 
 import sys
 import os
+from pathlib import Path
 sys.path.insert(0, '/projects/cuscli')
 
 from autocoder.common.git_platform_config import GitPlatformConfig, GitPlatformManager
@@ -43,7 +44,7 @@ def test_gitlab_config():
     }
 
     # 配置文件路径
-    config_file = "/projects/cuscli/.auto-coder/plugins/autocoder.plugins.git_helper_plugin.GitHelperPlugin/config.json"
+    config_file = str(Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.GitHelperPlugin" / "config.json")
 
     console.print("\n[bold]步骤 1: 初始化配置管理器[/bold]")
     manager = GitPlatformManager(config_file)

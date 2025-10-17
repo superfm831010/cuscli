@@ -6,6 +6,7 @@
 import sys
 sys.path.insert(0, '/projects/cuscli')
 
+from pathlib import Path
 from autocoder.common.git_platform_config import GitPlatformManager
 from rich.console import Console
 from rich.panel import Panel
@@ -29,7 +30,7 @@ def test_platform_operations():
         border_style="cyan"
     ))
 
-    config_file = "/projects/cuscli/.auto-coder/plugins/autocoder.plugins.git_helper_plugin.GitHelperPlugin/config.json"
+    config_file = str(Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.GitHelperPlugin" / "config.json")
     manager = GitPlatformManager(config_file)
 
     # 测试 1: 查看当前状态（应该是 GitHub，因为默认）
