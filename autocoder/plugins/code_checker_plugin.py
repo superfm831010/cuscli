@@ -2963,7 +2963,7 @@ Git 引用格式 (commit/diff 命令支持):
 
             # 初始化 Git 平台配置管理器
             from pathlib import Path
-            config_file = Path.home() / ".auto-coder" / "plugins" / "git_helper_config.json"
+            config_file = Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.git_helper_plugin.GitHelperPlugin" / "config.json"
             platform_manager = GitPlatformManager(
                 config_file=str(config_file) if config_file.exists() else None
             )
@@ -3258,7 +3258,7 @@ Git 引用格式 (commit/diff 命令支持):
 
             # 初始化 Git 平台配置管理器
             from pathlib import Path
-            config_file = Path.home() / ".auto-coder" / "plugins" / "git_helper_config.json"
+            config_file = Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.git_helper_plugin.GitHelperPlugin" / "config.json"
             platform_manager = GitPlatformManager(
                 config_file=str(config_file) if config_file.exists() else None
             )

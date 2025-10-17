@@ -229,7 +229,7 @@ class GitRepoManager:
                             f"1. 仓库 URL 是否正确\n"
                             f"2. 输入的账号密码是否正确\n"
                             f"3. 是否有权限访问该仓库\n"
-                            f"提示：可使用 '/git /config' 命令配置 token 以避免每次输入"
+                            f"提示：可使用 '/git /gitlab /setup' 或 '/git /github /setup' 命令配置 token 以避免每次输入"
                         )
                     elif "Repository not found" in error_msg:
                         raise RuntimeError(
