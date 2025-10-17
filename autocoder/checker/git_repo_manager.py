@@ -57,12 +57,39 @@ class GitRepoManager:
         Returns:
             GitPlatformManager 实例
         """
-        # 使用与 GitHelperPlugin 相同的配置路径
-        # 插件系统使用: ~/.auto-coder/plugins/{plugin_id}/config.json
-        # GitHelperPlugin 的 plugin_id 是 "autocoder.plugins.GitHelperPlugin"
-        config_file = Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.GitHelperPlugin" / "config.json"
-        manager = GitPlatformManager(config_file=str(config_file) if config_file.exists() else None)
-        return manager
+        # 与 GitHelperPlugin 使用相同的配置路径，优先加载项目级配置
+        plugin_id = "autocoder.plugins.git_helper_plugin.GitHelperPlugin"
+
+        candidate_paths = []
+
+        project_root = Path.cwd() / ".auto-coder"
+        if project_root.exists():
+            candidate_paths.append(project_root / "plugins" / plugin_id / "config.json")
+
+        home_root = Path.home() / ".auto-coder"
+        candidate_paths.append(home_root / "plugins" / plugin_id / "config.json")
+        candidate_paths.append(home_root / "plugins" / "autocoder.plugins.GitHelperPlugin" / "config.json")
+
+        # 去重但保持优先级顺序
+        unique_candidates = []
+        seen = set()
+        for path in candidate_paths:
+            if path not in seen:
+                unique_candidates.append(path)
+                seen.add(path)
+
+        for path in unique_candidates:
+            if path.exists():
+                logger.debug(f"加载 Git 平台配置: {path}")
+                return GitPlatformManager(config_file=str(path))
+
+        if unique_candidates:
+            default_path = unique_candidates[0]
+            logger.debug(f"未找到现有配置文件，使用默认路径: {default_path}")
+            return GitPlatformManager(config_file=str(default_path))
+
+        logger.debug("未找到可用的 Git 平台配置路径，使用默认设置")
+        return GitPlatformManager()
 
     def clone_or_update_repo(
         self,
