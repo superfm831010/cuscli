@@ -190,5 +190,6 @@ See [METADATA](extracted/auto_coder-1.0.39.dist-info/METADATA) for complete list
 - 所有修改都要考虑如果在windows平台上运行是否会出错，要确保windows和linux都可运行
 - 涉及到动态补全的修改，要同时考虑 code_checker_plugin.py和PluginManager.process_dynamic_completions()
 - 如果用户只是咨询问题，把问题的交流过程及结论记录在单独的文档
+- 随时检测上下文窗口容量，不足以完成任务时及时记录进度并清理上下文再开展后续工作
 
 

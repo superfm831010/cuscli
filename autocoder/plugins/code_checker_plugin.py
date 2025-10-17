@@ -2694,13 +2694,14 @@ Git 引用格式 (commit/diff 命令支持):
             # 扫描文件（复用 folder 扫描逻辑）
             print("🔍 扫描文件...")
             from autocoder.checker.file_processor import FileProcessor
+            from autocoder.checker.types import FileFilters
 
             file_processor = FileProcessor()
-            files = file_processor.scan_directory(
-                directory=repo_path,
+            filters = FileFilters(
                 extensions=None,  # 检查所有文件（根据规则）
                 ignored=["\.git", "__pycache__", "node_modules", "\.venv", "venv"]
             )
+            files = file_processor.scan_files(repo_path, filters)
 
             if not files:
                 print("📭 没有找到可检查的文件")
