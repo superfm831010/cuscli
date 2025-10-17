@@ -183,8 +183,8 @@ if len(parts) == 3:
     
     # 替换版本号
     content = re.sub(
-        r"^__version__\s*=\s*["'"'"']([^"'"'"']+)["'"'"']",
-        f"__version__ = '"'"'{new_version}'"'"'",
+        r"^__version__\s*=\s*[\"'"'"']([^\"'"'"']+)[\"'"'"']",
+        f"__version__ = \"'"'"'{new_version}'"'"'\"",
         content,
         flags=re.MULTILINE
     )
