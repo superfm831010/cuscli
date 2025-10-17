@@ -357,6 +357,259 @@ Git 检查生成的报告会包含额外的 Git 上下文信息：
    /check /git /unstaged
    ```
 
+#### 5.1. `/check /git /repo` - 远程仓库检查（Phase 7 新增）
+
+检查远程 Git 仓库的代码，支持增量扫描。
+
+**语法**：
+```bash
+/check /git /repo <repo_url> [/branch <name>] [/tag <name>] [/commit <hash>] [/dir <path>] [/full] [/status] [/reset] [options]
+```
+
+**参数说明**：
+
+| 参数 | 说明 | 示例 |
+|------|------|------|
+| `<repo_url>` | 远程仓库 URL（必需） | `http://10.56.215.182/zs/ecim/ecim-java.git` |
+| `/branch <name>` | 指定分支 | `/branch main` |
+| `/tag <name>` | 指定标签 | `/tag v1.0.0` |
+| `/commit <hash>` | 指定提交哈希 | `/commit abc1234` |
+| `/dir <path>` | 克隆目录 | `/dir ./repos/ecim` |
+| `/full` | 强制全量扫描 | `/full` |
+| `/status` | 查看扫描状态 | `/status` |
+| `/reset` | 清除扫描记录 | `/reset` |
+| `/repeat <N>` | LLM 调用次数 | `/repeat 3` |
+| `/consensus <0-1>` | 共识阈值 | `/consensus 0.8` |
+| `/workers <N>` | 并发数 | `/workers 10` |
+
+**增量扫描机制**：
+
+该命令默认使用增量扫描模式，大幅提升检查效率：
+
+1. **首次扫描**：检查所有文件，在仓库的 `.check/` 目录创建扫描状态记录
+2. **后续扫描**：
+   - 自动对比 Git commit，检测变更文件
+   - 只检查修改过的文件（标记为 `unchecked`）
+   - 跳过未变更的文件（状态为 `checked`）
+3. **强制全量**：使用 `/full` 选项跳过增量逻辑
+
+**状态文件**：
+- 位置：`{repo_path}/.check/`
+- 格式：`{branch}.checked` - 记录每个分支的文件扫描状态
+- 示例：`.check/main.checked`、`.check/dev.checked`
+
+**示例**：
+
+```bash
+# 检查远程仓库的 main 分支（首次全量扫描）
+/check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /branch main
+
+# 再次检查（增量扫描，只检查变更文件）
+/check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /branch main
+
+# 强制全量扫描
+/check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /branch main /full
+
+# 查看扫描状态
+/check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /branch main /status
+
+# 输出示例：
+# 📊 扫描状态查询: main
+#
+# 版本: main
+# 总文件数: 450
+# 已检查: 430
+# 待检查: 20
+# 上次扫描: 2025-10-17T14:30:22
+# 上次 Commit: abc1234
+# 提交信息: feat: add new feature
+
+# 清除扫描记录（下次将全量扫描）
+/check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /branch main /reset
+
+# 检查指定标签
+/check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /tag v1.0.0
+
+# 检查指定 commit
+/check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /commit abc1234567890
+
+# 指定克隆目录
+/check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /branch main /dir ./repos/ecim
+
+# 提高准确性（多次 LLM 调用）
+/check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /branch main /repeat 3 /consensus 0.8
+```
+
+**执行流程**：
+
+1. 克隆或更新仓库到本地目录（默认 `./repos/<repo_name>`）
+2. 切换到指定的分支/标签/commit
+3. 初始化扫描跟踪器（`.check/` 目录）
+4. 检查扫描记录：
+   - **有记录且非 `/full` 模式**：
+     - 对比上次扫描的 commit 与当前 commit
+     - 使用 `git diff` 检测变更文件
+     - 标记变更文件为 `unchecked`
+     - 只检查 `unchecked` 文件
+   - **无记录或 `/full` 模式**：执行全量扫描
+5. 扫描完成后更新状态文件和 commit 记录
+
+**输出示例（增量扫描）**：
+
+```
+🔍 检查远程仓库: http://10.56.215.182/zs/ecim/ecim-java.git
+
+📦 正在克隆/更新仓库...
+
+✅ 仓库准备完成:
+   路径: ./repos/ecim-java
+   分支: main
+   Commit: abc1234 - feat: add new feature
+
+🔍 扫描文件...
+✅ 找到 450 个文件
+
+🔄 检测到扫描记录，执行增量扫描...
+   上次扫描: def5678
+   当前版本: abc1234
+
+   检测到 25 个变更文件
+   标记 25 个文件为待检查
+
+📊 增量扫描: 25 个待检查文件
+
+正在检查文件... (并发: 5)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:45
+
+✅ 检查完成！
+   总文件数: 25
+   发现问题: 12 (错误: 3, 警告: 7, 提示: 2)
+
+📄 报告已保存到: codecheck/git_repo_20251017_143022/
+```
+
+**认证说明**：
+
+命令会自动使用 Git 平台配置文件中的认证信息：
+
+- **配置位置**：`~/.auto-coder/plugins/git_helper_config.json`
+- **支持平台**：GitLab、GitHub
+- **认证方式**：
+  - HTTP(S) + Token
+  - SSH（使用本地 SSH 密钥）
+
+**常见场景**：
+
+1. **项目规范检查**：
+   ```bash
+   # 首次全量检查
+   /check /git /repo http://git.company.com/project/backend.git /branch main
+
+   # 每天增量检查
+   /check /git /repo http://git.company.com/project/backend.git /branch main
+   ```
+
+2. **版本发布前检查**：
+   ```bash
+   # 检查发布分支
+   /check /git /repo http://git.company.com/project/backend.git /branch release-1.0
+
+   # 检查发布标签
+   /check /git /repo http://git.company.com/project/backend.git /tag v1.0.0
+   ```
+
+3. **定期扫描状态查询**：
+   ```bash
+   # 查看各分支的扫描状态
+   /check /git /repo http://git.company.com/project/backend.git /branch main /status
+   /check /git /repo http://git.company.com/project/backend.git /branch dev /status
+   ```
+
+4. **清理重置扫描**：
+   ```bash
+   # 规则更新后，清除旧记录重新全量扫描
+   /check /git /repo http://git.company.com/project/backend.git /branch main /reset
+   /check /git /repo http://git.company.com/project/backend.git /branch main
+   ```
+
+#### 5.2. `/check /git /repo-diff` - 远程仓库差异检查（Phase 7 新增）
+
+检查远程仓库两个版本间的差异文件（类似 PR 审查）。
+
+**语法**：
+```bash
+/check /git /repo-diff <repo_url> <version1> <version2> [/dir <path>] [options]
+```
+
+**参数说明**：
+
+| 参数 | 说明 | 示例 |
+|------|------|------|
+| `<repo_url>` | 远程仓库 URL（必需） | `http://10.56.215.182/zs/ecim/ecim-java.git` |
+| `<version1>` | 第一个版本（branch/tag/commit） | `main` |
+| `<version2>` | 第二个版本（branch/tag/commit） | `dev` |
+| `/dir <path>` | 克隆目录 | `/dir ./repos/ecim` |
+| `/repeat <N>` | LLM 调用次数 | `/repeat 3` |
+| `/consensus <0-1>` | 共识阈值 | `/consensus 0.8` |
+| `/workers <N>` | 并发数 | `/workers 10` |
+
+**示例**：
+
+```bash
+# 检查两个分支的差异
+/check /git /repo-diff http://10.56.215.182/zs/ecim/ecim-java.git main dev
+
+# 检查两个标签的差异
+/check /git /repo-diff http://10.56.215.182/zs/ecim/ecim-java.git v1.0.0 v1.1.0
+
+# 检查分支与 commit 的差异
+/check /git /repo-diff http://10.56.215.182/zs/ecim/ecim-java.git main abc1234
+
+# 指定克隆目录
+/check /git /repo-diff http://10.56.215.182/zs/ecim/ecim-java.git main dev /dir ./repos/ecim
+
+# 提高准确性
+/check /git /repo-diff http://10.56.215.182/zs/ecim/ecim-java.git main dev /repeat 3 /workers 10
+```
+
+**执行流程**：
+
+1. 克隆或更新仓库到本地
+2. 切换到 `version2`（目标版本）
+3. 执行 `git diff version1 version2` 获取差异文件
+4. 提取差异文件的修改块信息（diff hunks）
+5. 对差异文件执行 diff-only 审核（只审核修改的部分）
+6. 生成包含 diff 信息的检查报告
+
+**与 `/check /git /diff` 的区别**：
+
+| 特性 | `/check /git /diff` | `/check /git /repo-diff` |
+|------|---------------------|--------------------------|
+| 适用场景 | 本地仓库 | 远程仓库 |
+| 克隆行为 | 不需要 | 自动克隆 |
+| 版本格式 | commit/branch | branch/tag/commit |
+| 认证支持 | 无需 | 支持 GitLab/GitHub |
+
+**常见场景**：
+
+1. **PR 审查**：
+   ```bash
+   # 审查 feature 分支相对 main 的变更
+   /check /git /repo-diff http://git.company.com/project/backend.git main feature-login
+   ```
+
+2. **版本对比**：
+   ```bash
+   # 对比两个发布版本
+   /check /git /repo-diff http://git.company.com/project/backend.git v1.0.0 v1.1.0
+   ```
+
+3. **hotfix 检查**：
+   ```bash
+   # 检查 hotfix 相对发布版的变更
+   /check /git /repo-diff http://git.company.com/project/backend.git release-1.0 hotfix-1.0.1
+   ```
+
 ---
 
 ## 💡 使用示例

@@ -133,23 +133,25 @@ class FileCheckResult(BaseModel):
 
 class GitInfo(BaseModel):
     """
-    Git 检查信息（Phase 4: 报告增强）
+    Git 检查信息（Phase 4: 报告增强，Phase 6: 远程仓库支持）
 
     用于在报告中显示 Git 上下文信息，帮助用户了解检查的来源。
 
     Attributes:
-        type: 检查类型（staged/unstaged/commit/diff）
-        branch: 当前分支名称（可选，用于 staged/unstaged）
-        commit_hash: 完整 commit 哈希值（可选，用于 commit）
-        short_hash: 短 commit 哈希值（可选，用于 commit）
-        message: commit 提交信息（可选，用于 commit）
-        author: commit 作者（可选，用于 commit）
-        date: commit 日期（可选，用于 commit）
-        commit1: diff 的第一个 commit（可选，用于 diff）
-        commit2: diff 的第二个 commit（可选，用于 diff）
+        type: 检查类型（staged/unstaged/commit/diff/repo/repo-diff）
+        branch: 当前分支名称（可选，用于 staged/unstaged/repo）
+        commit_hash: 完整 commit 哈希值（可选，用于 commit/repo）
+        short_hash: 短 commit 哈希值（可选，用于 commit/repo）
+        message: commit 提交信息（可选，用于 commit/repo）
+        author: commit 作者（可选，用于 commit/repo）
+        date: commit 日期（可选，用于 commit/repo）
+        commit1: diff 的第一个 commit（可选，用于 diff/repo-diff）
+        commit2: diff 的第二个 commit（可选，用于 diff/repo-diff）
         files_changed: 变更文件数量
+        repo_url: 远程仓库 URL（可选，用于 repo/repo-diff）
+        repo_path: 本地仓库路径（可选，用于 repo/repo-diff）
     """
-    type: str = Field(..., description="检查类型：staged/unstaged/commit/diff")
+    type: str = Field(..., description="检查类型：staged/unstaged/commit/diff/repo/repo-diff")
     branch: Optional[str] = Field(default=None, description="当前分支名称")
     commit_hash: Optional[str] = Field(default=None, description="完整 commit 哈希值")
     short_hash: Optional[str] = Field(default=None, description="短 commit 哈希值")
@@ -159,6 +161,8 @@ class GitInfo(BaseModel):
     commit1: Optional[str] = Field(default=None, description="diff 的第一个 commit")
     commit2: Optional[str] = Field(default=None, description="diff 的第二个 commit")
     files_changed: int = Field(default=0, ge=0, description="变更文件数量")
+    repo_url: Optional[str] = Field(default=None, description="远程仓库 URL（Phase 6）")
+    repo_path: Optional[str] = Field(default=None, description="本地仓库路径（Phase 6）")
 
 
 class BatchCheckResult(BaseModel):

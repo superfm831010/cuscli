@@ -38,6 +38,8 @@ class CodeCheckerPlugin(Plugin):
         "/check /folder",
         "/check /git /commit",
         "/check /git /diff",
+        "/check /git /repo",        # Phase 6: 远程仓库检查
+        "/check /git /repo-diff",   # Phase 6: 远程仓库差异检查
     ]
 
     def __init__(
@@ -247,11 +249,13 @@ class CodeCheckerPlugin(Plugin):
             "/check": ["/file", "/folder", "/resume", "/report", "/config", "/git"],
             "/check /folder": ["/path", "/ext", "/ignore", "/workers", "/repeat", "/consensus"],
             "/check /config": ["/repeat", "/consensus"],
-            "/check /git": ["/staged", "/unstaged", "/commit", "/diff"],
+            "/check /git": ["/staged", "/unstaged", "/commit", "/diff", "/repo", "/repo-diff"],
             "/check /git /staged": ["/repeat", "/consensus", "/workers", "/diff-only"],
             "/check /git /unstaged": ["/repeat", "/consensus", "/workers", "/diff-only"],
             "/check /git /commit": ["/repeat", "/consensus", "/workers", "/diff-only"],
             "/check /git /diff": ["/repeat", "/consensus", "/workers", "/diff-only"],
+            "/check /git /repo": ["/branch", "/tag", "/commit", "/dir", "/full", "/status", "/reset", "/repeat", "/consensus", "/workers"],
+            "/check /git /repo-diff": ["/dir", "/repeat", "/consensus", "/workers"],
         }
 
     def _get_option_completions(
@@ -425,6 +429,90 @@ class CodeCheckerPlugin(Plugin):
                         return self._get_option_completions(command, current_input)
                     else:
                         # 可能在继续输入 commit hash，不补全
+                        return []
+
+        elif command == "/check /git /repo":
+            # Phase 6: Git 远程仓库补全
+            tokens = shlex.split(current_input)
+            base_tokens = command.split()  # ["/check", "/git", "/repo"]
+
+            # 计算已输入的非选项参数数量（不以 / 开头的参数）
+            non_option_args = []
+            for i in range(len(base_tokens), len(tokens)):
+                if not tokens[i].startswith('/'):
+                    non_option_args.append(tokens[i])
+
+            has_trailing_space = current_input != current_input.rstrip()
+
+            if has_trailing_space:
+                # 末尾有空格
+                if len(non_option_args) == 0:
+                    # 还没有输入 repo_url，不补全（用户需要手动输入 URL）
+                    return []
+                else:
+                    # 已有 repo_url，补全选项
+                    return self._get_option_completions(command, current_input)
+            else:
+                # 末尾没有空格
+                if len(non_option_args) == 0:
+                    # 正在输入 repo_url，不补全
+                    return []
+                else:
+                    # 正在输入选项或其他参数
+                    last_token = tokens[-1]
+                    if last_token.startswith('/'):
+                        # 正在输入选项，返回选项补全
+                        return self._get_option_completions(command, current_input)
+                    else:
+                        # 可能在继续输入其他参数，不补全
+                        return []
+
+        elif command == "/check /git /repo-diff":
+            # Phase 6: Git 远程仓库差异补全
+            tokens = shlex.split(current_input)
+            base_tokens = command.split()  # ["/check", "/git", "/repo-diff"]
+
+            # 计算已输入的非选项参数数量（不以 / 开头的参数）
+            non_option_args = []
+            for i in range(len(base_tokens), len(tokens)):
+                if not tokens[i].startswith('/'):
+                    non_option_args.append(tokens[i])
+
+            has_trailing_space = current_input != current_input.rstrip()
+
+            if has_trailing_space:
+                # 末尾有空格
+                if len(non_option_args) == 0:
+                    # 还没有输入 repo_url，不补全
+                    return []
+                elif len(non_option_args) == 1:
+                    # 输入了 repo_url，正在输入 version1，补全 commit
+                    return self._complete_git_commits(current_input)
+                elif len(non_option_args) == 2:
+                    # 输入了 version1，正在输入 version2，补全 commit
+                    return self._complete_git_commits(current_input)
+                else:
+                    # 已有全部参数，补全选项
+                    return self._get_option_completions(command, current_input)
+            else:
+                # 末尾没有空格
+                if len(non_option_args) == 0:
+                    # 正在输入 repo_url，不补全
+                    return []
+                elif len(non_option_args) == 1:
+                    # 正在输入 version1，补全 commit
+                    return self._complete_git_commits(current_input)
+                elif len(non_option_args) == 2:
+                    # 正在输入 version2，补全 commit
+                    return self._complete_git_commits(current_input)
+                else:
+                    # 正在输入选项或其他参数
+                    last_token = tokens[-1]
+                    if last_token.startswith('/'):
+                        # 正在输入选项，返回选项补全
+                        return self._get_option_completions(command, current_input)
+                    else:
+                        # 可能在继续输入其他参数，不补全
                         return []
 
         return []
@@ -1764,6 +1852,8 @@ Git 引用格式 (commit/diff 命令支持):
             print("  /check /git /unstaged            - 检查工作区修改文件")
             print("  /check /git /commit <hash>       - 检查指定 commit")
             print("  /check /git /diff <c1> [c2]      - 检查两个 commit 间差异")
+            print("  /check /git /repo <url> [opts]   - 检查远程仓库（NEW）")
+            print("  /check /git /repo-diff <url> <v1> <v2> [opts] - 检查仓库版本差异（NEW）")
             return
 
         # 解析子命令
@@ -1780,6 +1870,10 @@ Git 引用格式 (commit/diff 命令支持):
             self._check_git_commit(sub_args)
         elif subcommand == "/diff":
             self._check_git_diff(sub_args)
+        elif subcommand == "/repo":
+            self._check_git_repo(sub_args)
+        elif subcommand == "/repo-diff":
+            self._check_git_repo_diff(sub_args)
         else:
             print(f"❌ 未知的 git 子命令: {subcommand}")
 
@@ -2513,6 +2607,544 @@ Git 引用格式 (commit/diff 命令支持):
             if temp_manager:
                 temp_manager.cleanup()
                 logger.info("临时文件已清理")
+
+    # ===== Git 远程仓库检查功能 (Phase 6) =====
+
+    def _check_git_repo(self, args: List[str]) -> None:
+        """
+        检查远程 Git 仓库（全量检查）
+
+        命令格式：
+        /check /git /repo <repo_url> [/branch <branch>] [/tag <tag>] [/commit <hash>] [/dir <target_dir>] [options]
+
+        Args:
+            args: 参数列表
+        """
+        if not args:
+            print("❌ 请指定仓库 URL")
+            print()
+            print("用法: /check /git /repo <repo_url> [options]")
+            print()
+            print("选项:")
+            print("  /branch <name>   - 指定分支")
+            print("  /tag <name>      - 指定标签")
+            print("  /commit <hash>   - 指定提交哈希")
+            print("  /dir <path>      - 指定克隆目录（默认: ./repos/<repo_name>）")
+            print("  /full            - 强制全量扫描（默认增量扫描）")
+            print("  /status          - 查看扫描状态（不执行检查）")
+            print("  /reset           - 清除扫描记录（下次将全量扫描）")
+            print("  /repeat <N>      - LLM 调用次数")
+            print("  /consensus <0-1> - 共识阈值")
+            print("  /workers <N>     - 并发数")
+            print()
+            print("示例:")
+            print("  /check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /branch main")
+            print("  /check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /tag v1.0.0 /dir ./repos/ecim")
+            print("  /check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /branch main /full")
+            print("  /check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /branch main /status")
+            print("  /check /git /repo http://10.56.215.182/zs/ecim/ecim-java.git /branch main /reset")
+            return
+
+        # 解析参数
+        repo_url = args[0]
+        option_args = args[1:]
+
+        options = self._parse_git_repo_options(repo_url, option_args, is_diff=False)
+
+        if options.get("error"):
+            print(f"❌ {options['error']}")
+            return
+
+        print(f"🔍 检查远程仓库: {repo_url}")
+        print()
+
+        try:
+            # 导入 Git 仓库管理器
+            from autocoder.checker.git_repo_manager import GitRepoManager
+            from autocoder.common.git_platform_config import GitPlatformManager
+
+            # 初始化 Git 平台配置管理器
+            from pathlib import Path
+            config_file = Path.home() / ".auto-coder" / "plugins" / "git_helper_config.json"
+            platform_manager = GitPlatformManager(
+                config_file=str(config_file) if config_file.exists() else None
+            )
+
+            # 初始化仓库管理器
+            repo_manager = GitRepoManager(platform_manager)
+
+            # 克隆或更新仓库
+            print("📦 正在克隆/更新仓库...")
+            print()
+
+            repo_path, repo_info = repo_manager.clone_or_update_repo(
+                repo_url=repo_url,
+                target_dir=options["target_dir"],
+                branch=options.get("branch"),
+                tag=options.get("tag"),
+                commit=options.get("commit")
+            )
+
+            print(f"✅ 仓库准备完成:")
+            print(f"   路径: {repo_path}")
+            print(f"   分支: {repo_info.get('current_branch', 'detached HEAD')}")
+            print(f"   Commit: {repo_info['current_commit']['short_hash']} - {repo_info['current_commit']['message'][:50]}")
+            print()
+
+            # 扫描文件（复用 folder 扫描逻辑）
+            print("🔍 扫描文件...")
+            from autocoder.checker.file_processor import FileProcessor
+
+            file_processor = FileProcessor()
+            files = file_processor.scan_directory(
+                directory=repo_path,
+                extensions=None,  # 检查所有文件（根据规则）
+                ignored=["\.git", "__pycache__", "node_modules", "\.venv", "venv"]
+            )
+
+            if not files:
+                print("📭 没有找到可检查的文件")
+                return
+
+            print(f"✅ 找到 {len(files)} 个文件")
+            print()
+
+            # Phase 7: 增量扫描逻辑
+            from autocoder.checker.simple_scan_tracker import SimpleScanTracker
+
+            # 初始化扫描跟踪器
+            tracker = SimpleScanTracker(repo_path)
+
+            # 确定当前版本名称（用于 .checked 文件）
+            current_version = (
+                options.get("branch") or
+                options.get("tag") or
+                options.get("commit") or
+                repo_info.get("current_branch", "HEAD")
+            )
+
+            # 当前 commit hash
+            current_commit = repo_info["current_commit"]["hash"]
+
+            # Phase 7: 处理 /status 选项
+            if options.get("status"):
+                print(f"📊 扫描状态查询: {current_version}")
+                print()
+
+                summary = tracker.get_scan_summary(current_version)
+
+                if summary:
+                    print(f"版本: {current_version}")
+                    print(f"总文件数: {summary['total_files']}")
+                    print(f"已检查: {summary['checked']}")
+                    print(f"待检查: {summary['unchecked']}")
+                    if summary.get('last_scan_time'):
+                        print(f"上次扫描: {summary['last_scan_time']}")
+                    if summary.get('last_commit'):
+                        print(f"上次 Commit: {summary['last_commit'][:7]}")
+                    if summary.get('commit_message'):
+                        print(f"提交信息: {summary['commit_message'][:80]}")
+                    print()
+
+                    # 显示详细统计
+                    if summary['unchecked'] > 0:
+                        print(f"⚠️  有 {summary['unchecked']} 个文件待检查")
+                    else:
+                        print("✅ 所有文件都已检查")
+                else:
+                    print(f"❌ 没有找到版本 '{current_version}' 的扫描记录")
+                    print("提示: 执行一次扫描后会自动创建记录")
+
+                return
+
+            # Phase 7: 处理 /reset 选项
+            if options.get("reset"):
+                print(f"🗑️  清除扫描记录: {current_version}")
+                print()
+
+                if tracker.has_scan_record(current_version):
+                    # 确认操作
+                    summary = tracker.get_scan_summary(current_version)
+                    if summary:
+                        print(f"将清除以下记录:")
+                        print(f"  版本: {current_version}")
+                        print(f"  总文件数: {summary['total_files']}")
+                        print(f"  已检查: {summary['checked']}")
+                        print(f"  待检查: {summary['unchecked']}")
+                        print()
+
+                    # 执行清除
+                    tracker.reset(current_version)
+                    print("✅ 扫描记录已清除")
+                    print()
+                    print("下次扫描将执行全量检查")
+                else:
+                    print(f"❌ 没有找到版本 '{current_version}' 的扫描记录")
+                    print("无需清除")
+
+                return
+
+            # 决定扫描模式
+            has_record = tracker.has_scan_record(current_version)
+            force_full = options.get("full", False)
+
+            files_to_check = files  # 默认检查所有文件
+            scan_mode = "full"
+
+            if has_record and not force_full:
+                # 增量扫描模式
+                print("🔄 检测到扫描记录，执行增量扫描...")
+
+                # 获取上次扫描的 commit
+                last_commit = tracker.get_last_commit(current_version)
+
+                if last_commit and last_commit != current_commit:
+                    # Commit 有变化，检测变更文件
+                    print(f"   上次扫描: {last_commit[:7]}")
+                    print(f"   当前版本: {current_commit[:7]}")
+                    print()
+
+                    # 获取变更文件
+                    changes = tracker.get_changed_files(last_commit, current_commit)
+
+                    if changes:
+                        # 标记变更文件为 unchecked
+                        unchecked_count = tracker.mark_changed_files(current_version, changes)
+                        print(f"   检测到 {len(changes)} 个变更文件")
+                        print(f"   标记 {unchecked_count} 个文件为待检查")
+                        print()
+
+                # 获取所有 unchecked 文件（相对路径）
+                unchecked_files = tracker.get_unchecked_files(current_version)
+
+                if unchecked_files:
+                    # 转换为绝对路径并过滤（只检查在当前扫描列表中的文件）
+                    abs_unchecked = set(tracker.to_absolute_paths(unchecked_files))
+                    files_to_check = [f for f in files if f in abs_unchecked]
+                    scan_mode = "incremental"
+
+                    print(f"📊 增量扫描: {len(files_to_check)} 个待检查文件")
+                    print()
+                else:
+                    # 所有文件都已检查
+                    print("✅ 所有文件都已检查过，无需重新扫描")
+                    print()
+
+                    # 更新 commit 记录（即使没有变化，也记录当前 commit）
+                    tracker.update_last_commit(current_version, current_commit)
+
+                    # 显示扫描状态摘要
+                    summary = tracker.get_scan_summary(current_version)
+                    if summary:
+                        print("扫描状态:")
+                        print(f"  总文件数: {summary['total_files']}")
+                        print(f"  已检查: {summary['checked']}")
+                        print(f"  待检查: {summary['unchecked']}")
+                        if summary.get('last_scan_time'):
+                            print(f"  上次扫描: {summary['last_scan_time']}")
+
+                    return  # 无需检查，直接返回
+
+            elif force_full:
+                print("🔄 执行强制全量扫描...")
+                print()
+            else:
+                # 首次扫描
+                print("🆕 首次扫描，执行全量检查...")
+                print()
+
+            # 准备检查选项
+            check_options = {
+                "repeat": options.get("repeat"),
+                "consensus": options.get("consensus"),
+                "workers": options.get("workers", 5),
+                "repo_path": repo_path,
+                "scan_mode": scan_mode,  # Phase 7: 记录扫描模式
+                "version": current_version  # Phase 7: 记录版本信息
+            }
+
+            # 执行检查
+            self._execute_batch_check(
+                files=files_to_check,
+                check_type="git_repo",
+                options=check_options,
+                temp_manager=None
+            )
+
+            # Phase 7: 扫描完成后，更新状态
+            try:
+                # 将检查过的文件标记为 checked
+                checked_files_rel = tracker.to_relative_paths(files_to_check)
+
+                # 准备 commit 信息
+                commit_info = {
+                    "hash": current_commit,
+                    "short_hash": repo_info["current_commit"]["short_hash"],
+                    "message": repo_info["current_commit"]["message"],
+                    "author": repo_info["current_commit"].get("author", "unknown"),
+                    "date": repo_info["current_commit"].get("date", "")
+                }
+
+                if scan_mode == "full":
+                    # 全量扫描：初始化所有文件为 checked
+                    all_files_rel = tracker.to_relative_paths(files)
+                    tracker.initialize_full_scan(current_version, all_files_rel, commit_info)
+                else:
+                    # 增量扫描：只标记检查过的文件为 checked
+                    tracker.mark_as_checked(current_version, checked_files_rel, commit_info)
+
+                # 更新 last_commit
+                tracker.update_last_commit(current_version, current_commit)
+
+                logger.info(f"扫描状态已更新: {len(checked_files_rel)} 个文件标记为 checked")
+
+            except Exception as e:
+                logger.warning(f"更新扫描状态失败: {e}", exc_info=True)
+                print(f"⚠️  更新扫描状态失败: {e}")
+                print()
+
+            # 更新报告中的 Git 信息（在 _execute_batch_check 内部处理）
+            # 这里我们需要扩展 _execute_batch_check 以支持 git_repo 类型
+
+        except Exception as e:
+            print(f"❌ 检查失败: {e}")
+            logger.error(f"Git 仓库检查失败: {e}", exc_info=True)
+
+    def _check_git_repo_diff(self, args: List[str]) -> None:
+        """
+        检查远程仓库的版本差异（增量检查）
+
+        命令格式：
+        /check /git /repo-diff <repo_url> <version1> <version2> [/dir <target_dir>] [options]
+
+        Args:
+            args: 参数列表
+        """
+        if len(args) < 3:
+            print("❌ 请指定仓库 URL 和两个版本")
+            print()
+            print("用法: /check /git /repo-diff <repo_url> <version1> <version2> [options]")
+            print()
+            print("选项:")
+            print("  /dir <path>      - 指定克隆目录（默认: ./repos/<repo_name>）")
+            print("  /repeat <N>      - LLM 调用次数")
+            print("  /consensus <0-1> - 共识阈值")
+            print("  /workers <N>     - 并发数")
+            print()
+            print("示例:")
+            print("  /check /git /repo-diff http://10.56.215.182/zs/ecim/ecim-java.git v1.0.0 v1.1.0")
+            print("  /check /git /repo-diff http://10.56.215.182/zs/ecim/ecim-java.git main dev /dir ./repos/ecim")
+            return
+
+        # 解析参数
+        repo_url = args[0]
+        version1 = args[1]
+        version2 = args[2]
+        option_args = args[3:]
+
+        options = self._parse_git_repo_options(repo_url, option_args, is_diff=True)
+
+        if options.get("error"):
+            print(f"❌ {options['error']}")
+            return
+
+        print(f"🔍 检查仓库版本差异: {repo_url}")
+        print(f"   版本: {version1}...{version2}")
+        print()
+
+        try:
+            # 导入 Git 仓库管理器
+            from autocoder.checker.git_repo_manager import GitRepoManager
+            from autocoder.common.git_platform_config import GitPlatformManager
+
+            # 初始化 Git 平台配置管理器
+            from pathlib import Path
+            config_file = Path.home() / ".auto-coder" / "plugins" / "git_helper_config.json"
+            platform_manager = GitPlatformManager(
+                config_file=str(config_file) if config_file.exists() else None
+            )
+
+            # 初始化仓库管理器
+            repo_manager = GitRepoManager(platform_manager)
+
+            # 克隆或更新仓库（切换到 version2）
+            print("📦 正在克隆/更新仓库...")
+            print()
+
+            repo_path, repo_info = repo_manager.clone_or_update_repo(
+                repo_url=repo_url,
+                target_dir=options["target_dir"],
+                commit=version2  # 切换到目标版本
+            )
+
+            print(f"✅ 仓库准备完成:")
+            print(f"   路径: {repo_path}")
+            print(f"   当前版本: {repo_info['current_commit']['short_hash']}")
+            print()
+
+            # 获取差异文件
+            print(f"📊 分析差异: {version1}...{version2}")
+            print()
+
+            files, diff_info_dict = repo_manager.get_diff_files(
+                repo_path=repo_path,
+                version1=version1,
+                version2=version2
+            )
+
+            if not files:
+                print(f"📭 {version1} 和 {version2} 之间没有差异")
+                return
+
+            print(f"✅ 找到 {len(files)} 个差异文件")
+            print()
+
+            # 计算审核范围统计
+            total_audit_lines = 0
+            for file_path, diff_info in diff_info_dict.items():
+                if diff_info.has_modifications():
+                    for hunk in diff_info.hunks:
+                        total_audit_lines += hunk.new_count
+
+            print(f"🎯 Diff-Only 模式：将仅审核修改的代码行")
+            print(f"📊 审核范围：约 {total_audit_lines} 行修改代码（+ 上下文）")
+            print()
+
+            # 准备检查选项
+            check_options = {
+                "repeat": options.get("repeat"),
+                "consensus": options.get("consensus"),
+                "workers": options.get("workers", 5),
+                "repo_path": repo_path,
+                "diff_info_dict": diff_info_dict,  # 传递 diff 信息
+                "diff_info": f"{version1}...{version2}"
+            }
+
+            # 执行检查
+            self._execute_batch_check(
+                files=files,
+                check_type="git_repo_diff",
+                options=check_options,
+                temp_manager=None
+            )
+
+        except Exception as e:
+            print(f"❌ 检查失败: {e}")
+            logger.error(f"Git 仓库差异检查失败: {e}", exc_info=True)
+
+    def _parse_git_repo_options(
+        self,
+        repo_url: str,
+        args: List[str],
+        is_diff: bool = False
+    ) -> Dict[str, Any]:
+        """
+        解析 Git 仓库检查选项
+
+        Args:
+            repo_url: 仓库 URL
+            args: 参数列表
+            is_diff: 是否是差异检查模式
+
+        Returns:
+            选项字典
+        """
+        from urllib.parse import urlparse
+        from pathlib import Path
+
+        # 从 URL 提取仓库名称
+        parsed = urlparse(repo_url)
+        repo_name = Path(parsed.path).stem  # 移除 .git 后缀
+
+        options = {
+            "target_dir": None,  # 将在下面设置默认值
+            "branch": None,
+            "tag": None,
+            "commit": None,
+            "repeat": None,
+            "consensus": None,
+            "workers": 5,
+            "full": False,  # Phase 7: 强制全量扫描
+            "status": False,  # Phase 7: 查看扫描状态
+            "reset": False,  # Phase 7: 清除扫描记录
+            "error": None
+        }
+
+        # 解析选项
+        i = 0
+        while i < len(args):
+            arg = args[i]
+
+            if arg == "/dir" and i + 1 < len(args):
+                options["target_dir"] = args[i + 1]
+                i += 2
+            elif arg == "/branch" and i + 1 < len(args):
+                if is_diff:
+                    options["error"] = "差异检查模式不支持 /branch 选项（会自动切换到指定版本）"
+                    return options
+                options["branch"] = args[i + 1]
+                i += 2
+            elif arg == "/tag" and i + 1 < len(args):
+                if is_diff:
+                    options["error"] = "差异检查模式不支持 /tag 选项（会自动切换到指定版本）"
+                    return options
+                options["tag"] = args[i + 1]
+                i += 2
+            elif arg == "/commit" and i + 1 < len(args):
+                if is_diff:
+                    options["error"] = "差异检查模式不支持 /commit 选项（会自动切换到指定版本）"
+                    return options
+                options["commit"] = args[i + 1]
+                i += 2
+            elif arg == "/repeat" and i + 1 < len(args):
+                try:
+                    options["repeat"] = int(args[i + 1])
+                except ValueError:
+                    print(f"⚠️  无效的重复次数: {args[i + 1]}")
+                i += 2
+            elif arg == "/consensus" and i + 1 < len(args):
+                try:
+                    options["consensus"] = float(args[i + 1])
+                except ValueError:
+                    print(f"⚠️  无效的共识阈值: {args[i + 1]}")
+                i += 2
+            elif arg == "/workers" and i + 1 < len(args):
+                try:
+                    options["workers"] = int(args[i + 1])
+                except ValueError:
+                    print(f"⚠️  无效的并发数: {args[i + 1]}")
+                i += 2
+            elif arg == "/full":
+                # Phase 7: 强制全量扫描
+                options["full"] = True
+                i += 1
+            elif arg == "/status":
+                # Phase 7: 查看扫描状态
+                options["status"] = True
+                i += 1
+            elif arg == "/reset":
+                # Phase 7: 清除扫描记录
+                options["reset"] = True
+                i += 1
+            else:
+                i += 1
+
+        # 设置默认目标目录
+        if not options["target_dir"]:
+            options["target_dir"] = os.path.join(".", "repos", repo_name)
+
+        # 检查版本参数冲突
+        if not is_diff:
+            version_count = sum([
+                options["branch"] is not None,
+                options["tag"] is not None,
+                options["commit"] is not None
+            ])
+            if version_count > 1:
+                options["error"] = "只能指定 /branch、/tag 或 /commit 中的一个"
+                return options
+
+        return options
 
     def get_help_text(self) -> Optional[str]:
         """Get the help text displayed in the startup screen.
