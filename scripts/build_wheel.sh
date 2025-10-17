@@ -184,7 +184,7 @@ if len(parts) == 3:
     # 替换版本号
     content = re.sub(
         r"^__version__\s*=\s*[\"'"'"']([^\"'"'"']+)[\"'"'"']",
-        f"__version__ = \"'"'"'{new_version}'"'"'\"",
+        f"__version__ = \"{new_version}\"",
         content,
         flags=re.MULTILINE
     )
@@ -290,13 +290,21 @@ print_step "开始构建 wheel 包..."
 echo ""
 
 if [ "$VERBOSE" = true ]; then
+    # 详细模式：显示所有输出
     $PYTHON_CMD setup.py bdist_wheel
+    BUILD_RESULT=$?
 else
-    $PYTHON_CMD setup.py bdist_wheel > /dev/null 2>&1
+    # 简洁模式：显示关键步骤，隐藏详细输出
+    print_info "正在编译 Python 源代码..."
+    $PYTHON_CMD setup.py bdist_wheel 2>&1 | grep -E "(running|creating|copying|writing|adding)" | while read line; do
+        echo "  ${CYAN}→${NC} $line"
+    done
+    BUILD_RESULT=${PIPESTATUS[0]}
 fi
 
-if [ $? -ne 0 ]; then
-    print_error "构建失败！"
+if [ $BUILD_RESULT -ne 0 ]; then
+    echo ""
+    print_error "构建失败！请使用 -v 参数查看详细输出"
     exit 1
 fi
 
