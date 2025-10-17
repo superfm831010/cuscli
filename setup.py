@@ -7,6 +7,18 @@ Cuscli - Setup配置文件
 
 from setuptools import setup, find_packages
 import os
+import re
+
+# 读取版本号
+def get_version():
+    """从 autocoder/version.py 读取版本号"""
+    version_file = os.path.join(os.path.dirname(__file__), 'autocoder', 'version.py')
+    with open(version_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+        match = re.search(r"^__version__\s*=\s*['\"]([^'\"]+)['\"]", content, re.MULTILINE)
+        if match:
+            return match.group(1)
+    raise RuntimeError("Unable to find version string in autocoder/version.py")
 
 # 读取 requirements.txt
 def read_requirements():
@@ -33,7 +45,7 @@ def read_readme():
 
 setup(
     name='cuscli',
-    version='1.0.40',  # 版本 1.0.40 - GitLab 内网 API 兼容性改进
+    version=get_version(),  # 从 autocoder/version.py 动态读取版本号
     author='superfm831010 (Based on allwefantasy/auto-coder)',
     author_email='superfm831010@gmail.com',
     description='Cuscli: AI-powered coding assistant tool with custom enhancements',

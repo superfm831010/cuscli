@@ -47,24 +47,25 @@ ${YELLOW}选项:${NC}
     -c, --clean-only        只清理临时文件，不构建
     -i, --install           构建后自动安装到当前环境
     -l, --list              显示 whl 包内容列表
-    -b, --bump-version      自动升级版本号 (patch 版本 +1)
     -v, --verbose           详细输出
     --no-clean              构建前不清理临时文件
+    --no-bump               跳过版本号自动递增（默认每次build自动递增）
 
 ${YELLOW}示例:${NC}
-    ./scripts/build_wheel.sh                    # 构建 whl 包
-    ./scripts/build_wheel.sh -i                 # 构建并安装
+    ./scripts/build_wheel.sh                    # 构建 whl 包（自动递增版本号）
+    ./scripts/build_wheel.sh -i                 # 构建并安装（自动递增版本号）
     ./scripts/build_wheel.sh -l                 # 构建并查看包内容
     ./scripts/build_wheel.sh -c                 # 只清理临时文件
-    ./scripts/build_wheel.sh -b -i              # 升级版本、构建并安装
+    ./scripts/build_wheel.sh --no-bump -i       # 不递增版本号，构建并安装
 
 ${YELLOW}构建流程:${NC}
-    1. 清理旧的构建文件 (build/, dist/, *.egg-info)
-    2. 从 setup.py 读取版本号
-    3. 使用 python setup.py bdist_wheel 构建
-    4. 验证生成的 whl 文件
-    5. (可选) 安装到当前环境
-    6. (可选) 显示包内容列表
+    1. (默认) 自动递增版本号（满10进1）
+    2. 清理旧的构建文件 (build/, dist/, *.egg-info)
+    3. 从 autocoder/version.py 读取版本号
+    4. 使用 python setup.py bdist_wheel 构建
+    5. 验证生成的 whl 文件
+    6. (可选) 安装到当前环境
+    7. (可选) 显示包内容列表
 
 EOF
 }
@@ -73,7 +74,8 @@ EOF
 CLEAN_ONLY=false
 INSTALL=false
 LIST_CONTENTS=false
-BUMP_VERSION=false
+BUMP_VERSION=true     # 默认自动递增版本号
+NO_BUMP=false         # 默认不跳过版本递增
 VERBOSE=false
 NO_CLEAN=false
 
@@ -96,8 +98,9 @@ while [[ $# -gt 0 ]]; do
             LIST_CONTENTS=true
             shift
             ;;
-        -b|--bump-version)
-            BUMP_VERSION=true
+        --no-bump)
+            NO_BUMP=true
+            BUMP_VERSION=false
             shift
             ;;
         -v|--verbose)
@@ -137,13 +140,13 @@ if [ ! -f "setup.py" ]; then
     exit 1
 fi
 
-# 获取当前版本号
+# 获取当前版本号（从 autocoder/version.py 读取）
 get_version() {
     $PYTHON_CMD -c "
 import re
-with open('setup.py', 'r', encoding='utf-8') as f:
+with open('autocoder/version.py', 'r', encoding='utf-8') as f:
     content = f.read()
-    match = re.search(r\"version='([^']+)'\", content)
+    match = re.search(r"^__version__\s*=\s*['\"]([^'\"]+)['\"]", content, re.MULTILINE)
     if match:
         print(match.group(1))
     else:
@@ -151,38 +154,50 @@ with open('setup.py', 'r', encoding='utf-8') as f:
 "
 }
 
-# 升级版本号 (patch +1)
+# 升级版本号（满10进1规则）
 bump_version() {
     local current_version="$1"
-    $PYTHON_CMD -c "
+    $PYTHON_CMD -c '
 import re
 
 # 读取当前版本
-parts = '$current_version'.split('.')
+version = "'$current_version'"
+parts = version.split(".")
 if len(parts) == 3:
-    major, minor, patch = parts
-    new_patch = int(patch) + 1
-    new_version = f'{major}.{minor}.{new_patch}'
-
-    # 更新 setup.py
-    with open('setup.py', 'r', encoding='utf-8') as f:
+    major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
+    
+    # 实现满10进1逻辑
+    patch += 1
+    if patch >= 10:
+        patch = 0
+        minor += 1
+        if minor >= 10:
+            minor = 0
+            major += 1
+    
+    new_version = f"{major}.{minor}.{patch}"
+    
+    # 更新 autocoder/version.py
+    with open("autocoder/version.py", "r", encoding="utf-8") as f:
         content = f.read()
-
+    
     # 替换版本号
     content = re.sub(
-        r\"version='[^']+'\",
-        f\"version='{new_version}'\",
-        content
+        r"^__version__\s*=\s*["'"'"']([^"'"'"']+)["'"'"']",
+        f"__version__ = '"'"'{new_version}'"'"'",
+        content,
+        flags=re.MULTILINE
     )
-
-    with open('setup.py', 'w', encoding='utf-8') as f:
+    
+    with open("autocoder/version.py", "w", encoding="utf-8") as f:
         f.write(content)
-
+    
     print(new_version)
 else:
-    print('$current_version')
-"
+    print("'$current_version'")
+'
 }
+
 
 # 清理临时文件
 clean_build() {
@@ -227,12 +242,15 @@ CURRENT_VERSION=$(get_version)
 print_info "当前版本: ${GREEN}${CURRENT_VERSION}${NC}"
 echo ""
 
-# 升级版本号
-if [ "$BUMP_VERSION" = true ]; then
-    print_step "升级版本号..."
+# 升级版本号（默认执行，除非指定 --no-bump）
+if [ "$NO_BUMP" = false ]; then
+    print_step "自动递增版本号（满10进1规则）..."
     NEW_VERSION=$(bump_version "$CURRENT_VERSION")
-    print_success "版本号已升级: ${CURRENT_VERSION} → ${GREEN}${NEW_VERSION}${NC}"
+    print_success "版本号已递增: ${CURRENT_VERSION} → ${GREEN}${NEW_VERSION}${NC}"
     CURRENT_VERSION="$NEW_VERSION"
+    echo ""
+else
+    print_info "跳过版本号递增（--no-bump）"
     echo ""
 fi
 
