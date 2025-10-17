@@ -100,7 +100,22 @@ class GitRepoManager:
 
         # 获取认证配置
         config = self._match_git_config(repo_url)
+
+        # 友好提示：如果是 HTTP(S) URL 但没有配置 token
+        parsed = urlparse(repo_url)
+        is_http = parsed.scheme in ['http', 'https']
+        has_token = config and config.token
+
+        if is_http and not has_token:
+            logger.warning(
+                f"⚠️  未找到匹配的 Git 平台配置或 token\n"
+                f"   仓库 URL: {repo_url}\n"
+                f"   将尝试使用 Git 凭证助手进行认证（可能需要输入账号密码）\n"
+                f"   提示：可使用 '/git /config' 命令配置 GitLab/GitHub token 以避免重复输入"
+            )
+
         auth_url = self._build_auth_url(repo_url, config) if config else repo_url
+        use_credential_helper = is_http and not has_token
 
         # 确保目标目录存在
         target_path = Path(target_dir).resolve()
@@ -113,10 +128,10 @@ class GitRepoManager:
 
         if (target_path / ".git").exists():
             logger.info(f"仓库已存在，执行更新: {repo_path}")
-            repo = self._update_repo(repo_path, auth_url)
+            repo = self._update_repo(repo_path, auth_url, use_credential_helper)
         else:
             logger.info(f"仓库不存在，执行克隆: {repo_url} -> {repo_path}")
-            repo = self._clone_repo(auth_url, repo_path)
+            repo = self._clone_repo(auth_url, repo_path, use_credential_helper)
 
         # 切换到指定版本
         self._checkout_version(repo, branch, tag, commit)
@@ -127,13 +142,14 @@ class GitRepoManager:
         logger.info(f"仓库准备完成: {repo_info['current_commit']['short_hash']}")
         return repo_path, repo_info
 
-    def _clone_repo(self, repo_url: str, target_dir: str) -> Repo:
+    def _clone_repo(self, repo_url: str, target_dir: str, use_credential_helper: bool = False) -> Repo:
         """
         克隆远程仓库
 
         Args:
             repo_url: 仓库 URL（可能包含认证信息）
             target_dir: 目标目录
+            use_credential_helper: 是否使用 Git 凭证助手（支持交互式认证）
 
         Returns:
             Repo 对象
@@ -143,9 +159,39 @@ class GitRepoManager:
         """
         try:
             logger.info(f"开始克隆仓库...")
-            # 使用 --depth 1 进行浅克隆以加速（后续可以按需 unshallow）
-            # 注意：如果需要检查历史 commit，可能需要去掉 --depth 1
-            repo = Repo.clone_from(repo_url, target_dir)
+
+            # 准备环境变量和 Git 配置
+            env = os.environ.copy()
+            git_config = {}
+
+            if use_credential_helper:
+                # 启用交互式认证
+                # GIT_TERMINAL_PROMPT=1 允许 Git 提示输入凭证
+                env['GIT_TERMINAL_PROMPT'] = '1'
+
+                # 配置凭证助手（使用系统默认）
+                # Windows: manager-core, Linux/Mac: cache 或 store
+                if os.name == 'nt':  # Windows
+                    git_config['credential.helper'] = 'manager-core'
+                else:  # Linux/Mac
+                    # 优先使用 cache（临时缓存），如果不可用则使用 store（永久保存）
+                    git_config['credential.helper'] = 'cache --timeout=3600'
+
+                logger.info("已启用 Git 凭证助手，支持交互式认证")
+            else:
+                # 禁用交互式提示（已有 token）
+                env['GIT_TERMINAL_PROMPT'] = '0'
+                logger.debug("已禁用交互式提示（使用 token 认证）")
+
+            # 使用 GitPython 克隆仓库
+            # 注意：GitPython 会继承当前进程的环境变量和 Git 配置
+            repo = Repo.clone_from(
+                repo_url,
+                target_dir,
+                env=env,
+                multi_options=[f'-c {k}={v}' for k, v in git_config.items()] if git_config else None
+            )
+
             logger.info(f"克隆完成: {target_dir}")
             return repo
 
@@ -154,13 +200,26 @@ class GitRepoManager:
 
             # 解析常见错误
             if "Authentication failed" in error_msg or "could not read Username" in error_msg:
-                raise RuntimeError(
+                hint = (
                     f"克隆失败：认证错误\n"
                     f"请检查：\n"
                     f"1. 仓库 URL 是否正确\n"
-                    f"2. 是否已配置 Git 平台认证（使用 /git /config 命令）\n"
-                    f"3. Token 是否有效且有权限访问该仓库"
                 )
+
+                if use_credential_helper:
+                    hint += (
+                        f"2. 输入的账号密码是否正确\n"
+                        f"3. 是否有权限访问该仓库\n"
+                        f"提示：可使用 '/git /config' 命令配置 token 以避免每次输入"
+                    )
+                else:
+                    hint += (
+                        f"2. 是否已配置 Git 平台认证（使用 /git /config 命令）\n"
+                        f"3. Token 是否有效且有权限访问该仓库"
+                    )
+
+                raise RuntimeError(hint)
+
             elif "Repository not found" in error_msg:
                 raise RuntimeError(
                     f"克隆失败：仓库不存在\n"
@@ -177,13 +236,14 @@ class GitRepoManager:
         except Exception as e:
             raise RuntimeError(f"克隆仓库失败: {e}")
 
-    def _update_repo(self, repo_path: str, repo_url: str) -> Repo:
+    def _update_repo(self, repo_path: str, repo_url: str, use_credential_helper: bool = False) -> Repo:
         """
         更新已存在的仓库
 
         Args:
             repo_path: 仓库路径
             repo_url: 仓库 URL（可能包含认证信息）
+            use_credential_helper: 是否使用 Git 凭证助手（支持交互式认证）
 
         Returns:
             Repo 对象
@@ -205,15 +265,57 @@ class GitRepoManager:
                 logger.info(f"更新远程 URL: {origin.url} -> {repo_url}")
                 origin.set_url(repo_url)
 
+            # 准备环境变量（与 _clone_repo 一致）
+            env = os.environ.copy()
+
+            if use_credential_helper:
+                # 启用交互式认证
+                env['GIT_TERMINAL_PROMPT'] = '1'
+                logger.info("已启用 Git 凭证助手（fetch 操作）")
+            else:
+                # 禁用交互式提示（已有 token）
+                env['GIT_TERMINAL_PROMPT'] = '0'
+                logger.debug("已禁用交互式提示（fetch 操作）")
+
             # 执行 fetch
             logger.info("开始 fetch...")
-            origin.fetch()
+
+            # 注意：GitPython 的 fetch() 方法会继承环境变量
+            # 但为了确保环境变量生效，我们使用底层的 git 命令
+            with repo.git.custom_environment(**env):
+                origin.fetch()
+
             logger.info("Fetch 完成")
 
             return repo
 
         except GitCommandError as e:
-            raise RuntimeError(f"更新仓库失败: {e}")
+            error_msg = str(e)
+
+            # 解析常见错误（与 _clone_repo 类似）
+            if "Authentication failed" in error_msg or "could not read Username" in error_msg:
+                hint = (
+                    f"更新仓库失败：认证错误\n"
+                    f"请检查：\n"
+                )
+
+                if use_credential_helper:
+                    hint += (
+                        f"1. 输入的账号密码是否正确\n"
+                        f"2. 是否有权限访问该仓库\n"
+                        f"提示：可使用 '/git /config' 命令配置 token 以避免每次输入"
+                    )
+                else:
+                    hint += (
+                        f"1. 是否已配置 Git 平台认证（使用 /git /config 命令）\n"
+                        f"2. Token 是否有效且有权限访问该仓库"
+                    )
+
+                raise RuntimeError(hint)
+
+            else:
+                raise RuntimeError(f"更新仓库失败: {error_msg}")
+
         except Exception as e:
             raise RuntimeError(f"更新仓库失败: {e}")
 
