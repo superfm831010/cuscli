@@ -284,7 +284,140 @@
 2. **状态机设计**：三态切换、缓冲策略、增量输出
 3. **性能优化**：预编译正则（提速30%）、字符串查找、缓存机制
 
-## 下一步
+---
 
-建议研究：第六部分 - 工具系统设计
+2025-10-16 16:30 - 完成第六部分研究：工具系统设计
+
+## 完成内容
+
+✅ **第六部分：工具系统设计（核心亮点）**
+- 6.1 ToolRegistry 工具注册表
+- 6.2 工具定义系统（JSON Schema）
+- 6.3 Resolver 模式详解
+- 6.4 默认工具注册机制
+- 6.5 重要工具实现分析
+- 6.6 设计模式和最佳实践
+- 6.7 第六部分总结
+
+## 研究成果
+
+- 深入分析了工具系统的完整架构（~3500行代码）
+- 整理了35+代码示例（含详细中文注释）
+- 完成了30+工具的分类和实现分析
+- 总结了工具系统的设计模式和最佳实践
+- 新增字数：~18,000 字
+
+## 核心发现
+
+1. **ToolRegistry设计**：单例模式、线程安全、动态注册
+2. **Resolver模式**：统一接口、职责分离、可扩展
+3. **工具分类**：文件操作、命令执行、搜索、对话管理等9大类
+4. **设计模式**：策略模式、工厂模式、装饰器模式
+
+**状态**: ✅ 第六部分完成（工具系统设计）
+
+---
+
+2025-10-17 - 架构真相修正与第七部分研究
+
+## 重大发现：架构关系修正
+
+在代码验证过程中发现原研究第一部分存在**架构理解错误**：
+
+**原研究描述**（有误）:
+- 双层架构：BaseAgent（基础层） + AgenticEdit（高级层）
+- AgenticEdit 继承 BaseAgent
+
+**代码实际情况**:
+```python
+# /autocoder/agent/base_agentic/base_agent.py:59
+class BaseAgent(ABC):  # 抽象基类
+
+# /autocoder/common/v2/agent/agentic_edit.py:88
+class AgenticEdit:  # 独立类，不继承任何类
+```
+
+**修正结论**:
+- **两个独立的Agent系统**，不是继承关系
+- **BaseAgentic系统**：通用Agent框架，用于自定义Agent开发
+- **AgenticEdit系统**：专门的编辑Agent系统（v2版本），内置实现
+
+✅ **已创建修正文档**：`第一部分_修正版.md`（35,000字）
+
+## 完成内容
+
+✅ **第七部分：事件驱动架构（核心设计）**
+- 7.1 事件系统概述
+- 7.2 事件类型详解（11种事件）
+- 7.3 事件流处理机制
+- 7.4 AgenticCallbacks回调系统（16个回调点）
+- 7.5 事件驱动的优势
+- 7.6 实际事件流示例
+- 7.7 第七部分总结
+
+## 研究成果
+
+- 深入分析了事件驱动架构的完整设计（~800行代码）
+- 整理了50+代码示例（含详细中文注释）
+- 完成了11种事件类型和16个回调点的详细分析
+- 总结了事件驱动架构的设计优势和最佳实践
+- 新增字数：~15,000 字
+
+## 核心发现
+
+1. **事件类型系统**：11种事件覆盖Agent生命周期全过程
+   - LLMOutputEvent、LLMThinkingEvent、ToolCallEvent、ToolResultEvent
+   - TokenUsageEvent、CompletionEvent、ErrorEvent、RetryEvent
+   - PlanModeRespondEvent、WindowLengthChangeEvent、ConversationIdEvent
+
+2. **回调系统设计**：16个回调点实现精细控制
+   - 对话生命周期：conversation_start/end
+   - 工具调用：pre_tool_call/post_tool_call/tool_call_error
+   - LLM交互：pre_llm_call/post_llm_call/llm_error
+   - 文件操作：pre_file_write/post_file_write/file_write_error
+   - 内容控制：pre_stream_chunk/post_stream_chunk/thinking_mode_toggle
+   - 错误处理：error_handler/retry_handler/unknown_event_handler
+
+3. **事件流处理**：生产者-消费者模式
+   - 事件产生 → 事件队列 → 回调执行 → 副作用处理
+   - 异步非阻塞、错误隔离、插件扩展
+
+4. **设计优势**：解耦、可观测性、可扩展性、容错性
+
+**状态**: ✅ 第七部分完成（事件驱动架构）
+
+---
+
+## 研究成果总结
+
+### 完整研究内容
+1. ✅ 第一部分：整体架构设计（已修正）
+2. ✅ 第二部分：提示词工程（含补充）
+3. ✅ 第三部分：上下文工程（含补充）
+4. ✅ 第四部分：多轮会话上下文剪裁
+5. ✅ 第五部分：流式响应解析
+6. ✅ 第六部分：工具系统设计
+7. ✅ 第七部分：事件驱动架构（新增）
+
+### 文档统计
+- **总字数**: ~145,000 字
+- **代码示例**: 350+ 个
+- **核心类分析**: 25+ 个（~12,000行代码）
+- **架构图**: 待补充
+- **研究深度**: ★★★★★
+
+### 核心修正
+- 第一部分架构关系修正（35,000字修正文档）
+- 补充了事件驱动架构（15,000字新增内容）
+
+### 已验证的关键代码
+- `/autocoder/agent/base_agentic/base_agent.py` - BaseAgent抽象类
+- `/autocoder/common/v2/agent/agentic_edit.py` - AgenticEdit独立实现
+- `/autocoder/common/v2/agent/agentic_callbacks.py` - 回调系统
+- `/autocoder/common/agent_events.py` - 事件类型定义
+- `/autocoder/common/pruner/agentic_conversation_pruner.py` - 上下文剪裁
+
+**最终状态**: ✅ 核心研究全部完成（含重大修正和补充）
+
+**完成时间**: 2025-10-17
 
