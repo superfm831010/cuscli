@@ -16,6 +16,7 @@ Git 远程仓库管理模块
 
 import os
 import re
+import subprocess
 from typing import Dict, List, Optional, Tuple, Any
 from urllib.parse import urlparse, urlunparse
 from pathlib import Path
@@ -184,13 +185,72 @@ class GitRepoManager:
                 logger.debug("已禁用交互式提示（使用 token 认证）")
 
             # 使用 GitPython 克隆仓库
-            # 注意：GitPython 会继承当前进程的环境变量和 Git 配置
-            repo = Repo.clone_from(
-                repo_url,
-                target_dir,
-                env=env,
-                multi_options=[f'-c {k}={v}' for k, v in git_config.items()] if git_config else None
-            )
+            # 注意：GitPython 会继承当前进程的环境变量
+            # 由于 GitPython 的安全限制，我们不能直接使用 -c 选项
+            # 改用环境变量方式传递 Git 配置
+            if git_config:
+                for key, value in git_config.items():
+                    # 将 Git 配置转换为环境变量
+                    # 例如: credential.helper -> GIT_CONFIG_KEY_0=credential.helper, GIT_CONFIG_VALUE_0=cache
+                    # 但更简单的方法是使用 subprocess 直接调用 git clone
+                    pass
+
+            # 方案：如果需要凭证助手，使用 subprocess 调用 git clone
+            # 否则使用 GitPython
+            if use_credential_helper:
+                logger.info("使用 subprocess 调用 git clone（支持交互式认证）")
+
+                # 构建 git clone 命令
+                cmd = ['git', 'clone', repo_url, target_dir]
+
+                # 添加 Git 配置
+                for key, value in git_config.items():
+                    cmd.insert(1, '-c')
+                    cmd.insert(2, f'{key}={value}')
+
+                # 执行 git clone
+                result = subprocess.run(
+                    cmd,
+                    env=env,
+                    capture_output=True,
+                    text=True
+                )
+
+                if result.returncode != 0:
+                    # 克隆失败，解析错误信息
+                    error_msg = result.stderr or result.stdout or "Unknown error"
+
+                    if "Authentication failed" in error_msg or "could not read Username" in error_msg:
+                        raise RuntimeError(
+                            f"克隆失败：认证错误\n"
+                            f"请检查：\n"
+                            f"1. 仓库 URL 是否正确\n"
+                            f"2. 输入的账号密码是否正确\n"
+                            f"3. 是否有权限访问该仓库\n"
+                            f"提示：可使用 '/git /config' 命令配置 token 以避免每次输入"
+                        )
+                    elif "Repository not found" in error_msg:
+                        raise RuntimeError(
+                            f"克隆失败：仓库不存在\n"
+                            f"请检查仓库 URL 是否正确"
+                        )
+                    elif "Could not resolve host" in error_msg:
+                        raise RuntimeError(
+                            f"克隆失败：网络错误\n"
+                            f"请检查网络连接和仓库 URL"
+                        )
+                    else:
+                        raise RuntimeError(f"克隆仓库失败: {error_msg}")
+
+                # 加载克隆好的仓库
+                repo = Repo(target_dir)
+            else:
+                # 使用 GitPython 克隆（已有 token，不需要交互）
+                repo = Repo.clone_from(
+                    repo_url,
+                    target_dir,
+                    env=env
+                )
 
             logger.info(f"克隆完成: {target_dir}")
             return repo
