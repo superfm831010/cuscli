@@ -296,10 +296,17 @@ if [ "$VERBOSE" = true ]; then
 else
     # 简洁模式：显示关键步骤，隐藏详细输出
     print_info "正在编译 Python 源代码..."
-    $PYTHON_CMD setup.py bdist_wheel 2>&1 | grep -E "(running|creating|copying|writing|adding)" | while read line; do
+    # 使用临时文件保存构建输出和退出状态
+    BUILD_OUTPUT=$(mktemp)
+    set +e  # 临时禁用 set -e
+    $PYTHON_CMD setup.py bdist_wheel > "$BUILD_OUTPUT" 2>&1
+    BUILD_RESULT=$?
+    set -e  # 重新启用 set -e
+    # 过滤并显示关键步骤
+    grep -E "(running|creating|copying|writing|adding)" "$BUILD_OUTPUT" | while read line; do
         echo "  ${CYAN}→${NC} $line"
     done
-    BUILD_RESULT=${PIPESTATUS[0]}
+    rm -f "$BUILD_OUTPUT"
 fi
 
 if [ $BUILD_RESULT -ne 0 ]; then
