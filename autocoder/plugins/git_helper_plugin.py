@@ -76,7 +76,7 @@ class GitHelperPlugin(Plugin):
     """Git helper plugin for the Chat Auto Coder."""
 
     name = "git_helper"
-    description = "Git helper plugin providing Git commands and status"
+    description = "Git 辅助工具，提供 Git 命令和状态查询"
     version = "0.1.0"
 
     # 需要动态补全的命令列表

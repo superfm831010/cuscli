@@ -894,7 +894,7 @@ class PluginManager:
             print("\033[1;34mLoaded Plugins:\033[0m", file=output)
             for plugin_id, plugin in self.plugins.items():
                 print(
-                    f"  - {plugin.name} (v{plugin.version}): {plugin.description}",
+                    f"  - {plugin.description}",
                     file=output,
                 )
 
