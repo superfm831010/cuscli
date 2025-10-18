@@ -1350,7 +1350,7 @@ async def run_app():
     if plugin_manager.plugins:
         print(f"\033[1;34m{get_message('loaded_plugins_title')}\033[0m")
         for name, plugin in plugin_manager.plugins.items():
-            print(f"  - {name} (v{plugin.version}): {plugin.description}")
+            print(f"  - {plugin.description}")
         print()
 
     # 显示模型能力要求警告（醒目格式）
