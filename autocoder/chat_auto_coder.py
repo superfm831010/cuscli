@@ -1214,6 +1214,17 @@ async def run_app():
     # 注册粘贴处理器
     register_paste_handler(kb)
 
+    # 多行输入模式下的键绑定
+    # Enter键：提交输入（而不是换行）
+    @kb.add("enter")
+    def _(event):
+        event.current_buffer.validate_and_handle()
+
+    # Alt+Enter：插入换行符（而不是提交）
+    @kb.add("escape", "enter")  # Alt+Enter在终端中通常被解析为Escape+Enter
+    def _(event):
+        event.current_buffer.insert_text('\n')
+
     # 应用插件的键盘绑定
     plugin_manager.apply_keybindings(kb)
 
@@ -1255,7 +1266,7 @@ async def run_app():
             # 静默处理异常，不影响底部工具栏的显示
             pass
 
-        return f"Current Dir: {pwd} \n模式: {MODES[mode]}(ctrl+k切换) | {plugin_info}{async_tasks_info}"
+        return f"[Enter]=提交 [Alt+Enter]=换行 | Current Dir: {pwd} \n模式: {MODES[mode]}(ctrl+k切换) | {plugin_info}{async_tasks_info}"
 
     # 创建增强补全器
     enhanced_completer = EnhancedCompleter(completer, plugin_manager)
@@ -1275,6 +1286,8 @@ async def run_app():
         complete_while_typing=False,
         key_bindings=kb,
         bottom_toolbar=get_bottom_toolbar,
+        multiline=True,  # 启用多行输入模式
+        prompt_continuation=lambda width, line_number, is_soft_wrap: "... ",  # 续行提示符
         # 注意：bracketed paste 通过 Keys.BracketedPaste 键绑定处理
     )
 
