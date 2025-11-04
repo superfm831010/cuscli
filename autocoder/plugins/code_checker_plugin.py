@@ -21,6 +21,7 @@ from autocoder.plugins import Plugin, PluginManager
 from loguru import logger
 from autocoder.checker.git_helper import GitFileHelper, TempFileManager
 from autocoder.checker.types import GitInfo
+from autocoder.common.llm_error_handler import handle_llm_error, get_error_handler
 
 
 class CodeCheckerPlugin(Plugin):
@@ -1231,7 +1232,28 @@ Git 引用格式 (commit/diff 命令支持):
                 print(f"   错误: {result.error_message}")
 
         except Exception as e:
-            print(f"❌ 检查过程出错: {e}")
+            # 使用友好的错误处理器
+            error_handler = get_error_handler()
+            error_type = error_handler.classify_error(e)
+
+            # 根据错误类型显示不同的提示
+            if 'llm' in str(e).lower() or 'model' in str(e).lower() or 'api' in str(e).lower():
+                # LLM 相关错误，显示详细的错误信息
+                print()
+                error_handler.display_error_rich(
+                    e,
+                    model_name=getattr(self.checker, 'model_name', None) if hasattr(self, 'checker') else None
+                )
+            else:
+                # 其他错误，显示简洁提示
+                print()
+                print(f"❌ 检查过程出错: {e}")
+                print()
+                print("💡 排查建议:")
+                print("   1. 检查配置文件是否正确")
+                print("   2. 确认文件路径和权限")
+                print(f"   3. 查看详细日志: .auto-coder/logs/auto-coder.log")
+
             logger.error(f"检查文件失败: {e}", exc_info=True)
 
     def _check_folder(self, args: str) -> None:
@@ -1536,7 +1558,28 @@ Git 引用格式 (commit/diff 命令支持):
                 logger.info(f"任务日志已停止: {check_id}")
 
         except Exception as e:
-            print(f"❌ 检查过程出错: {e}")
+            # 使用友好的错误处理器
+            error_handler = get_error_handler()
+            error_type = error_handler.classify_error(e)
+
+            # 根据错误类型显示不同的提示
+            if 'llm' in str(e).lower() or 'model' in str(e).lower() or 'api' in str(e).lower():
+                # LLM 相关错误，显示详细的错误信息
+                print()
+                error_handler.display_error_rich(
+                    e,
+                    model_name=getattr(self.checker, 'model_name', None) if hasattr(self, 'checker') else None
+                )
+            else:
+                # 其他错误，显示简洁提示
+                print()
+                print(f"❌ 检查过程出错: {e}")
+                print()
+                print("💡 排查建议:")
+                print("   1. 检查配置文件是否正确")
+                print("   2. 确认目录路径和权限")
+                print(f"   3. 查看详细日志: .auto-coder/logs/auto-coder.log")
+
             logger.error(f"检查目录失败: {e}", exc_info=True)
 
             # 如果创建了检查记录，标记为失败

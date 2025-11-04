@@ -28,6 +28,7 @@ from autocoder.checker.types import (
 )
 from autocoder.checker.rules_loader import RulesLoader
 from autocoder.checker.file_processor import FileProcessor
+from autocoder.common.llm_error_handler import handle_llm_error
 from autocoder.checker.progress_tracker import ProgressTracker
 from autocoder.auto_coder import AutoCoderArgs
 from autocoder.common.buildin_tokenizer import BuildinTokenizer
@@ -845,12 +846,25 @@ class CodeChecker:
                             )
                         continue
                     except Exception as e:
-                        logger.error(
-                            "LLM 调用失败: %s (attempt %s/%s)",
+                        # 使用友好的错误处理器记录详细信息
+                        error_type = handle_llm_error(
                             e,
+                            model_name=getattr(self.llm, 'model_name', 'unknown'),
+                            display=False,  # 不在此处显示，让插件统一处理
+                            log=True,
+                            context={
+                                "attempt": f"{attempt + 1}/{attempts}",
+                                "file": getattr(self, '_current_check_file', 'unknown'),
+                                "chunk": chunk.chunk_id if hasattr(chunk, 'chunk_id') else 'unknown'
+                            }
+                        )
+
+                        logger.error(
+                            "LLM 调用失败 [类型: %s]: %s (attempt %s/%s)",
+                            error_type,
+                            str(e)[:100],
                             attempt + 1,
-                            attempts,
-                            exc_info=True,
+                            attempts
                         )
                         attempt_results.append([])
 
@@ -860,7 +874,8 @@ class CodeChecker:
                                 step="llm_call_end",
                                 attempt=attempt + 1,
                                 duration=time.time() - llm_start_time,
-                                issues_found=0
+                                issues_found=0,
+                                error_type=error_type  # 传递错误类型
                             )
                         continue
 
@@ -946,11 +961,33 @@ class CodeChecker:
             duration = (end_time - start_time).total_seconds()
             logger.debug(f"LLM 调用完成，耗时: {duration:.2f}秒")
 
+            # 检查响应是否为空
+            if not response or (isinstance(response, list) and len(response) == 0):
+                error_msg = "LLM 返回了空响应"
+                logger.error(error_msg)
+                handle_llm_error(
+                    Exception(error_msg),
+                    model_name=getattr(self.llm, 'model_name', 'unknown'),
+                    display=False,  # 不在终端显示，因为在 checker 中
+                    log=True,
+                    context={"duration": f"{duration:.2f}秒", "config": llm_config}
+                )
+                # 返回 None 让上层处理
+                return None
+
             return response
         except Exception as e:
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
-            logger.error(f"LLM 调用异常（耗时 {duration:.2f}秒）: {e}", exc_info=True)
+
+            # 使用友好的错误处理器
+            handle_llm_error(
+                e,
+                model_name=getattr(self.llm, 'model_name', 'unknown'),
+                display=False,  # 不在终端显示，因为在 checker 中会有统一的错误提示
+                log=True,  # 记录到日志文件
+                context={"duration": f"{duration:.2f}秒", "config": llm_config}
+            )
             raise
 
     def _merge_duplicate_issues(self, issues: List[Issue]) -> List[Issue]:
