@@ -1,144 +1,178 @@
 ---
-description: "海关应用云平台开发规范规则索引"
+description: "海关开发规范规则索引，提供规则体系总览和使用指南"
 alwaysApply: true
 ---
 
-# 海关应用云平台开发规范规则索引
+# 海关开发规范规则索引
 
-本目录包含海关应用云平台的全套开发规范规则，基于《海关应用云平台开发规范文档集合》整理。
+## 规则体系概述
 
-## 规则分类概览
+本规则体系基于海关总署开发规范，来源于caps目录下的规范文档：
+- backend_rules修订版.xlsx（52条后端规则）
+- frontend_rules修订版.xlsx（110条前端规则）
+- 海关集中式事务型数据库设计规范.docx
 
-### 00-命名规范类（Always Applied）
+规则分为后端和前端两大类别，涵盖架构、安全、代码质量、UI设计等多个维度。
 
-这些规则总是生效，确保代码命名的一致性：
+## 后端规则文件（7个）
 
-1. [Package命名规范](./00-naming/package-naming.md) - Package统一采用"cn.gov.customs."+系统名格式
-2. [URL命名规范](./00-naming/url-naming.md) - URL统一使用小写字母和中划线
-3. [微服务命名规范](./00-naming/microservice-naming.md) - 格式为"项目缩写-主要功能-服务类型"
-4. [类命名规范](./00-naming/class-naming.md) - Pascal命名方式
-5. [方法与变量命名规范](./00-naming/method-variable-naming.md) - Camel命名方式
+### 总是应用的规则（alwaysApply: true）
 
-### 01-数据库规范类（Mixed）
+#### 1. backend/customs-specific.md - 海关特定技术规范
+- **用途**: CACP父依赖、核心依赖、数据源配置要求
+- **规则数量**: 3条（backend_001-003）
+- **适用**: 所有海关信息化应用项目
+- **依据**: backend_rules修订版.xlsx 第2-4行
 
-适用于数据库相关开发：
+#### 2. backend/architecture.md - 架构和代码结构规范
+- **用途**: 项目结构、代码复杂度、设计原则、编码规范
+- **规则数量**: 17条（backend_004, 007-022）
+- **适用**: 所有Java/Python后端代码
+- **依据**: backend_rules修订版.xlsx 第5-21行
 
-6. [数据库禁止事项](./01-database/database-constraints.md) ⭐ **Always Applied** - **禁止外键、触发器、DBLINK**
-7. [数据库设计规范](./01-database/database-design.md) - 字段类型、索引、约束设计
-8. [数据库命名规范](./01-database/database-naming.md) - 表名、字段名、索引命名规则
-9. [必需字段规范](./01-database/database-fields.md) - REC_VERSION, REC_CREATE_TIME等必需字段
+#### 3. backend/security.md - 安全规范
+- **用途**: XSS防护、空指针防护、敏感信息保护、缓存安全
+- **规则数量**: 15条（backend_023, 027-036, 060-063）
+- **适用**: 所有后端代码
+- **依据**: backend_rules修订版.xlsx 第22行, 26-36行, 50-53行
 
-### 02-Java开发规范类（Mixed）
+#### 4. backend/exception.md - 异常处理规范
+- **用途**: 异常封装、日志记录
+- **规则数量**: 3条（backend_024-026）
+- **适用**: 所有异常处理场景
+- **依据**: backend_rules修订版.xlsx 第23-25行
 
-Java开发的核心规范：
+#### 5. backend/logging.md - 日志规范
+- **用途**: 日志级别、内容要求
+- **规则数量**: 3条（backend_037-039）
+- **适用**: 所有日志记录场景
+- **依据**: backend_rules修订版.xlsx 第36-38行
 
-10. [Java基础规范](./02-java/java-basic.md) ⭐ **Always Applied** - JDK8+, 禁止Date类等基础要求
-11. [Java代码格式规范](./02-java/java-formatting.md) - 缩进、空格、换行规则
-12. [异常处理规范](./02-java/java-exception.md) - 异常抛出和捕获规则
-13. [事务处理规范](./02-java/java-transaction.md) - 使用注解，避免XML配置
-14. [日志记录规范](./02-java/java-logging.md) - 使用Slf4j，@Slf4j注解
+### 条件应用的规则（alwaysApply: false）
 
-### 03-前端开发规范类（Conditional）
+#### 6. backend/api.md - 接口设计规范
+- **用途**: URL命名、HTTP方法、参数设计
+- **规则数量**: 3条（backend_040-042）
+- **适用**: Web服务接口开发
+- **依据**: backend_rules修订版.xlsx 第39-41行
 
-前端开发规范：
+#### 7. backend/database.md - 数据库规范
+- **用途**: 表设计、SQL编写、事务管理
+- **规则数量**: 8条规则 + 数据库设计规范要点
+- **适用**: 涉及数据库操作的代码
+- **依据**: backend_rules修订版.xlsx 第42-49行 + 海关集中式事务型数据库设计规范.docx
 
-15. [JavaScript基础规范](./03-frontend/js-basic.md) - ES6+, 驼峰命名等
-16. [Vue开发规范](./03-frontend/vue-spec.md) - 组件、指令使用规则
-17. [UI界面规范](./03-frontend/ui-spec.md) - ElementUI栅格、图标使用
+## 前端规则文件（4个）
 
-### 04-平台集成规范类（Conditional）
+### 总是应用的规则（alwaysApply: true）
 
-海关平台系统集成规范：
+#### 1. frontend/architecture.md - 架构和代码结构规范
+- **用途**: 统一入口、技术栈、组件设计、异常处理、安全规范
+- **规则数量**: 38条（frontend_001-019, 087-109）
+- **适用**: 所有Vue前端项目
+- **依据**: frontend_rules修订版.xlsx 第2-20行, 88-109行
 
-18. [H4A集成规范](./04-platform/h4a-integration.md) - 身份认证、授权管理
-19. [HEPS事件通知规范](./04-platform/heps-usage.md) - 事件通知场景和限制
-20. [HEAI数据交换规范](./04-platform/heai-exchange.md) - 结构化/非结构化数据交换
-21. [统一门户集成规范](./04-platform/portal-integration.md) - 署级应用须集成统一门户
+#### 2. frontend/ui-standards.md - UI标准规范
+- **用途**: Loading效果、圆角、阴影、字体、颜色（海关蓝、政务红）
+- **规则数量**: 47条（frontend_020-022, 027-070）
+- **适用**: 所有前端UI开发
+- **依据**: frontend_rules修订版.xlsx 第21-23行, 28-71行
 
-### 05-数据存储规范类（Conditional）
+### 条件应用的规则（alwaysApply: false）
 
-文件和数据交换规范：
+#### 3. frontend/layout.md - 布局规范
+- **用途**: 查询区、按钮区、表格区布局，边距规范
+- **规则数量**: 13条（frontend_023-026, 071-078, 086）
+- **适用**: 列表页、详情页、表单页布局
+- **依据**: frontend_rules修订版.xlsx 第24-27行, 72-79行, 87行
 
-22. [文件存储规范](./05-data/file-storage.md) - SMB/NFS协议，文件命名，目录划分
-23. [结构化报文规范](./05-data/structural-exchange.md) - W3C报文设计规范
-24. [非结构化报文规范](./05-data/unstructural-exchange.md) - 非结构化数据交换格式
+#### 4. frontend/component.md - 组件规范
+- **用途**: 按钮设计、图片资源、图标、空状态
+- **规则数量**: 10条（frontend_079-086, 110-112）
+- **适用**: 列表、表格、详情页组件开发
+- **依据**: frontend_rules修订版.xlsx 第80-87行, 109-112行
 
-### 06-项目管理规范类（Conditional）
+## 规则优先级说明
 
-应用项目管理规范：
+### P0级（必须遵守，alwaysApply: true）
 
-25. [应用备案规范](./06-management/application-registration.md) - 4位项目缩写规则
-26. [YML配置规范](./06-management/yml-config.md) - 自定义配置统一在项目短编码下
-27. [jar包发布规范](./06-management/jar-deploy.md) - jar包发布流程和要求
+**后端：**
+1. backend/customs-specific.md - 海关平台强制要求
+2. backend/security.md - 安全规范
+3. backend/architecture.md - 架构基础
+4. backend/exception.md - 异常处理
+5. backend/logging.md - 日志规范
 
-## 快速使用指南
+**前端：**
+1. frontend/architecture.md - 架构和代码质量基础
+2. frontend/ui-standards.md - 视觉统一性
 
-### 对于新项目
+### P1级（按需应用，alwaysApply: false）
 
-1. 首先阅读 **Always Applied** 标记的规则（必须遵守）
-2. 根据技术栈选择对应的规范类别
-3. 关注数据库、平台集成等特定场景的规范
+**后端：**
+1. backend/api.md - 仅Web服务项目
+2. backend/database.md - 仅数据库操作场景
 
-### 对于现有项目
+**前端：**
+1. frontend/layout.md - 仅页面布局设计
+2. frontend/component.md - 仅组件开发场景
 
-1. 优先检查命名规范和Java基础规范
-2. 逐步迁移到符合规范的实现
-3. 特别注意禁止事项（外键、触发器等）
+## 使用建议
 
-## 重要禁止事项速查
+### 新项目
 
-### 数据库
+1. **后端项目**：
+   - 必须遵守：customs-specific, security, architecture, exception, logging
+   - 根据类型选择：Web服务加载api.md，数据库应用加载database.md
 
-- ❌ **禁止外键**
-- ❌ **禁止触发器**
-- ❌ **禁止DBLINK**
-- ❌ **禁止程序执行DDL**
-- ❌ **禁止使用BLOB/CLOB/TEXT大字段**（除非严格评估）
+2. **前端项目**：
+   - 必须遵守：architecture, ui-standards
+   - 根据开发内容选择：布局设计加载layout.md，组件开发加载component.md
 
-### Java
+### 现有项目改造
 
-- ❌ **禁止使用 java.util.Date**（使用LocalDate/LocalDateTime）
-- ❌ **禁止随意引入第三方库**
-- ❌ **禁止完全不规范的缩写**
-- ❌ **禁止使用游标**
-- ❌ **禁止直接使用System.out输出日志**
+1. 优先应用P0级规则（alwaysApply: true）
+2. 逐步完善P1级规则（alwaysApply: false）
+3. 重点关注安全规范和海关特定规范
 
-### 前端
+### Vibecoding使用提示
 
-- ❌ **禁止提交node_modules和dist目录**
-- ❌ **禁止使用ElementUI图标组件**（使用Font Awesome）
+在使用auto-coder进行vibecoding（AI代码生成）时：
 
-## 开发基础要求
+1. **后端开发**：
+   - Java项目必须使用CACP平台依赖
+   - 注意安全编码（SQL注入、XSS、空指针等）
+   - 遵循分层架构（Controller-Service-DAO）
+   - 使用统一异常处理和日志记录
 
-### 技术栈
+2. **前端开发**：
+   - 使用Vue3 + TypeScript + ElementPlus技术栈
+   - 严格遵守海关蓝/政务红色系规范
+   - 字体大小按标准版/关怀版区分
+   - 边距遵循4的倍数（外边距）和5的倍数（内边距）
 
-- **后端**: Java (JDK8+) + Spring Boot + 平台SDK
-- **前端**: Vue2 + ElementUI + axios + 平台脚手架
-- **数据库**: Oracle/SQL Server
-- **架构**: 前后端分离 + 微服务
+3. **数据库设计**：
+   - 表名包含应用简称，遵循命名规范
+   - 必备字段：REC_VERSION、REC_CREATE_TIME、REC_LAST_UPDATE_TIME
+   - 主键有业务含义
+   - 数据量大的表考虑分区设计
 
-### 命名约定
+## 规则文件更新
 
-- **Package**: `cn.gov.customs.系统名.子项目名`
-- **URL**: 小写字母+中划线分割
-- **微服务**: `项目缩写-功能描述-服务类型`
-- **类**: Pascal命名（DataFile, InfoParser）
-- **方法/变量**: Camel命名（checkEntry, inputFileSize）
+本规则体系基于以下文档创建：
+- backend_rules修订版.xlsx（52条规则）
+- frontend_rules修订版.xlsx（110条规则）
+- 海关集中式事务型数据库设计规范.docx
 
-### 必需技术字段
+如需更新规则，请：
+1. 修改caps目录下的源文档
+2. 重新提取规则条款
+3. 更新对应的.md规则文件
+4. 更新本index.md索引
 
-所有数据表必须包含以下字段：
+## 联系方式
 
-- **REC_VERSION**: 整数，默认0，记录版本号
-- **REC_CREATE_TIME**: 带时间的日期，记录创建时间
-- **REC_LAST_UPDATE_TIME**: 带时间的日期，最后更新时间
-
-## 规范优先级说明
-
-- **【强制】**: 必须满足，违反是原则性错误
-- **【推荐】**: 在特定条件下可忽视，但需双方约定
-- **【参考】**: 可选，需项目管理人员约定
-
-## 更新日志
-
-- **2025-11-10**: 基于 cacp-docs 初始化规则文件
+规则相关问题请参考：
+- 海关总署开发规范文档
+- 技术中心架构组
+- 项目组技术负责人
