@@ -1,178 +1,251 @@
 ---
-description: "海关开发规范规则索引，提供规则体系总览和使用指南"
+description: "海关信息系统开发规范 - Vibecoding最佳实践指导"
 alwaysApply: true
 ---
 
-# 海关开发规范规则索引
+# 海关开发规范Rules系统
 
-## 规则体系概述
+本规范基于海关信息系统开发标准，为AI代码生成提供最佳实践指导。规范覆盖164条规则（53条后端+111条前端）和完整的数据库设计规范。
 
-本规则体系基于海关总署开发规范，来源于caps目录下的规范文档：
-- backend_rules修订版.xlsx（52条后端规则）
-- frontend_rules修订版.xlsx（110条前端规则）
-- 海关集中式事务型数据库设计规范.docx
+## 📚 规则体系结构
 
-规则分为后端和前端两大类别，涵盖架构、安全、代码质量、UI设计等多个维度。
+### 🔴 P0级规则（总是应用）
 
-## 后端规则文件（7个）
+这些规则在所有代码生成场景中自动应用：
 
-### 总是应用的规则（alwaysApply: true）
+#### 后端规则
+- [backend/01-project-setup.md](./backend/01-project-setup.md) - **项目搭建场景**
+  - CACP父依赖配置、目录结构、字符集统一
+- [backend/06-exception-handling.md](./backend/06-exception-handling.md) - **异常处理场景**
+  - BizException封装、异常日志记录、全局异常处理
+- [backend/07-logging.md](./backend/07-logging.md) - **日志记录场景**
+  - 日志级别、日志内容、审计日志规范
+- [backend/08-security.md](./backend/08-security.md) - **安全防护场景**
+  - XSS防护、SQL注入防护、敏感信息脱敏、Redis安全
 
-#### 1. backend/customs-specific.md - 海关特定技术规范
-- **用途**: CACP父依赖、核心依赖、数据源配置要求
-- **规则数量**: 3条（backend_001-003）
-- **适用**: 所有海关信息化应用项目
-- **依据**: backend_rules修订版.xlsx 第2-4行
+#### 前端规则
+- [frontend/01-project-setup.md](./frontend/01-project-setup.md) - **前端项目搭建场景**
+  - Vue3+Vite+TypeScript+ElementPlus技术栈、统一入口集成
+- [frontend/05-ui-styling.md](./frontend/05-ui-styling.md) - **UI样式规范场景**
+  - 海关蓝/政务红主题色、字体、圆角、间距统一
 
-#### 2. backend/architecture.md - 架构和代码结构规范
-- **用途**: 项目结构、代码复杂度、设计原则、编码规范
-- **规则数量**: 17条（backend_004, 007-022）
-- **适用**: 所有Java/Python后端代码
-- **依据**: backend_rules修订版.xlsx 第5-21行
+---
 
-#### 3. backend/security.md - 安全规范
-- **用途**: XSS防护、空指针防护、敏感信息保护、缓存安全
-- **规则数量**: 15条（backend_023, 027-036, 060-063）
-- **适用**: 所有后端代码
-- **依据**: backend_rules修订版.xlsx 第22行, 26-36行, 50-53行
+### 🟡 P1级规则（按需应用）
 
-#### 4. backend/exception.md - 异常处理规范
-- **用途**: 异常封装、日志记录
-- **规则数量**: 3条（backend_024-026）
-- **适用**: 所有异常处理场景
-- **依据**: backend_rules修订版.xlsx 第23-25行
+这些规则根据文件路径（globs模式）自动匹配应用：
 
-#### 5. backend/logging.md - 日志规范
-- **用途**: 日志级别、内容要求
-- **规则数量**: 3条（backend_037-039）
-- **适用**: 所有日志记录场景
-- **依据**: backend_rules修订版.xlsx 第36-38行
+#### 后端规则
+- [backend/02-api-development.md](./backend/02-api-development.md) - **API开发场景**
+  - RESTful API设计、Controller开发、HTTP方法规范
+  - 适用文件：`**/*Controller.java`, `**/controller/**/*.java`, `**/api/**/*.java`
 
-### 条件应用的规则（alwaysApply: false）
+- [backend/03-database-design.md](./backend/03-database-design.md) - **数据库设计场景** ⭐重点
+  - 表结构设计、字段定义、索引设计、命名规范
+  - 必备字段（REC_VERSION、REC_CREATE_TIME、REC_LAST_UPDATE_TIME）
+  - 分区设计、数据清理、约束设计
+  - 适用文件：`**/*Mapper.xml`, `**/*Dao.java`, `**/*Entity.java`, `**/sql/**/*.sql`
 
-#### 6. backend/api.md - 接口设计规范
-- **用途**: URL命名、HTTP方法、参数设计
-- **规则数量**: 3条（backend_040-042）
-- **适用**: Web服务接口开发
-- **依据**: backend_rules修订版.xlsx 第39-41行
+- [backend/04-database-operations.md](./backend/04-database-operations.md) - **数据库操作场景**
+  - SQL编写、批量操作、事务管理、性能优化
+  - 适用文件：`**/*Mapper.xml`, `**/*Dao.java`, `**/*Service*.java`
 
-#### 7. backend/database.md - 数据库规范
-- **用途**: 表设计、SQL编写、事务管理
-- **规则数量**: 8条规则 + 数据库设计规范要点
-- **适用**: 涉及数据库操作的代码
-- **依据**: backend_rules修订版.xlsx 第42-49行 + 海关集中式事务型数据库设计规范.docx
+- [backend/05-business-logic.md](./backend/05-business-logic.md) - **业务逻辑开发场景**
+  - Service层开发、单一职责、方法行数≤30行、DRY原则
+  - 适用文件：`**/*Service.java`, `**/*ServiceImpl.java`, `**/service/**/*.java`
 
-## 前端规则文件（4个）
+- [backend/09-code-quality.md](./backend/09-code-quality.md) - **代码质量场景**
+  - 命名规范、注释规范、工具类选择、禁止使用Date类
+  - 适用文件：`**/*.java`
 
-### 总是应用的规则（alwaysApply: true）
+#### 前端规则
+- [frontend/02-list-page-development.md](./frontend/02-list-page-development.md) - **列表页开发场景**
+  - 查询区、按钮区、表格区布局、分页组件
+  - 适用文件：`**/views/**/*.vue`, `**/pages/**/*.vue`
 
-#### 1. frontend/architecture.md - 架构和代码结构规范
-- **用途**: 统一入口、技术栈、组件设计、异常处理、安全规范
-- **规则数量**: 38条（frontend_001-019, 087-109）
-- **适用**: 所有Vue前端项目
-- **依据**: frontend_rules修订版.xlsx 第2-20行, 88-109行
+- [frontend/03-form-page-development.md](./frontend/03-form-page-development.md) - **表单页开发场景**
+  - 表单布局、验证规则、提交处理
+  - 适用文件：`**/views/**/*.vue`
 
-#### 2. frontend/ui-standards.md - UI标准规范
-- **用途**: Loading效果、圆角、阴影、字体、颜色（海关蓝、政务红）
-- **规则数量**: 47条（frontend_020-022, 027-070）
-- **适用**: 所有前端UI开发
-- **依据**: frontend_rules修订版.xlsx 第21-23行, 28-71行
+- [frontend/04-component-development.md](./frontend/04-component-development.md) - **组件开发场景**
+  - 组件拆分、命名规范、Props类型定义
+  - 适用文件：`**/components/**/*.vue`
 
-### 条件应用的规则（alwaysApply: false）
+- [frontend/06-user-interaction.md](./frontend/06-user-interaction.md) - **用户交互场景**
+  - Loading状态、错误处理、消息提示
+  - 适用文件：`**/*.vue`, `**/*.ts`
 
-#### 3. frontend/layout.md - 布局规范
-- **用途**: 查询区、按钮区、表格区布局，边距规范
-- **规则数量**: 13条（frontend_023-026, 071-078, 086）
-- **适用**: 列表页、详情页、表单页布局
-- **依据**: frontend_rules修订版.xlsx 第24-27行, 72-79行, 87行
+- [frontend/07-code-quality.md](./frontend/07-code-quality.md) - **前端代码质量场景**
+  - TypeScript类型定义、模板逻辑简化、命名规范
+  - 适用文件：`**/*.vue`, `**/*.ts`
 
-#### 4. frontend/component.md - 组件规范
-- **用途**: 按钮设计、图片资源、图标、空状态
-- **规则数量**: 10条（frontend_079-086, 110-112）
-- **适用**: 列表、表格、详情页组件开发
-- **依据**: frontend_rules修订版.xlsx 第80-87行, 109-112行
+---
 
-## 规则优先级说明
+## 🎯 快速查找指南
 
-### P0级（必须遵守，alwaysApply: true）
+### 按开发场景查找
 
-**后端：**
-1. backend/customs-specific.md - 海关平台强制要求
-2. backend/security.md - 安全规范
-3. backend/architecture.md - 架构基础
-4. backend/exception.md - 异常处理
-5. backend/logging.md - 日志规范
+| 场景 | 规则文件 |
+|------|---------|
+| **初始化Spring Boot项目** | backend/01-project-setup.md |
+| **开发REST接口** | backend/02-api-development.md |
+| **设计数据库表** | backend/03-database-design.md ⭐ |
+| **编写SQL查询** | backend/04-database-operations.md |
+| **开发Service业务逻辑** | backend/05-business-logic.md |
+| **处理异常** | backend/06-exception-handling.md |
+| **记录日志** | backend/07-logging.md |
+| **防范XSS/SQL注入** | backend/08-security.md |
+| **初始化Vue3项目** | frontend/01-project-setup.md |
+| **开发列表页** | frontend/02-list-page-development.md |
+| **开发表单页** | frontend/03-form-page-development.md |
+| **开发组件** | frontend/04-component-development.md |
+| **调整UI样式** | frontend/05-ui-styling.md |
+| **处理用户交互** | frontend/06-user-interaction.md |
 
-**前端：**
-1. frontend/architecture.md - 架构和代码质量基础
-2. frontend/ui-standards.md - 视觉统一性
+### 按技术栈查找
 
-### P1级（按需应用，alwaysApply: false）
+| 技术 | 规则文件 |
+|------|---------|
+| **Spring Boot** | backend/01-project-setup.md, backend/02-api-development.md |
+| **MyBatis** | backend/03-database-design.md, backend/04-database-operations.md |
+| **MySQL/Oracle** | backend/03-database-design.md |
+| **Redis** | backend/08-security.md（缓存安全） |
+| **Vue 3** | frontend/01-project-setup.md |
+| **TypeScript** | frontend/01-project-setup.md, frontend/07-code-quality.md |
+| **ElementPlus** | frontend/05-ui-styling.md |
 
-**后端：**
-1. backend/api.md - 仅Web服务项目
-2. backend/database.md - 仅数据库操作场景
+---
 
-**前端：**
-1. frontend/layout.md - 仅页面布局设计
-2. frontend/component.md - 仅组件开发场景
+## 💡 使用说明
 
-## 使用建议
+### 对于AI代码生成
 
-### 新项目
+1. **P0级规则自动应用**：无需指定，所有代码生成时自动遵守
+2. **P1级规则按文件匹配**：根据生成的文件路径自动应用对应规则
+3. **场景式引导**：描述开发场景时，AI自动加载相关规则
 
-1. **后端项目**：
-   - 必须遵守：customs-specific, security, architecture, exception, logging
-   - 根据类型选择：Web服务加载api.md，数据库应用加载database.md
+**示例**：
+```
+用户：创建一个用户管理REST接口，包括增删改查
+AI：自动应用以下规则：
+  - backend/01-project-setup.md（P0）
+  - backend/02-api-development.md（匹配*Controller.java）
+  - backend/03-database-design.md（涉及表设计）
+  - backend/06-exception-handling.md（P0）
+  - backend/07-logging.md（P0）
+  - backend/08-security.md（P0）
+```
 
-2. **前端项目**：
-   - 必须遵守：architecture, ui-standards
-   - 根据开发内容选择：布局设计加载layout.md，组件开发加载component.md
+### 对于开发者
 
-### 现有项目改造
+1. **项目初始化**：先阅读对应的01-project-setup.md
+2. **开发过程**：按场景查找对应规则文件
+3. **代码审查**：使用规则文件中的检查清单
+4. **问题排查**：参考规则文件中的错误示例和正确示例
 
-1. 优先应用P0级规则（alwaysApply: true）
-2. 逐步完善P1级规则（alwaysApply: false）
-3. 重点关注安全规范和海关特定规范
+---
 
-### Vibecoding使用提示
+## 📋 规范覆盖清单
 
-在使用auto-coder进行vibecoding（AI代码生成）时：
+### 后端规范（53条规则）
 
-1. **后端开发**：
-   - Java项目必须使用CACP平台依赖
-   - 注意安全编码（SQL注入、XSS、空指针等）
-   - 遵循分层架构（Controller-Service-DAO）
-   - 使用统一异常处理和日志记录
+| 类别 | 规则数 | 覆盖文件 |
+|------|--------|---------|
+| 海关平台特定 | 3条 | backend/01-project-setup.md |
+| 架构与代码结构 | 17条 | backend/05-business-logic.md, backend/09-code-quality.md |
+| 安全规范 | 15条 | backend/08-security.md |
+| 异常处理 | 3条 | backend/06-exception-handling.md |
+| 日志规范 | 3条 | backend/07-logging.md |
+| 接口设计 | 3条 | backend/02-api-development.md |
+| 数据库规范 | 9条 | backend/03-database-design.md, backend/04-database-operations.md |
 
-2. **前端开发**：
-   - 使用Vue3 + TypeScript + ElementPlus技术栈
-   - 严格遵守海关蓝/政务红色系规范
-   - 字体大小按标准版/关怀版区分
-   - 边距遵循4的倍数（外边距）和5的倍数（内边距）
+### 前端规范（111条规则）
 
-3. **数据库设计**：
-   - 表名包含应用简称，遵循命名规范
-   - 必备字段：REC_VERSION、REC_CREATE_TIME、REC_LAST_UPDATE_TIME
-   - 主键有业务含义
-   - 数据量大的表考虑分区设计
+| 类别 | 规则数 | 覆盖文件 |
+|------|--------|---------|
+| 架构与技术栈 | 19条 | frontend/01-project-setup.md, frontend/07-code-quality.md |
+| UI标准规范 | 47条 | frontend/05-ui-styling.md |
+| 布局规范 | 13条 | frontend/02-list-page-development.md, frontend/03-form-page-development.md |
+| 组件规范 | 10条 | frontend/04-component-development.md |
+| 代码质量与安全 | 22条 | frontend/06-user-interaction.md, frontend/07-code-quality.md |
 
-## 规则文件更新
+### 数据库设计规范（完整覆盖）
 
-本规则体系基于以下文档创建：
-- backend_rules修订版.xlsx（52条规则）
-- frontend_rules修订版.xlsx（110条规则）
-- 海关集中式事务型数据库设计规范.docx
+backend/03-database-design.md包含：
+- ✅ 命名规范（表、字段、索引、其他对象）
+- ✅ 表设计（主键、分区、必备字段、范式冗余、大对象、数据清理）
+- ✅ 字段设计（数据类型、NULL属性、字段注释）
+- ✅ 索引设计（合理建立索引、单列索引、组合索引）
+- ✅ 约束设计（性能、扩展性、安全性）
+- ✅ 设计文档要求（ER图、数据字典）
 
-如需更新规则，请：
-1. 修改caps目录下的源文档
-2. 重新提取规则条款
-3. 更新对应的.md规则文件
-4. 更新本index.md索引
+---
 
-## 联系方式
+## 🔍 规则示例
 
-规则相关问题请参考：
-- 海关总署开发规范文档
-- 技术中心架构组
-- 项目组技术负责人
+### 指令式规范
+
+```
+✅ 使用CACP父依赖和核心依赖
+✅ 方法行数限制在30行以内
+✅ 数据库表必须包含REC_VERSION、REC_CREATE_TIME、REC_LAST_UPDATE_TIME
+❌ 禁止使用Date类，使用LocalDateTime代替
+```
+
+### 场景式规范
+
+```
+## 场景：创建用户管理REST接口
+
+当开发CRUD接口时：
+- URL命名：使用小写+短横线，如 `/api/user-management`
+- HTTP方法：GET查询、POST新增/修改/删除
+- 删除和修改：必须携带rec_version实现乐观锁
+- Controller层：仅处理请求校验和响应封装
+- Service层：实现具体业务逻辑
+```
+
+### 约束式规范
+
+```
+❌ 禁止循环操作数据库
+错误示例：
+  for (User user : users) {
+    userDao.insert(user); // 每次循环都访问数据库
+  }
+
+正确示例：
+  userDao.batchInsert(users); // 使用批量操作
+```
+
+---
+
+## 🎨 规范特色
+
+1. **完整性** - 164条规则全覆盖，无遗漏
+2. **场景化** - 按开发场景组织，易查找
+3. **实战性** - 提供正确/错误代码示例
+4. **可检查** - 每个规则文件包含检查清单
+5. **分级管理** - P0/P1优先级，自动/按需应用
+6. **跨平台** - Windows和Linux兼容
+
+---
+
+## 📖 相关文档
+
+- **数据库设计规范**：backend/03-database-design.md
+- **海关开发规范源文件**：caps/backend_rules修订版.xlsx, caps/frontend_rules修订版.xlsx
+- **二次开发记录**：docs/二次开发记录.md（执行后更新）
+
+---
+
+## 🔄 版本信息
+
+- **创建日期**：2025-11-10
+- **规则来源**：海关信息系统开发规范（后端53条+前端111条+数据库设计规范）
+- **适用范围**：海关信息化应用集中式事务型系统
+- **维护方式**：通过Git版本管理
+
+---
+
+**使用建议**：AI代码生成时，无需手动指定规则文件，系统会根据场景和文件类型自动加载适用规则。开发者可随时查阅规则文件了解规范要求。

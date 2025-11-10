@@ -103,7 +103,6 @@ cython_debug/
 
 /actions/
 /output.txt
-.autocoderrules
 .autocodertools
 .autocodercommands
 .autocoderagents
