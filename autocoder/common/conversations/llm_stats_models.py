@@ -34,7 +34,8 @@ class LLMUsageStats(BaseModel):
     
     model_config = ConfigDict(
         extra="allow",  # 允许额外字段，以便支持未来扩展
-        validate_assignment=True  # 赋值时验证
+        validate_assignment=True,  # 赋值时验证
+        protected_namespaces=()  # 禁用保护命名空间检查，允许使用 model_name 等字段
     )
 
 
@@ -49,7 +50,8 @@ class LLMCacheInfo(BaseModel):
     
     model_config = ConfigDict(
         extra="allow",
-        validate_assignment=True
+        validate_assignment=True,
+        protected_namespaces=()  # 禁用保护命名空间检查
     )
 
 
@@ -72,7 +74,8 @@ class LLMCallMetadata(BaseModel):
     
     model_config = ConfigDict(
         extra="allow",
-        validate_assignment=True
+        validate_assignment=True,
+        protected_namespaces=()  # 禁用保护命名空间检查
     )
     
     def to_dict(self) -> Dict[str, Any]:

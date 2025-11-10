@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, ConfigDict
 from typing import Optional
 from pathlib import Path
 
@@ -24,8 +24,10 @@ class LLMModel(BaseModel):
     api_key: Optional[str] = Field(default=None, description="API密钥(内存中)")
     base_keys_dir: Optional[str] = Field(default=None, description="API密钥基础目录路径")
 
-    class Config:
-        validate_assignment = True
+    model_config = ConfigDict(
+        validate_assignment=True,
+        protected_namespaces=()  # 禁用保护命名空间检查，允许使用 model_name 等字段
+    )
 
     @validator("api_key_path", pre=True, always=True)
     def normalize_key_path(cls, v, values):

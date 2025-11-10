@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Dict, Any, Callable, Optional, Type, Union
 from pydantic import SkipValidation
 from enum import Enum
@@ -321,6 +321,10 @@ class AgentSingleOutputMeta(BaseModel):
     output_tokens: int
     input_cost: float
     output_cost: float
+
+    model_config = ConfigDict(
+        protected_namespaces=()  # 禁用保护命名空间检查，允许使用 model_name 等字段
+    )
 
 # Pull Request Result type - compatible with PRResult from pull_requests module
 class PullRequestResult(BaseModel):
