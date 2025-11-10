@@ -94,6 +94,8 @@ class ChatAgent:
         # 获取聊天模型
         if self.llm.get_sub_client("chat_model"):
             chat_llm = self.llm.get_sub_client("chat_model")
+        elif self.llm.get_sub_client("code_model"):
+            chat_llm = self.llm.get_sub_client("code_model")
         else:
             chat_llm = self.llm
 
