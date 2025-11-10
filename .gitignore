@@ -103,7 +103,7 @@ cython_debug/
 
 /actions/
 /output.txt
-.autocoderrules
+# .autocoderrules  # 注释掉，允许提交海关开发规范rules
 .autocodertools
 .autocodercommands
 .autocoderagents
