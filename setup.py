@@ -68,6 +68,8 @@ setup(
             'data/rules/*.md',
             'data/rules/*.json',
             'data/*.json',
+            'data/customs_rules/*.md',
+            'data/customs_rules/**/*.md',
         ]
     },
 
