@@ -1,0 +1,180 @@
+# 升级到 Auto-Coder 2.0.2 - 自定义内容保留清单
+# 创建时间: 2025-11-12
+# 备份位置: .upgrade-backup/
+
+## 一、Checker 系统（核心自定义，12个文件）
+重要性: 🔴 极高
+后续处理: 完整恢复到 autocoder/checker/
+
+1. autocoder/checker/__init__.py
+   用途: Checker 模块初始化
+   后续: 完整恢复
+
+2. autocoder/checker/types.py
+   用途: Checker 系统类型定义
+   后续: 完整恢复
+
+3. autocoder/checker/core.py
+   用途: 核心检查逻辑（61KB，最重要）
+   后续: 完整恢复
+
+4. autocoder/checker/rules_loader.py
+   用途: 规则文件解析和管理
+   后续: 完整恢复
+
+5. autocoder/checker/file_processor.py
+   用途: 文件扫描和分块处理
+   后续: 完整恢复
+
+6. autocoder/checker/progress_tracker.py
+   用途: 进度跟踪和恢复支持
+   后续: 完整恢复
+
+7. autocoder/checker/progress_display.py
+   用途: 进度显示界面
+   后续: 完整恢复
+
+8. autocoder/checker/report_generator.py
+   用途: 报告生成（JSON/Markdown）
+   后续: 完整恢复
+
+9. autocoder/checker/git_helper.py
+   用途: Git 操作辅助
+   后续: 完整恢复
+
+10. autocoder/checker/git_repo_manager.py
+    用途: Git 仓库管理
+    后续: 完整恢复
+
+11. autocoder/checker/simple_scan_tracker.py
+    用途: 简单扫描跟踪
+    后续: 完整恢复
+
+12. autocoder/checker/task_logger.py
+    用途: 任务日志记录
+    后续: 完整恢复
+
+## 二、自定义插件（5个关键文件）
+重要性: 🔴 极高
+
+1. autocoder/plugins/code_checker_plugin.py (138KB)
+   用途: 代码检查插件，包含动态补全逻辑
+   重要性: 🔴 极高
+   后续: 完整恢复
+   包含命令: /check /file, /check /folder, /check /resume
+   包含动态补全: dynamic_cmds["check"] 相关逻辑
+
+2. autocoder/plugins/customs_rules_plugin.py (6.7KB)
+   用途: 海关规范管理插件
+   重要性: 🔴 极高
+   后续: 完整恢复
+   包含命令: /rules list, /rules add, /rules remove 等
+
+3. autocoder/plugins/git_helper_plugin.py (59KB)
+   用途: Git 平台管理插件
+   重要性: 🔴 高
+   后续: 复制并改名为 git_platform_plugin.py
+   注意: 需要修改类名 GitHelperPlugin → GitPlatformPlugin
+   注意: 需要修改插件名 "git_helper" → "git_platform"
+
+4. autocoder/plugins/utils.py (263B)
+   用途: 插件工具函数
+   重要性: 🟡 中等
+   后续: 完整恢复
+
+5. autocoder/plugins/__init__.py (44KB) → __init__.py.custom
+   用途: 插件注册逻辑（最关键文件）
+   重要性: 🔴 最高
+   后续: 手动三路合并（1.0.39自定义 + 2.0.2官方 + 当前）
+   特别注意: 必须保留 dynamic_cmds 相关代码
+   特别注意: 必须确保自定义插件注册逻辑完整
+
+## 三、通用模块扩展（3个文件）
+重要性: 🟡 中等
+
+1. autocoder/common/git_platform_config.py (11KB)
+   用途: Git 平台配置管理（支持 GitLab/GitHub/Gitea 等）
+   后续: 完整恢复
+
+2. autocoder/common/terminal_compat.py (9.8KB)
+   用途: 终端兼容性处理（Windows/Linux）
+   后续: 完整恢复
+
+3. autocoder/common/llm_error_handler.py (14KB)
+   用途: LLM 错误处理和重试逻辑
+   后续: 完整恢复
+
+## 四、海关规范数据（12个文件）
+重要性: 🔴 高
+后续处理: 完整恢复到 autocoder/data/customs_rules/
+
+根目录文件:
+1. autocoder/data/customs_rules/index.md
+   用途: 规范索引文件
+
+后端规范 (backend/):
+2. autocoder/data/customs_rules/backend/api.md
+3. autocoder/data/customs_rules/backend/architecture.md
+4. autocoder/data/customs_rules/backend/customs-specific.md
+5. autocoder/data/customs_rules/backend/database.md
+6. autocoder/data/customs_rules/backend/exception.md
+7. autocoder/data/customs_rules/backend/logging.md
+8. autocoder/data/customs_rules/backend/security.md
+
+前端规范 (frontend/):
+9. autocoder/data/customs_rules/frontend/architecture.md
+10. autocoder/data/customs_rules/frontend/component.md
+11. autocoder/data/customs_rules/frontend/layout.md
+12. autocoder/data/customs_rules/frontend/ui-standards.md
+
+## 五、配置文件（2个文件）
+重要性: 🟡 中等
+
+1. setup.py (3.8KB)
+   用途: 包安装配置
+   后续: 手动合并 entry_points 和 package_data
+   注意: 需要与 2.0.2 版本的 setup.py 进行对比合并
+
+2. README.md (7.2KB)
+   用途: 项目说明文档
+   后续: 手动更新，融合 2.0.2 的新特性说明
+
+## 备份统计
+- Checker 系统: 12 个文件
+- 自定义插件: 5 个文件
+- 通用模块: 3 个文件
+- 海关规范: 12 个文件
+- 配置文件: 2 个文件
+- 总计: 34 个文件
+
+## 关键注意事项
+
+### 1. 最关键的文件（需手动处理）
+- plugins/__init__.py.custom - 需要三路合并
+- git_helper_plugin.py - 需要改名和修改
+- setup.py - 需要手动合并配置
+
+### 2. 完整恢复的模块
+- autocoder/checker/ - 完整目录
+- autocoder/data/customs_rules/ - 完整目录
+- code_checker_plugin.py - 核心插件
+
+### 3. 跨平台兼容性
+所有路径使用 `/` 作为分隔符，确保 Windows 和 Linux 都能正确处理
+
+### 4. 后续阶段计划
+- 阶段3: 覆盖官方代码（删除旧代码，复制 2.0.2 新代码）
+- 阶段4: 插件系统适配（手动合并 __init__.py，改名 git_helper_plugin）
+- 阶段5-10: 入口点配置、依赖管理、测试、文档、打包、提交
+
+## 验证清单
+✅ 所有文件已备份到 .upgrade-backup/
+✅ 目录结构保持一致
+✅ 特殊文件已特殊标记（__init__.py.custom）
+✅ 清单文件已创建
+□ 等待 Git 提交
+
+---
+生成时间: 2025-11-12
+生成工具: Claude Code
+备份分支: upgrade/terminal-2.0.2
