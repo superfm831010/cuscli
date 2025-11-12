@@ -1,0 +1,382 @@
+"""
+代码检查模块的核心数据模型定义
+
+使用 pydantic 进行数据验证和序列化。
+"""
+
+from typing import List, Optional, Dict, Any
+from enum import Enum
+from pydantic import BaseModel, Field
+from datetime import datetime
+
+
+class Severity(str, Enum):
+    """
+    问题严重程度枚举
+
+    - ERROR: 必须修复的严重问题，可能导致系统崩溃、安全漏洞或数据丢失
+    - WARNING: 强烈建议修复的问题，影响代码质量、性能或可维护性
+    - INFO: 建议改进的问题，主要是命名规范、注释建议等
+    """
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
+
+
+class Rule(BaseModel):
+    """
+    代码检查规则定义
+
+    Attributes:
+        id: 规则唯一标识符，如 "backend_001", "frontend_001"
+        category: 规则所属类别，如 "代码结构", "安全性", "性能优化"
+        title: 规则简短标题
+        description: 规则详细描述
+        severity: 违反此规则的严重程度
+        enabled: 规则是否启用
+        examples: 示例代码（包含错误示例和正确示例）
+    """
+    id: str = Field(..., description="规则唯一标识符")
+    category: str = Field(..., description="规则类别")
+    title: str = Field(..., description="规则标题")
+    description: str = Field(..., description="规则详细描述")
+    severity: Severity = Field(..., description="严重程度")
+    enabled: bool = Field(default=True, description="是否启用此规则")
+    examples: Optional[str] = Field(default=None, description="示例代码")
+
+    class Config:
+        use_enum_values = True
+
+
+class Issue(BaseModel):
+    """
+    代码检查发现的问题
+
+    Attributes:
+        rule_id: 违反的规则ID
+        severity: 问题严重程度
+        line_start: 问题代码起始行号（从1开始）
+        line_end: 问题代码结束行号
+        description: 问题的详细描述
+        suggestion: 修复建议
+        code_snippet: 问题代码片段
+    """
+    rule_id: str = Field(..., description="违反的规则ID")
+    severity: Severity = Field(..., description="问题严重程度")
+    line_start: int = Field(..., ge=1, description="问题起始行号")
+    line_end: int = Field(..., ge=1, description="问题结束行号")
+    description: str = Field(..., description="问题描述")
+    suggestion: str = Field(..., description="修复建议")
+    code_snippet: Optional[str] = Field(default=None, description="问题代码片段")
+
+    class Config:
+        use_enum_values = True
+
+
+class FileCheckResult(BaseModel):
+    """
+    单个文件的检查结果
+
+    Attributes:
+        file_path: 被检查的文件路径
+        check_time: 检查时间（ISO 8601格式）
+        issues: 发现的问题列表
+        error_count: 错误数量
+        warning_count: 警告数量
+        info_count: 提示数量
+        status: 检查状态（success/failed/skipped）
+        error_message: 如果检查失败，记录错误信息
+        audit_mode: 审核模式（"full"全文件审核 或 "diff-only"差异审核，Phase 5新增）
+        audit_stats: 审核统计信息（Phase 5新增）
+    """
+    file_path: str = Field(..., description="文件路径")
+    check_time: str = Field(..., description="检查时间")
+    issues: List[Issue] = Field(default_factory=list, description="问题列表")
+    error_count: int = Field(default=0, ge=0, description="错误数量")
+    warning_count: int = Field(default=0, ge=0, description="警告数量")
+    info_count: int = Field(default=0, ge=0, description="提示数量")
+    status: str = Field(..., description="检查状态")
+    error_message: Optional[str] = Field(default=None, description="错误信息")
+    audit_mode: Optional[str] = Field(default=None, description="审核模式: full/diff-only")
+    audit_stats: Optional[Dict[str, int]] = Field(
+        default=None, description="审核统计: audited_lines, total_lines, coverage_percentage"
+    )
+
+    def get_total_issues(self) -> int:
+        """获取问题总数"""
+        return len(self.issues)
+
+    def has_errors(self) -> bool:
+        """是否有错误"""
+        return self.error_count > 0
+
+    def get_audit_summary(self) -> Optional[str]:
+        """
+        获取审核统计摘要（Phase 5）
+
+        Returns:
+            格式化的审核统计字符串，如 "审核了 45/500 行 (9%)"
+            如果没有统计信息则返回 None
+        """
+        if not self.audit_stats:
+            return None
+
+        audited = self.audit_stats.get("audited_lines", 0)
+        total = self.audit_stats.get("total_lines", 0)
+        percentage = self.audit_stats.get("coverage_percentage", 0)
+
+        if total == 0:
+            return None
+
+        return f"审核了 {audited}/{total} 行 ({percentage}%)"
+
+
+class GitInfo(BaseModel):
+    """
+    Git 检查信息（Phase 4: 报告增强，Phase 6: 远程仓库支持）
+
+    用于在报告中显示 Git 上下文信息，帮助用户了解检查的来源。
+
+    Attributes:
+        type: 检查类型（staged/unstaged/commit/diff/repo/repo-diff）
+        branch: 当前分支名称（可选，用于 staged/unstaged/repo）
+        commit_hash: 完整 commit 哈希值（可选，用于 commit/repo）
+        short_hash: 短 commit 哈希值（可选，用于 commit/repo）
+        message: commit 提交信息（可选，用于 commit/repo）
+        author: commit 作者（可选，用于 commit/repo）
+        date: commit 日期（可选，用于 commit/repo）
+        commit1: diff 的第一个 commit（可选，用于 diff/repo-diff）
+        commit2: diff 的第二个 commit（可选，用于 diff/repo-diff）
+        files_changed: 变更文件数量
+        repo_url: 远程仓库 URL（可选，用于 repo/repo-diff）
+        repo_path: 本地仓库路径（可选，用于 repo/repo-diff）
+    """
+    type: str = Field(..., description="检查类型：staged/unstaged/commit/diff/repo/repo-diff")
+    branch: Optional[str] = Field(default=None, description="当前分支名称")
+    commit_hash: Optional[str] = Field(default=None, description="完整 commit 哈希值")
+    short_hash: Optional[str] = Field(default=None, description="短 commit 哈希值")
+    message: Optional[str] = Field(default=None, description="commit 提交信息")
+    author: Optional[str] = Field(default=None, description="commit 作者")
+    date: Optional[str] = Field(default=None, description="commit 日期")
+    commit1: Optional[str] = Field(default=None, description="diff 的第一个 commit")
+    commit2: Optional[str] = Field(default=None, description="diff 的第二个 commit")
+    files_changed: int = Field(default=0, ge=0, description="变更文件数量")
+    repo_url: Optional[str] = Field(default=None, description="远程仓库 URL（Phase 6）")
+    repo_path: Optional[str] = Field(default=None, description="本地仓库路径（Phase 6）")
+
+
+class BatchCheckResult(BaseModel):
+    """
+    批量检查结果
+
+    Attributes:
+        check_id: 检查任务唯一标识符
+        start_time: 检查开始时间
+        end_time: 检查结束时间
+        total_files: 总文件数
+        checked_files: 已检查文件数
+        total_issues: 总问题数
+        total_errors: 总错误数
+        total_warnings: 总警告数
+        total_infos: 总提示数
+        file_results: 各文件的检查结果
+        git_info: Git 检查信息（可选，Phase 4 新增）
+    """
+    check_id: str = Field(..., description="检查任务ID")
+    start_time: str = Field(..., description="开始时间")
+    end_time: str = Field(..., description="结束时间")
+    total_files: int = Field(..., ge=0, description="总文件数")
+    checked_files: int = Field(..., ge=0, description="已检查文件数")
+    total_issues: int = Field(default=0, ge=0, description="总问题数")
+    total_errors: int = Field(default=0, ge=0, description="总错误数")
+    total_warnings: int = Field(default=0, ge=0, description="总警告数")
+    total_infos: int = Field(default=0, ge=0, description="总提示数")
+    file_results: List[FileCheckResult] = Field(
+        default_factory=list, description="文件检查结果列表"
+    )
+    git_info: Optional[GitInfo] = Field(default=None, description="Git 检查信息（Phase 4）")
+
+    def get_duration_seconds(self) -> float:
+        """计算检查耗时（秒）"""
+        try:
+            start = datetime.fromisoformat(self.start_time)
+            end = datetime.fromisoformat(self.end_time)
+            return (end - start).total_seconds()
+        except Exception:
+            return 0.0
+
+    def get_completion_rate(self) -> float:
+        """获取完成率（百分比）"""
+        if self.total_files == 0:
+            return 0.0
+        return (self.checked_files / self.total_files) * 100
+
+
+class CheckState(BaseModel):
+    """
+    检查状态（用于持久化和中断恢复）
+
+    Attributes:
+        check_id: 检查任务ID
+        start_time: 开始时间
+        config: 检查配置（如过滤条件、并发数等）
+        total_files: 所有待检查文件列表
+        completed_files: 已完成检查的文件列表
+        remaining_files: 剩余待检查文件列表
+        status: 检查状态（running/completed/interrupted/failed）
+        report_dir: 报告目录路径
+        file_results_dir: 文件结果保存目录（用于持久化检查结果）
+    """
+    check_id: str = Field(..., description="检查任务ID")
+    start_time: str = Field(..., description="开始时间")
+    config: Dict[str, Any] = Field(default_factory=dict, description="检查配置")
+    total_files: List[str] = Field(default_factory=list, description="总文件列表")
+    completed_files: List[str] = Field(default_factory=list, description="已完成文件")
+    remaining_files: List[str] = Field(default_factory=list, description="剩余文件")
+    status: str = Field(default="running", description="检查状态")
+    report_dir: Optional[str] = Field(default=None, description="报告目录路径")
+    file_results_dir: Optional[str] = Field(default=None, description="文件结果保存目录")
+
+    def get_progress_percentage(self) -> float:
+        """获取进度百分比"""
+        total = len(self.total_files)
+        if total == 0:
+            return 0.0
+        completed = len(self.completed_files)
+        return (completed / total) * 100
+
+
+class CodeChunk(BaseModel):
+    """
+    代码分块（用于处理大文件）
+
+    Attributes:
+        content: 代码内容（带行号）
+        start_line: 起始行号
+        end_line: 结束行号
+        chunk_index: 分块索引（从0开始）
+        file_path: 所属文件路径
+    """
+    content: str = Field(..., description="代码内容")
+    start_line: int = Field(..., ge=1, description="起始行号")
+    end_line: int = Field(..., ge=1, description="结束行号")
+    chunk_index: int = Field(..., ge=0, description="分块索引")
+    file_path: Optional[str] = Field(default=None, description="文件路径")
+
+    def get_line_count(self) -> int:
+        """获取代码行数"""
+        return self.end_line - self.start_line + 1
+
+
+class FileFilters(BaseModel):
+    """
+    文件过滤条件
+
+    Attributes:
+        extensions: 文件扩展名列表（如 [".py", ".js"]）
+        ignored: 忽略的文件或目录模式（支持glob模式）
+        include_patterns: 包含的文件模式
+        exclude_patterns: 排除的文件模式
+    """
+    extensions: Optional[List[str]] = Field(
+        default=None, description="文件扩展名列表"
+    )
+    ignored: Optional[List[str]] = Field(
+        default=None, description="忽略的文件/目录模式"
+    )
+    include_patterns: Optional[List[str]] = Field(
+        default=None, description="包含的文件模式"
+    )
+    exclude_patterns: Optional[List[str]] = Field(
+        default=None, description="排除的文件模式"
+    )
+
+    def should_ignore(self, path: str) -> bool:
+        """判断路径是否应该被忽略"""
+        if not self.ignored:
+            return False
+
+        import fnmatch
+        for pattern in self.ignored:
+            if fnmatch.fnmatch(path, pattern) or pattern in path:
+                return True
+        return False
+
+    def matches_extension(self, path: str) -> bool:
+        """判断文件扩展名是否匹配"""
+        if not self.extensions:
+            return True
+
+        import os
+        _, ext = os.path.splitext(path)
+        return ext in self.extensions
+
+
+class DiffHunk(BaseModel):
+    """
+    Git Diff 代码修改块
+
+    表示一个连续的代码修改区域（对应 diff 中的一个 @@ hunk）
+
+    Attributes:
+        old_start: 旧版本起始行号
+        old_count: 旧版本行数
+        new_start: 新版本起始行号
+        new_count: 新版本行数
+        change_type: 变更类型（added/modified/deleted）
+    """
+    old_start: int = Field(..., ge=0, description="旧版本起始行号")
+    old_count: int = Field(..., ge=0, description="旧版本行数")
+    new_start: int = Field(..., ge=0, description="新版本起始行号")
+    new_count: int = Field(..., ge=0, description="新版本行数")
+    change_type: str = Field(..., description="变更类型: added/modified/deleted")
+
+    def get_new_line_range(self) -> tuple:
+        """
+        获取新版本的行号范围
+
+        Returns:
+            (start_line, end_line) 起始行和结束行（包含）
+        """
+        if self.new_count == 0:
+            # 删除操作，新文件中没有对应行
+            return (0, 0)
+        return (self.new_start, self.new_start + self.new_count - 1)
+
+
+class FileDiffInfo(BaseModel):
+    """
+    文件的 Diff 信息
+
+    包含一个文件的所有修改块信息，用于 diff-only 审核模式
+
+    Attributes:
+        file_path: 文件路径（相对于仓库根目录）
+        hunks: 修改块列表
+        total_added: 新增行数统计
+        total_deleted: 删除行数统计
+        change_type: 文件级别的变更类型（added/modified/deleted/renamed）
+    """
+    file_path: str = Field(..., description="文件路径")
+    hunks: List[DiffHunk] = Field(default_factory=list, description="修改块列表")
+    total_added: int = Field(default=0, ge=0, description="新增行数")
+    total_deleted: int = Field(default=0, ge=0, description="删除行数")
+    change_type: str = Field(default="modified", description="变更类型")
+
+    def get_modified_line_ranges(self) -> List[tuple]:
+        """
+        获取所有修改的行号范围（新版本）
+
+        Returns:
+            [(start_line, end_line), ...] 行号范围列表（包含）
+        """
+        ranges = []
+        for hunk in self.hunks:
+            line_range = hunk.get_new_line_range()
+            if line_range != (0, 0):  # 排除删除操作
+                ranges.append(line_range)
+        return ranges
+
+    def has_modifications(self) -> bool:
+        """判断是否有实际修改（排除纯删除）"""
+        return any(hunk.new_count > 0 for hunk in self.hunks)

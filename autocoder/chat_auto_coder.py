@@ -170,8 +170,6 @@ def parse_arguments():
 
 
 def show_help():
-    print(f"\033[1m{get_message('official_doc')}\033[0m")
-    print()
     print(f"\033[1m{get_message('supported_commands')}\033[0m")
     print()
     print(

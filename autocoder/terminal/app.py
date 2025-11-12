@@ -22,6 +22,112 @@ from autocoder.terminal.command_processor import CommandProcessor
 from autocoder.terminal.utils.errors import print_error
 
 
+def print_warning_box(message: str, width: int = 78, color: str = "\033[1;33m"):
+    """
+    打印带有完整边框的警告消息框(支持终端兼容性)
+
+    Args:
+        message: 要显示的消息文本
+        width: 边框宽度（默认78，为80字符终端留出边距）
+        color: ANSI颜色代码（默认黄色加粗）
+    """
+    from autocoder.common.terminal_compat import get_terminal_capability
+
+    term = get_terminal_capability()
+
+    # 根据终端能力选择边框字符
+    if term.supports_unicode():
+        # Unicode框线字符
+        top_left, top_right = "╔", "╗"
+        bottom_left, bottom_right = "╚", "╝"
+        horizontal, vertical = "═", "║"
+    else:
+        # 纯ASCII字符
+        top_left, top_right = "+", "+"
+        bottom_left, bottom_right = "+", "+"
+        horizontal, vertical = "=", "|"
+
+    reset = "\033[0m" if term.ansi_support else ""
+    text_color = "\033[1;31m" if term.ansi_support else ""  # 红色加粗用于文字
+    box_color = color if term.ansi_support else ""
+
+    # 计算内容宽度（边框占用4个字符：左边"║ "和右边" ║"）
+    content_width = width - 4
+
+    def get_char_width(char):
+        """获取单个字符的显示宽度（考虑东亚宽字符）"""
+        code = ord(char)
+        # 东亚宽字符（中文、日文、韩文等）占2个宽度
+        if (0x1100 <= code <= 0x115F or  # Hangul Jamo
+            0x2E80 <= code <= 0x9FFF or  # CJK & CJK Ext A
+            0xAC00 <= code <= 0xD7A3 or  # Hangul Syllables
+            0xF900 <= code <= 0xFAFF or  # CJK Compatibility Ideographs
+            0xFE30 <= code <= 0xFE4F or  # CJK Compatibility Forms
+            0xFF00 <= code <= 0xFF60 or  # Fullwidth Forms
+            0xFFE0 <= code <= 0xFFE6 or  # Fullwidth Forms
+            0x20000 <= code <= 0x2FFFD or  # CJK Ext B, C, D, E
+            0x30000 <= code <= 0x3FFFD):   # CJK Ext F
+            return 2
+        # Zero-width characters (组合字符、变音符号等)
+        elif (0x0300 <= code <= 0x036F or  # Combining Diacritical Marks
+              0xFE00 <= code <= 0xFE0F or  # Variation Selectors
+              0xFE20 <= code <= 0xFE2F):   # Combining Half Marks
+            return 0
+        # 普通ASCII字符占1个宽度
+        else:
+            return 1
+
+    def get_display_width(text):
+        """计算文本的实际显示宽度"""
+        return sum(get_char_width(char) for char in text)
+
+    def wrap_text_by_display_width(text, max_width):
+        """按显示宽度换行文本，确保不超出边框"""
+        lines = []
+        current_line = ""
+        current_width = 0
+
+        for char in text:
+            char_width = get_char_width(char)
+
+            # 如果加上这个字符会超出宽度，开始新行
+            if current_width + char_width > max_width and current_line:
+                lines.append(current_line)
+                current_line = char
+                current_width = char_width
+            else:
+                current_line += char
+                current_width += char_width
+
+        # 添加最后一行
+        if current_line:
+            lines.append(current_line)
+
+        return lines
+
+    # 使用自定义换行（按显示宽度）
+    lines = []
+    for line in message.split('\n'):
+        if line.strip():
+            wrapped = wrap_text_by_display_width(line, content_width)
+            lines.extend(wrapped)
+
+    # 打印顶部边框
+    print(f"{box_color}{top_left}{horizontal * (width - 2)}{top_right}{reset}")
+
+    # 打印每行内容（带左右边框）
+    for line in lines:
+        # 计算实际显示宽度
+        line_display_width = get_display_width(line)
+        # 计算需要填充的空格数
+        padding_needed = content_width - line_display_width
+        padded_line = line + ' ' * padding_needed
+        print(f"{box_color}{vertical}{reset} {text_color}{padded_line}{reset} {box_color}{vertical}{reset}")
+
+    # 打印底部边框
+    print(f"{box_color}{bottom_left}{horizontal * (width - 2)}{bottom_right}{reset}")
+
+
 class TerminalApp:
     """终端应用主类"""
 
@@ -330,14 +436,14 @@ class TerminalApp:
 
         # 显示启动信息
         print(
-            f"""
-    \033[1;32m  ____ _           _          _         _               ____          _           
-    / ___| |__   __ _| |_       / \\  _   _| |_ ___        / ___|___   __| | ___ _ __ 
-    | |   | '_ \\ / _` | __|____ / _ \\| | | | __/ _ \\ _____| |   / _ \\ / _` |/ _ \\ '__|
-    | |___| | | | (_| | ||_____/ ___ \\ |_| | || (_) |_____| |__| (_) | (_| |  __/ |   
-    \\____|_| |_|\\__,_|\\__|   /_/   \\_\\__,_|\\__\\___/       \\____\\___/ \\__,_|\\___|_| 
-                                                                        v{__version__}
-    \033[0m"""
+            f"""\033[1;32m  ██████╗██╗   ██╗███████╗          ██████╗██╗     ██╗
+ ██╔════╝██║   ██║██╔════╝         ██╔════╝██║     ██║
+ ██║     ██║   ██║███████╗ ██████  ██║     ██║     ██║
+ ██║     ██║   ██║╚════██║         ██║     ██║     ██║
+ ╚██████╗╚██████╔╝███████║         ╚██████╗███████╗██║
+  ╚═════╝ ╚═════╝ ╚══════╝          ╚═════╝╚══════╝╚═╝
+                                             {__version__}
+                            Produced by 黄埔海关科技处\033[0m"""
         )
         print(f"\033[1;34m{get_message('type_help_to_see_commands')}\033[0m\n")
 
@@ -347,6 +453,17 @@ class TerminalApp:
             for name, plugin in self.plugin_manager.plugins.items():
                 print(f"  - {name} (v{plugin.version}): {plugin.description}")
             print()
+
+        # 显示模型能力要求警告（醒目格式）
+        print()
+        print_warning_box(
+            "⚠️  重要提示：自动编程和智能代理（Agentic Agent）功能对 AI 模型能力要求极高，"
+            "请务必配置 DeepSeek V3.1（128K 上下文窗口）或后续能力更强的模型，"
+            "低于此标准的模型将导致功能异常，无法正常工作！",
+            width=78,
+            color="\033[1;33m"
+        )
+        print()
 
         self.show_help()
 

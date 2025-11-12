@@ -1,0 +1,22 @@
+{
+    "file_path": "/tmp/pytest-of-superfm/pytest-0/test_check_file_success0/test.py",
+    "check_time": "2025-11-12T13:43:18.115801",
+    "issues": [
+        {
+            "rule_id": "test_001",
+            "severity": "warning",
+            "line_start": 1,
+            "line_end": 1,
+            "description": "测试问题",
+            "suggestion": "测试建议",
+            "code_snippet": null
+        }
+    ],
+    "error_count": 0,
+    "warning_count": 1,
+    "info_count": 0,
+    "status": "success",
+    "error_message": null,
+    "audit_mode": null,
+    "audit_stats": null
+}

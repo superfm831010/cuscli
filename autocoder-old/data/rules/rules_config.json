@@ -1,0 +1,90 @@
+{
+  "version": "1.0.0",
+  "description": "代码检查规则配置文件",
+  "rule_sets": {
+    "backend": {
+      "enabled": true,
+      "file_patterns": [
+        "**/*.py",
+        "**/*.java"
+      ],
+      "severity_threshold": "warning",
+      "disabled_rules": [],
+      "description": "Python/Java 后端代码检查规则，共63条",
+      "categories": [
+        "应用开发架构使用",
+        "代码结构",
+        "异常处理",
+        "安全性",
+        "其他",
+        "日志输出",
+        "接口定义",
+        "数据库",
+        "配置_工具",
+        "海关定制"
+      ]
+    },
+    "frontend": {
+      "enabled": true,
+      "file_patterns": [
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.vue"
+      ],
+      "severity_threshold": "warning",
+      "disabled_rules": [],
+      "description": "前端代码检查规则（Vue/TypeScript），共105条",
+      "categories": [
+        "应用开发架构使用",
+        "代码结构",
+        "异常处理",
+        "其他",
+        "布局规范",
+        "字体设置",
+        "字体大小-标准版",
+        "字体大小-关怀版",
+        "颜色-海关蓝",
+        "颜色-政务红",
+        "边距",
+        "按钮",
+        "业界通用"
+      ]
+    }
+  },
+  "global_settings": {
+    "max_workers": 5,
+    "chunk_size": 4000,
+    "chunk_overlap": 200,
+    "ignored_patterns": [
+      "__pycache__",
+      "*.pyc",
+      "node_modules",
+      "dist",
+      "build",
+      ".git",
+      ".venv",
+      "venv",
+      "*.min.js",
+      "*.min.css"
+    ],
+    "report_directory": "codecheck",
+    "enable_progress_tracking": true,
+    "enable_resume": true
+  },
+  "severity_levels": {
+    "error": {
+      "priority": 1,
+      "description": "必须修复的严重问题，可能导致系统崩溃、安全漏洞或数据丢失"
+    },
+    "warning": {
+      "priority": 2,
+      "description": "强烈建议修复的问题，影响代码质量、性能或可维护性"
+    },
+    "info": {
+      "priority": 3,
+      "description": "建议改进的问题，主要是命名规范、注释建议等"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+[console_scripts]
+auto-coder = autocoder.auto_coder:main
+auto-coder.chat = autocoder.auto_coder_terminal:main
+auto-coder.chat.beta = autocoder.auto_coder_terminal_v3:main
+auto-coder.chat.old = autocoder.chat_auto_coder:main
+auto-coder.cli = autocoder.sdk.cli:main
+auto-coder.core = autocoder.auto_coder:main
+auto-coder.rag = autocoder.auto_coder_rag:main
+auto-coder.run = autocoder.sdk.cli:main
+chat-auto-coder = autocoder.chat_auto_coder:main

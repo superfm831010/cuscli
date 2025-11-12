@@ -1,0 +1,702 @@
+"""
+代码检查模块的文件处理器
+
+负责文件扫描、过滤、分块等功能。
+"""
+
+import os
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+from loguru import logger
+
+from autocoder.checker.types import CodeChunk, FileFilters
+from autocoder.common.buildin_tokenizer import BuildinTokenizer
+
+
+class FileProcessor:
+    """
+    文件处理器
+
+    负责：
+    1. 扫描目录并过滤文件
+    2. 判断文件是否可检查
+    3. 为大文件进行分块处理
+    4. 为代码添加行号
+
+    Attributes:
+        chunk_size: 单个 chunk 的最大 token 数
+        overlap: chunk 之间希望保留的重叠 token 数
+        tokenizer: 用于计算 token 数的分词器
+    """
+
+    # 默认排除的目录模式（防止检查生成的报告和不必要的目录）
+    DEFAULT_EXCLUDED_DIRS = [
+        'codecheck',        # 检查报告目录
+        '.git',             # Git 仓库目录
+        '.auto-coder',      # auto-coder 配置和日志目录
+        '__pycache__',      # Python 缓存目录
+        'node_modules',     # Node.js 依赖目录
+        '.venv', 'venv',    # Python 虚拟环境
+        'build', 'dist',    # 构建输出目录
+        '.idea', '.vscode'  # IDE 配置目录
+    ]
+
+    def __init__(self, chunk_size: int = 4000, overlap: int = 200):
+        """
+        初始化文件处理器
+
+        Args:
+            chunk_size: 单个 chunk 的最大 token 数，默认 4000
+            overlap: chunk 之间希望保留的重叠 token 数，默认 200
+        """
+        self.chunk_size = chunk_size
+        self.overlap = overlap
+        self.tokenizer = BuildinTokenizer()
+        self._chunk_cache: Dict[str, Tuple[float, int, List[CodeChunk]]] = {}
+
+        logger.info(
+            f"FileProcessor initialized: chunk_size={chunk_size}, overlap={overlap}"
+        )
+
+    def scan_files(
+        self,
+        path: str,
+        filters: Optional[FileFilters] = None
+    ) -> List[str]:
+        """
+        扫描目录，返回符合条件的文件列表
+
+        Args:
+            path: 要扫描的目录路径或文件路径
+            filters: 文件过滤条件（扩展名、忽略模式等）
+
+        Returns:
+            符合条件的文件路径列表（绝对路径）
+
+        Examples:
+            >>> processor = FileProcessor()
+            >>> filters = FileFilters(extensions=[".py"], ignored=["__pycache__"])
+            >>> files = processor.scan_files("autocoder", filters)
+            >>> len(files) > 0
+            True
+        """
+        path_obj = Path(path)
+        result_files = []
+
+        # 如果是单个文件
+        if path_obj.is_file():
+            if self.is_checkable(str(path_obj)):
+                # 应用过滤条件
+                if filters:
+                    if filters.matches_extension(str(path_obj)) and not filters.should_ignore(str(path_obj)):
+                        result_files.append(str(path_obj.absolute()))
+                else:
+                    result_files.append(str(path_obj.absolute()))
+            return result_files
+
+        # 如果是目录
+        if not path_obj.is_dir():
+            logger.warning(f"Path does not exist: {path}")
+            return []
+
+        logger.info(f"Scanning directory: {path}")
+
+        # 遍历目录
+        for file_path in path_obj.rglob("*"):
+            # 只处理文件，跳过目录
+            if not file_path.is_file():
+                continue
+
+            # 转换为字符串路径
+            file_str = str(file_path)
+            relative_path = str(file_path.relative_to(path_obj))
+
+            # 默认排除检查报告目录和其他不必要的目录
+            path_parts = file_path.parts
+            if any(part in self.DEFAULT_EXCLUDED_DIRS for part in path_parts):
+                logger.debug(f"Ignored by default exclusion: {relative_path}")
+                continue
+
+            # 应用用户自定义的忽略模式
+            if filters and filters.should_ignore(relative_path):
+                logger.debug(f"Ignored by filter: {relative_path}")
+                continue
+
+            # 跳过隐藏文件和目录
+            if any(part.startswith('.') and part not in ['.github'] for part in path_parts):
+                logger.debug(f"Ignored hidden file: {relative_path}")
+                continue
+
+            # 应用扩展名过滤
+            if filters and not filters.matches_extension(file_str):
+                continue
+
+            # 检查文件是否可检查
+            if not self.is_checkable(file_str):
+                logger.debug(f"Not checkable: {relative_path}")
+                continue
+
+            result_files.append(str(file_path.absolute()))
+
+        logger.info(f"Found {len(result_files)} checkable files in {path}")
+        return result_files
+
+    def chunk_file(self, file_path: str) -> List[CodeChunk]:
+        """
+        将文件分块，确保每块不超过 token 限制
+
+        对于小文件，直接返回单个 chunk。
+        对于大文件，分成多个 chunk，chunk 之间有重叠以避免边界问题。
+
+        Args:
+            file_path: 文件路径
+
+        Returns:
+            代码块列表，每个块包含代码内容、行号范围等信息
+
+        Raises:
+            FileNotFoundError: 文件不存在
+            UnicodeDecodeError: 文件编码错误
+
+        Examples:
+            >>> processor = FileProcessor(chunk_size=1000, overlap=100)
+            >>> chunks = processor.chunk_file("small_file.py")
+            >>> len(chunks) == 1
+            True
+        """
+        cache_key = os.path.abspath(file_path)
+
+        # 读取文件内容
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        file_stat = os.stat(file_path)
+        cache_entry = self._chunk_cache.get(cache_key)
+        signature = (file_stat.st_mtime, file_stat.st_size)
+
+        if cache_entry:
+            cached_mtime, cached_size, cached_chunks = cache_entry
+            if cached_mtime == signature[0] and cached_size == signature[1]:
+                logger.debug(f"使用缓存的 chunk 分界: {file_path}")
+                return [chunk.copy(deep=True) for chunk in cached_chunks]
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError as e:
+            logger.error(f"Failed to read file {file_path}: {e}")
+            raise
+
+        # 分割成行
+        lines = content.split('\n')
+        total_lines = len(lines)
+
+        # 为每行添加行号
+        numbered_lines = [f"{i+1} {line}" for i, line in enumerate(lines)]
+
+        # 计算总 token 数
+        total_content = '\n'.join(numbered_lines)
+        total_tokens = self.tokenizer.count_tokens(total_content)
+
+        # 如果文件小于 chunk_size，直接返回单个 chunk
+        if total_tokens <= self.chunk_size:
+            logger.debug(
+                f"File {file_path} fits in single chunk: "
+                f"{total_lines} lines, {total_tokens} tokens"
+            )
+            return [
+                CodeChunk(
+                    content=total_content,
+                    start_line=1,
+                    end_line=total_lines,
+                    chunk_index=0,
+                    file_path=file_path
+                )
+            ]
+
+        # 文件需要分块
+        logger.info(
+            f"Chunking file {file_path}: "
+            f"{total_lines} lines, {total_tokens} tokens"
+        )
+
+        chunks = []
+        current_line = 0
+        chunk_index = 0
+
+        while current_line < len(numbered_lines):
+            # 计算当前 chunk 的结束行
+            end_line = self._calculate_chunk_end(
+                numbered_lines,
+                current_line,
+                self.chunk_size
+            )
+
+            # 创建 chunk
+            chunk_content = '\n'.join(numbered_lines[current_line:end_line])
+            chunk_tokens = self.tokenizer.count_tokens(chunk_content)
+            chunks.append(
+                CodeChunk(
+                    content=chunk_content,
+                    start_line=current_line + 1,  # 转换为 1-based 行号
+                    end_line=end_line,
+                    chunk_index=chunk_index,
+                    file_path=file_path
+                )
+            )
+
+            logger.debug(
+                f"Created chunk {chunk_index}: "
+                f"lines {current_line + 1}-{end_line}, "
+                f"tokens {chunk_tokens}"
+            )
+
+            # 移动到下一个 chunk（考虑重叠）
+            if end_line >= len(numbered_lines):
+                break
+
+            # 计算重叠的起始位置（按照 token 数量而非行数）
+            if self.overlap > 0 and (end_line - current_line) > 1:
+                overlap_tokens = 0
+                overlap_lines = 0
+                idx = end_line - 1
+
+                while idx >= current_line and overlap_tokens < self.overlap:
+                    overlap_tokens += self.tokenizer.count_tokens(numbered_lines[idx])
+                    overlap_lines += 1
+                    idx -= 1
+
+                chunk_length = end_line - current_line
+                overlap_lines = min(overlap_lines, chunk_length - 1)
+
+                next_start = end_line - overlap_lines
+                if next_start <= current_line:
+                    next_start = current_line + 1
+
+                current_line = next_start
+            else:
+                current_line = end_line
+            chunk_index += 1
+
+        logger.info(
+            f"File {file_path} split into {len(chunks)} chunks"
+        )
+
+        # 缓存分块结果以便后续复用
+        self._chunk_cache[cache_key] = (
+            signature[0],
+            signature[1],
+            [chunk.copy(deep=True) for chunk in chunks],
+        )
+
+        return chunks
+
+    def chunk_file_with_focus_lines(
+        self,
+        file_path: str,
+        focus_ranges: List[Tuple[int, int]],
+        context_lines: int = 5
+    ) -> List[CodeChunk]:
+        """
+        只提取指定行号范围（+ 上下文）进行分块（用于 diff-only 审核）
+
+        对每个关注范围添加上下文，合并相近的范围，然后只提取这些行进行审核。
+        这样可以大幅减少审核的代码量，提升效率。
+
+        Args:
+            file_path: 文件路径
+            focus_ranges: 关注的行号范围列表 [(start_line, end_line), ...]
+                          行号从 1 开始，包含 start_line 和 end_line
+            context_lines: 每个范围前后添加的上下文行数，默认 5
+
+        Returns:
+            代码块列表，每个块包含关注范围 + 上下文的代码
+
+        Raises:
+            FileNotFoundError: 文件不存在
+            UnicodeDecodeError: 文件编码错误
+
+        Examples:
+            >>> processor = FileProcessor()
+            >>> # 只审核第 10-20 行和第 50-60 行（加上下文）
+            >>> chunks = processor.chunk_file_with_focus_lines(
+            ...     "test.py",
+            ...     [(10, 20), (50, 60)],
+            ...     context_lines=5
+            ... )
+        """
+        if not focus_ranges:
+            logger.warning(f"No focus ranges provided, falling back to full file chunking")
+            return self.chunk_file(file_path)
+
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        # 读取文件内容
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+        except UnicodeDecodeError as e:
+            logger.error(f"Failed to read file {file_path}: {e}")
+            raise
+
+        total_lines = len(lines)
+
+        # 1. 为每个 focus range 添加上下文
+        expanded_ranges = []
+        for start, end in focus_ranges:
+            # 确保行号在有效范围内
+            start = max(1, start)
+            end = min(total_lines, end)
+
+            # 添加上下文
+            context_start = max(1, start - context_lines)
+            context_end = min(total_lines, end + context_lines)
+
+            expanded_ranges.append((context_start, context_end))
+
+        # 2. 合并重叠或相邻的范围
+        merged_ranges = self._merge_ranges(expanded_ranges)
+
+        logger.info(
+            f"Focus lines for {file_path}: "
+            f"{len(focus_ranges)} ranges -> {len(merged_ranges)} merged ranges "
+            f"(with {context_lines}-line context)"
+        )
+
+        # 3. 提取这些范围的行，并添加行号
+        extracted_lines = []
+        range_info = []  # 记录每个范围对应的行数索引
+
+        for start, end in merged_ranges:
+            range_start_idx = len(extracted_lines)
+
+            # 提取行并添加行号（保持原始行号）
+            for line_no in range(start, end + 1):
+                idx = line_no - 1  # 转换为 0-based 索引
+                if idx < len(lines):
+                    line_content = lines[idx].rstrip('\n')
+                    numbered_line = f"{line_no} {line_content}"
+                    extracted_lines.append(numbered_line)
+
+            range_end_idx = len(extracted_lines)
+            range_info.append((start, end, range_start_idx, range_end_idx))
+
+        if not extracted_lines:
+            logger.warning(f"No lines extracted for {file_path}, falling back to full file")
+            return self.chunk_file(file_path)
+
+        # 4. 计算提取内容的 token 数
+        extracted_content = '\n'.join(extracted_lines)
+        extracted_tokens = self.tokenizer.count_tokens(extracted_content)
+
+        logger.info(
+            f"Extracted {len(extracted_lines)}/{total_lines} lines "
+            f"({100 * len(extracted_lines) / total_lines:.1f}%), "
+            f"{extracted_tokens} tokens"
+        )
+
+        # 5. 如果提取的内容适合单个 chunk，直接返回
+        if extracted_tokens <= self.chunk_size:
+            # 计算整体的起始和结束行号
+            overall_start = merged_ranges[0][0]
+            overall_end = merged_ranges[-1][1]
+
+            return [
+                CodeChunk(
+                    content=extracted_content,
+                    start_line=overall_start,
+                    end_line=overall_end,
+                    chunk_index=0,
+                    file_path=file_path
+                )
+            ]
+
+        # 6. 需要分块：基于提取的行进行分块
+        logger.info(
+            f"Extracted content ({extracted_tokens} tokens) exceeds chunk size, "
+            f"splitting into chunks"
+        )
+
+        chunks = []
+        current_line = 0
+        chunk_index = 0
+
+        while current_line < len(extracted_lines):
+            # 计算当前 chunk 的结束行
+            end_line = self._calculate_chunk_end(
+                extracted_lines,
+                current_line,
+                self.chunk_size
+            )
+
+            # 创建 chunk
+            chunk_lines = extracted_lines[current_line:end_line]
+            chunk_content = '\n'.join(chunk_lines)
+
+            # 从 chunk 中提取实际的起始和结束行号
+            # 第一行格式："{line_no} {content}"
+            first_line = chunk_lines[0]
+            last_line = chunk_lines[-1]
+
+            import re
+            first_line_no = int(re.match(r'^(\d+)\s', first_line).group(1))
+            last_line_no = int(re.match(r'^(\d+)\s', last_line).group(1))
+
+            chunks.append(
+                CodeChunk(
+                    content=chunk_content,
+                    start_line=first_line_no,
+                    end_line=last_line_no,
+                    chunk_index=chunk_index,
+                    file_path=file_path
+                )
+            )
+
+            logger.debug(
+                f"Created focus chunk {chunk_index}: "
+                f"lines {first_line_no}-{last_line_no}"
+            )
+
+            # 移动到下一个 chunk（考虑重叠）
+            if end_line >= len(extracted_lines):
+                break
+
+            # 计算重叠的起始位置
+            if self.overlap > 0 and (end_line - current_line) > 1:
+                overlap_tokens = 0
+                overlap_lines = 0
+                idx = end_line - 1
+
+                while idx >= current_line and overlap_tokens < self.overlap:
+                    overlap_tokens += self.tokenizer.count_tokens(extracted_lines[idx])
+                    overlap_lines += 1
+                    idx -= 1
+
+                chunk_length = end_line - current_line
+                overlap_lines = min(overlap_lines, chunk_length - 1)
+
+                next_start = end_line - overlap_lines
+                if next_start <= current_line:
+                    next_start = current_line + 1
+
+                current_line = next_start
+            else:
+                current_line = end_line
+
+            chunk_index += 1
+
+        logger.info(f"Focus-based chunking: {len(chunks)} chunks created")
+        return chunks
+
+    def _merge_ranges(self, ranges: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+        """
+        合并重叠或相邻的行号范围
+
+        Args:
+            ranges: 行号范围列表 [(start, end), ...]
+
+        Returns:
+            合并后的范围列表
+
+        Example:
+            >>> processor = FileProcessor()
+            >>> ranges = [(1, 10), (8, 15), (20, 25)]
+            >>> merged = processor._merge_ranges(ranges)
+            >>> merged
+            [(1, 15), (20, 25)]
+        """
+        if not ranges:
+            return []
+
+        # 按起始行号排序
+        sorted_ranges = sorted(ranges, key=lambda x: x[0])
+
+        merged = [sorted_ranges[0]]
+
+        for current_start, current_end in sorted_ranges[1:]:
+            last_start, last_end = merged[-1]
+
+            # 如果当前范围与上一个范围重叠或相邻，则合并
+            if current_start <= last_end + 1:
+                # 合并：扩展上一个范围的结束位置
+                merged[-1] = (last_start, max(last_end, current_end))
+            else:
+                # 不重叠，添加为新范围
+                merged.append((current_start, current_end))
+
+        logger.debug(f"Merged {len(ranges)} ranges -> {len(merged)} ranges")
+        return merged
+
+    def is_checkable(self, file_path: str) -> bool:
+        """
+        判断文件是否可检查
+
+        检查条件：
+        1. 文件存在且可读
+        2. 文件是文本文件（非二进制）
+        3. 文件大小在合理范围内（< 10MB）
+        4. 文件编码为 UTF-8
+
+        Args:
+            file_path: 文件路径
+
+        Returns:
+            True 表示可检查，False 表示不可检查
+
+        Examples:
+            >>> processor = FileProcessor()
+            >>> processor.is_checkable("autocoder/checker/types.py")
+            True
+            >>> processor.is_checkable("nonexistent.py")
+            False
+        """
+        # 1. 检查文件是否存在
+        if not os.path.exists(file_path):
+            return False
+
+        # 2. 检查是否为文件（非目录）
+        if not os.path.isfile(file_path):
+            return False
+
+        # 3. 检查文件大小（< 10MB）
+        file_size_mb = self._get_file_size_mb(file_path)
+        if file_size_mb > 10:
+            logger.debug(f"File too large: {file_path} ({file_size_mb:.2f}MB)")
+            return False
+
+        # 4. 检查是否为二进制文件
+        if self._is_binary_file(file_path):
+            logger.debug(f"Binary file: {file_path}")
+            return False
+
+        # 5. 检查文件是否可读且为 UTF-8 编码
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                # 尝试读取前 100 行来验证编码
+                for _ in range(100):
+                    line = f.readline()
+                    if not line:
+                        break
+            return True
+        except (UnicodeDecodeError, PermissionError) as e:
+            logger.debug(f"Cannot read file as UTF-8: {file_path}, error: {e}")
+            return False
+        except Exception as e:
+            logger.debug(f"Error checking file: {file_path}, error: {e}")
+            return False
+
+    def add_line_numbers(self, content: str) -> str:
+        """
+        为代码添加行号
+
+        格式：{行号} {代码内容}
+        行号从 1 开始，使用空格分隔。
+
+        Args:
+            content: 原始代码内容
+
+        Returns:
+            添加行号后的代码内容
+
+        Examples:
+            >>> processor = FileProcessor()
+            >>> code = "def foo():\\n    pass"
+            >>> numbered = processor.add_line_numbers(code)
+            >>> numbered.startswith("1 def foo():")
+            True
+        """
+        lines = content.split('\n')
+        numbered_lines = [f"{i+1} {line}" for i, line in enumerate(lines)]
+        return '\n'.join(numbered_lines)
+
+    def _calculate_chunk_end(
+        self,
+        lines: List[str],
+        start_index: int,
+        token_limit: int
+    ) -> int:
+        """
+        计算 chunk 的结束行索引
+
+        从 start_index 开始，逐行累加 token 数，
+        直到超过 token_limit 或到达文件末尾。
+
+        Args:
+            lines: 所有行的列表（已添加行号）
+            start_index: 起始行索引
+            token_limit: token 数量限制
+
+        Returns:
+            结束行索引（不包含该行）
+
+        Note:
+            这是内部方法，用于 chunk_file() 方法
+        """
+        current_tokens = 0
+        end_index = start_index
+
+        for i in range(start_index, len(lines)):
+            line = lines[i]
+            line_tokens = self.tokenizer.count_tokens(line)
+
+            # 如果加上这一行会超过限制，则在此处结束
+            if current_tokens + line_tokens > token_limit and i > start_index:
+                break
+
+            current_tokens += line_tokens
+            end_index = i + 1
+
+        return end_index
+
+    def _is_binary_file(self, file_path: str) -> bool:
+        """
+        判断文件是否为二进制文件
+
+        通过读取文件前 1024 字节，检查是否包含非文本字符。
+
+        Args:
+            file_path: 文件路径
+
+        Returns:
+            True 表示二进制文件，False 表示文本文件
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                chunk = f.read(1024)
+                if not chunk:
+                    return False
+
+                # 检查是否包含 NULL 字节
+                if b'\x00' in chunk:
+                    return True
+
+                # 检查文本字符的比例
+                # 文本字符包括：制表符(9)、换行(10)、回车(13)、
+                # 可打印 ASCII (32-126)、以及高位字节(128-255, UTF-8)
+                text_characters = 0
+                for byte in chunk:
+                    if byte in (9, 10, 13) or (32 <= byte <= 126) or byte >= 128:
+                        text_characters += 1
+
+                text_ratio = text_characters / len(chunk)
+                # 如果文本字符比例低于 85%，认为是二进制文件
+                return text_ratio < 0.85
+        except Exception:
+            return True
+
+    def _get_file_size_mb(self, file_path: str) -> float:
+        """
+        获取文件大小（MB）
+
+        Args:
+            file_path: 文件路径
+
+        Returns:
+            文件大小（MB）
+        """
+        try:
+            size_bytes = os.path.getsize(file_path)
+            return size_bytes / (1024 * 1024)
+        except Exception:
+            return 0.0
