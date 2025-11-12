@@ -1,0 +1,19 @@
+1,4d0
+< # Auto-Coder v1.0.39 Dependencies
+< # Python version requirement: >=3.10, <=3.12
+< 
+< # Core dependencies
+12c8
+< pyjava>=0.6.21
+---
+> pyjava >=0.6.21
+25c21
+< byzerllm[saas]>=0.1.196
+---
+> byzerllm[saas] >=0.1.196
+29c25
+< openai>=1.14.3
+---
+> openai >=1.14.3
+67d62
+< pydantic>=2.0.0
