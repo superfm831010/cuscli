@@ -367,35 +367,42 @@ def initialize_system(args: InitializeSystemRequest):
         else:
             print(f"  {message}")
 
-        if not os.path.exists(base_persist_dir):
-            os.makedirs(base_persist_dir, exist_ok=True)
-            print_status(
-                get_message_with_format("created_dir", path=base_persist_dir), "success"
-            )
+    if not os.path.exists(base_persist_dir):
+        os.makedirs(base_persist_dir, exist_ok=True)
+        print_status(
+            get_message_with_format("created_dir", path=base_persist_dir), "success"
+        )
 
-        if first_time[0]:
-            configure("project_type:*", skip_print=True)
-            configure_success[0] = True
+    if first_time[0]:
+        configure("project_type:*", skip_print=True)
+        configure_success[0] = True
 
-        print_status(get_message("init_complete"), "success")
+    print_status(get_message("init_complete"), "success")
 
     init_project_if_required(target_dir=project_root, project_type="*")
 
-    if not args.skip_provider_selection and first_time[0]:
+    if not args.skip_provider_selection:
         if args.product_mode == "lite":
-            # 如果已经是配置过的项目，就无需再选择
-            if first_time[0]:
-                llm_manager = LLMManager()
-                if not llm_manager.check_model_exists(
-                    "v3_chat"
-                ) or not llm_manager.check_model_exists("r1_chat"):
-                    model_provider_selector = ModelProviderSelector()
-                    model_provider_info = model_provider_selector.select_provider()
-                    if model_provider_info is not None:
-                        models_json_list = model_provider_selector.to_models_json(
-                            model_provider_info
-                        )
-                        llm_manager.add_models(models_json_list)
+            # 检查是否有任何可用模型
+            llm_manager = LLMManager()
+            all_models = llm_manager.get_all_models()
+
+            # 如果没有任何模型配置，触发配置向导
+            if not all_models:
+                print_status(get_message("no_models_found"), "warning")
+                model_provider_selector = ModelProviderSelector()
+                model_provider_info = model_provider_selector.select_provider()
+                if model_provider_info is not None:
+                    models_json_list = model_provider_selector.to_models_json(
+                        model_provider_info
+                    )
+                    llm_manager.add_models(models_json_list)
+            # 如果有模型但缺少推荐的 v3_chat 或 r1_chat，仅在首次运行时提示
+            elif first_time[0] and (
+                not llm_manager.check_model_exists("v3_chat")
+                or not llm_manager.check_model_exists("r1_chat")
+            ):
+                print_status(get_message("recommended_models_missing"), "info")
 
         if args.product_mode == "pro":
             # Check if Ray is running
