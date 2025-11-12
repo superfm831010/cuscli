@@ -23,23 +23,28 @@ class MessageManager:
     def get_system_language(self) -> str:
         """
         Get the system's default language code
-        
+
         Returns:
             Two-letter language code (e.g., 'en', 'zh'), falls back to 'en' for unsupported languages
         """
-        try:
-            lang_code, _ = locale.getdefaultlocale()
-            if lang_code:
-                detected_lang = lang_code[:2]
-                # 检查是否是支持的语言，如果不是则回退到英文
-                supported_languages = ['en', 'zh', 'ja', 'ar', 'ru']
-                if detected_lang in supported_languages:
-                    return detected_lang
-                else:
-                    return "en"
-            return "en"
-        except:
-            return "en"
+        # 强制使用中文，不受系统语言环境影响
+        # 如需恢复自动检测功能，可以取消下面注释的代码，并删除 return "zh" 这行
+        return "zh"
+
+        # 原自动检测逻辑（已禁用）:
+        # try:
+        #     lang_code, _ = locale.getdefaultlocale()
+        #     if lang_code:
+        #         detected_lang = lang_code[:2]
+        #         # 检查是否是支持的语言，如果不是则回退到英文
+        #         supported_languages = ['en', 'zh', 'ja', 'ar', 'ru']
+        #         if detected_lang in supported_languages:
+        #             return detected_lang
+        #         else:
+        #             return "en"
+        #     return "en"
+        # except:
+        #     return "en"
     
     def get_message(self, key: str) -> str:
         """
