@@ -82,13 +82,25 @@ def show_help(plugin_manager):
         print(
             f"  \033[94m{get_message('plugin_command_header')}\033[0m - \033[93m{get_message('plugin_description_header')}\033[0m"
         )
+
+        # 收集已显示的插件，避免重复显示
+        displayed_plugins = set()
+
         for cmd, (_, desc, plugin_id) in plugin_manager.command_handlers.items():
             plugin = plugin_manager.get_plugin(plugin_id)
-            if plugin:
-                print(
-                    f"  \033[94m{cmd}\033[0m - \033[92m{desc} ({get_message('plugin_from')} {plugin.plugin_name()})\033[0m"
-                )
-            else:
+            if plugin and plugin_id not in displayed_plugins:
+                # 检查插件是否有自定义帮助文本
+                custom_help = plugin.get_help_text()
+                if custom_help:
+                    # 使用插件自定义的折叠显示
+                    print(custom_help)
+                    displayed_plugins.add(plugin_id)
+                else:
+                    # 使用默认的单行显示
+                    print(
+                        f"  \033[94m{cmd}\033[0m - \033[92m{desc} ({get_message('plugin_from')} {plugin.plugin_name()})\033[0m"
+                    )
+            elif not plugin:
                 print(
                     f"  \033[94m{cmd}\033[0m - \033[92m{desc} ({get_message('plugin_from_unknown')})\033[0m"
                 )
