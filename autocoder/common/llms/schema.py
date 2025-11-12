@@ -2,6 +2,9 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional
 from pathlib import Path
 
+# 默认 API Key，用于不需要 Key 的模型接口
+DEFAULT_API_KEY = "no-key-required"
+
 
 class LLMModel(BaseModel):
     """大语言模型配置数据模型"""

@@ -7,121 +7,9 @@ from filelock import FileLock
 
 from .schema import LLMModel
 
-# 默认内置模型列表
-# 价格单位：人民币/百万tokens
-DEFAULT_MODELS = [
-    {
-        "name": "volcengine/deepseek-v3-1-terminus",
-        "description": "火山引擎 DeepSeek V3.1 模型，适合编程任务",
-        "model_name": "deepseek-v3-1-terminus",
-        "model_type": "saas/openai",
-        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-        "provider": "volcengine",
-        "api_key_path": "",
-        "is_reasoning": False,
-        "input_price": 1.0,  # 1元/百万tokens
-        "output_price": 1.0,  # 1元/百万tokens
-        "max_output_tokens": 8096,
-        "context_window": 128000,
-    },
-    {
-        "name": "bigmodel/glm-4-6",
-        "description": "智谱 AI GLM-4，国产大模型，性价比高",
-        "model_name": "glm-4.6",
-        "model_type": "saas/openai",
-        "base_url": "https://open.bigmodel.cn/api/paas/v4/",
-        "provider": "bigmodel",
-        "api_key_path": "",
-        "is_reasoning": False,
-        "input_price": 0.5,  # 0.5元/百万tokens
-        "output_price": 0.5,  # 0.5元/百万tokens
-        "max_output_tokens": 8000,
-        "context_window": 200000,
-    },
-    {
-        "name": "bigmodel/coding/glm-4-6",
-        "description": "智谱 AI GLM-4，国产大模型，性价比高",
-        "model_name": "glm-4.6",
-        "model_type": "saas/openai",
-        "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
-        "provider": "bigmodel",
-        "api_key_path": "",
-        "is_reasoning": False,
-        "input_price": 0.0, 
-        "output_price": 0.0,
-        "max_output_tokens": 8000,
-        "context_window": 200000,
-    },
-    {
-        "name": "minimax/m2",
-        "description": "MiniMax M2 模型，适合编程任务",
-        "model_name": "MiniMax-M2",
-        "model_type": "saas/openai",
-        "base_url": "https://api.minimaxi.com/v1",
-        "provider": "minimax",
-        "is_reasoning": True,
-        "input_price": 2.1,
-        "output_price": 8.4,
-        "max_output_tokens": 24288,
-        "context_window": 204800,
-        "api_key_path": ""        
-    },
-    {
-        "name": "deepseek/deepseek-chat",
-        "description": "DeepSeek 官方 API，性能接近 GPT-4，价格低廉",
-        "model_name": "deepseek-chat",
-        "model_type": "saas/openai",
-        "base_url": "https://api.deepseek.com/beta",
-        "provider": "deepseek",
-        "api_key_path": "",
-        "is_reasoning": False,
-        "input_price": 1.0,  # 1元/百万tokens
-        "output_price": 2.0,  # 2元/百万tokens
-        "max_output_tokens": 8096,
-        "context_window": 128000,
-    },
-    {
-        "name": "openrouter/claude-sonnet-4-5",
-        "description": "Claude Sonnet 4.5 via OpenRouter，强大的推理能力",
-        "model_name": "anthropic/claude-sonnet-4-5",
-        "model_type": "saas/openai",
-        "base_url": "https://openrouter.ai/api/v1",
-        "provider": "openrouter",
-        "api_key_path": "",
-        "is_reasoning": False,
-        "input_price": 21.6,  # 约3美元/百万tokens，按7.2汇率
-        "output_price": 108.0,  # 约15美元/百万tokens
-        "max_output_tokens": 24288,
-        "context_window": 200000,
-    },
-    {
-        "name": "openrouter/openai/gpt-5",
-        "description": "GPT-5 via OpenRouter，OpenAI 最新模型",
-        "model_name": "openai/gpt-5",
-        "model_type": "saas/openrouter",
-        "base_url": "https://openrouter.ai/api/v1",
-        "provider": "openrouter",
-        "api_key_path": "",
-        "is_reasoning": False,
-        "input_price": 36.0,  # 约5美元/百万tokens，按7.2汇率
-        "output_price": 108.0,  # 约15美元/百万tokens
-        "max_output_tokens": 24000,
-        "context_window": 200000,
-    },  
-    {
-        "name": "moonshot/kimi-k2-thinking",
-        "description": "Moonshot Kimi K2 Thinking,国产大模型，性价比高",
-        "model_name": "kimi-k2-thinking",
-        "model_type": "saas/openai",
-        "base_url": "https://api.moonshot.cn/v1",
-        "provider": "moonshot",
-        "is_reasoning": False,
-        "input_price": 4.0,
-        "output_price": 16.0,
-        "max_output_tokens": 24288,
-        "context_window": 262000        
-    }  
-]
+
+# 默认内置模型列表 - 已清空，需要用户手动配置
+DEFAULT_MODELS = []
 
 
 class ModelRegistry:
@@ -158,28 +46,19 @@ class ModelRegistry:
         return model
 
     def load(self) -> List[LLMModel]:
-        """每次都重新加载模型列表，合并默认模型和自定义模型"""
+        """加载模型列表，如果配置文件不存在则返回空列表"""
         self._ensure_dir()
 
-        # 从默认模型开始
         models_dict = {}
-        for model_data in DEFAULT_MODELS:
-            # 添加 base_keys_dir 到模型数据
-            model_data_with_keys_dir = model_data.copy()
-            model_data_with_keys_dir["base_keys_dir"] = str(
-                self.models_json_path.parent
-            )
-            model = LLMModel(**model_data_with_keys_dir)
-            models_dict[model.name] = model
 
-        # 如果配置文件存在，读取并合并
+        # 如果配置文件存在，读取模型列表
         if self.models_json_path.exists():
             try:
                 with FileLock(self._get_lock_path(self.models_json_path), timeout=5):
                     with open(self.models_json_path, "r", encoding="utf-8") as f:
                         custom_models_data = json.load(f)
 
-                # 自定义模型会覆盖同名的默认模型
+                # 加载所有模型
                 for model_data in custom_models_data:
                     # 兼容旧版本：添加新字段的默认值
                     if "context_window" not in model_data:
@@ -196,12 +75,9 @@ class ModelRegistry:
                     models_dict[model.name] = model
 
             except (json.JSONDecodeError, Exception) as e:
-                # JSON 无效时，使用默认模型并重新保存
-                print(f"警告：加载 models.json 失败: {e}，使用默认模型")
-                self.save(list(models_dict.values()))
-        else:
-            # 文件不存在，创建默认配置
-            self.save(list(models_dict.values()))
+                # JSON 无效时，返回空列表
+                print(f"警告：加载 models.json 失败: {e}，请使用 /models /add 命令添加模型")
+                return []
 
         # 加载 API 密钥
         models = []
@@ -293,11 +169,6 @@ class ModelRegistry:
         # 先检查模型是否存在
         model = self.get(model_name)
         if not model:
-            return False
-
-        # 如果是默认模型，不允许删除
-        default_model_names = [m["name"] for m in DEFAULT_MODELS]
-        if model_name in default_model_names:
             return False
 
         # 加载所有模型

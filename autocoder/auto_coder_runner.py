@@ -351,6 +351,7 @@ def stop():
 def initialize_system(args: InitializeSystemRequest):
     from autocoder.utils.model_provider_selector import ModelProviderSelector
     from autocoder.common.llms import LLMManager
+    from autocoder.common.llms.guided_setup import guide_first_model_setup
 
     print(f"\n\033[1;34m{get_message('initializing')}\033[0m")
 
@@ -387,22 +388,27 @@ def initialize_system(args: InitializeSystemRequest):
             llm_manager = LLMManager()
             all_models = llm_manager.get_all_models()
 
-            # 如果没有任何模型配置，触发配置向导
+            # 如果没有任何模型配置，触发自定义引导配置向导
             if not all_models:
-                print_status(get_message("no_models_found"), "warning")
-                model_provider_selector = ModelProviderSelector()
-                model_provider_info = model_provider_selector.select_provider()
-                if model_provider_info is not None:
-                    models_json_list = model_provider_selector.to_models_json(
-                        model_provider_info
-                    )
-                    llm_manager.add_models(models_json_list)
-            # 如果有模型但缺少推荐的 v3_chat 或 r1_chat，仅在首次运行时提示
-            elif first_time[0] and (
-                not llm_manager.check_model_exists("v3_chat")
-                or not llm_manager.check_model_exists("r1_chat")
-            ):
-                print_status(get_message("recommended_models_missing"), "info")
+                print_status("未检测到任何模型配置", "warning")
+                configured_model_name = guide_first_model_setup()
+
+                # 如果配置成功，立即激活该模型为默认模型
+                if configured_model_name:
+                    configure(f"model:{configured_model_name}", skip_print=True)
+                    print_status(f"已将模型 {configured_model_name} 设置为默认模型", "success")
+            else:
+                # 如果有模型配置，自动将第一个模型设置为默认模型
+                first_model = llm_manager.get_first_available_model()
+                if first_model:
+                    # 检查当前配置中是否已经有 model 设置
+                    memory_manager = get_memory_manager()
+                    current_model = memory_manager.get_config("model", None)
+
+                    # 如果没有配置或配置的模型不存在，则使用第一个可用模型
+                    if not current_model or not llm_manager.check_model_exists(current_model):
+                        configure(f"model:{first_model.name}", skip_print=True)
+                        print_status(f"自动设置默认模型: {first_model.name}", "success")
 
         if args.product_mode == "pro":
             # Check if Ray is running
