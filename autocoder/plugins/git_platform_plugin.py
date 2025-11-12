@@ -72,11 +72,11 @@ async def async_confirm(prompt_text: str, default: bool = True) -> bool:
             continue
 
 
-class GitHelperPlugin(Plugin):
-    """Git helper plugin for the Chat Auto Coder."""
+class GitPlatformPlugin(Plugin):
+    """Git platform plugin for the Chat Auto Coder."""
 
-    name = "git_helper"
-    description = "Git 辅助工具，提供 Git 命令和状态查询"
+    name = "git_platform"
+    description = "Git 平台管理插件（GitHub/GitLab 配置）"
     version = "0.1.0"
 
     # 需要动态补全的命令列表
@@ -91,8 +91,8 @@ class GitHelperPlugin(Plugin):
     ]
 
     def __init__(self, manager: PluginManager, config: Optional[Dict[str, Any]] = None, config_path: Optional[str] = None):
-        """Initialize the Git helper plugin."""
-        config_dir = Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.GitHelperPlugin"
+        """Initialize the Git platform plugin."""
+        config_dir = Path.home() / ".auto-coder" / "plugins" / "autocoder.plugins.GitPlatformPlugin"
         config_dir.mkdir(parents=True, exist_ok=True)
         config_file = config_dir / "config.json"
         super().__init__(manager, config, str(config_file))
