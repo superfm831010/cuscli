@@ -73,11 +73,18 @@ setup(
         ]
     },
 
-    # 入口点配置 - 从 dist-info/entry_points.txt 提取
+    # 入口点配置 - 升级到 2.0.2 Terminal 架构
     entry_points={
         'console_scripts': [
-            # CUS-CLI 主入口点
-            'cuscli=autocoder.chat_auto_coder:main',
+            # CUS-CLI 主入口点 - 使用新的 Terminal 架构
+            'cuscli=autocoder.terminal.bootstrap:run_cli',
+
+            # V3 版本 - 聊天式 TUI 界面（可选）
+            'cuscli-v3=autocoder.auto_coder_terminal_v3:main',
+
+            # Legacy 版本 - 保留旧版 chat_auto_coder 架构（备用）
+            'cuscli-legacy=autocoder.chat_auto_coder:main',
+
             # 原 auto-coder 入口点（保留以兼容旧脚本）
             'auto-coder=autocoder.auto_coder:main',
             'auto-coder.chat=autocoder.chat_auto_coder:main',
