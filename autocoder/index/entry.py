@@ -4,6 +4,7 @@ from pdb import run
 import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from pathlib import Path
 from autocoder.common import SourceCode, AutoCoderArgs
 from autocoder.common.autocoderargs_parser import AutoCoderArgsParser
 
@@ -13,10 +14,8 @@ from rich.panel import Panel
 
 from autocoder.common.printer import Printer
 from autocoder.events.event_types import EventMetadata
-from autocoder.index.filter.agentic_filter import AgenticFilterRequest, AgenticFilter    
-from autocoder.index.types import (
-    TargetFile
-)
+from autocoder.index.filter.agentic_filter import AgenticFilterRequest, AgenticFilter
+from autocoder.index.types import TargetFile
 
 from autocoder.index.filter.quick_filter import QuickFilter
 from autocoder.index.filter.normal_filter import NormalFilter
@@ -55,8 +54,8 @@ def build_index_and_filter_files(
             },
             "file_selection": 0.0,
             "prepare_output": 0.0,
-            "total": 0.0
-        }
+            "total": 0.0,
+        },
     }
 
     def get_file_path(file_path):
@@ -84,48 +83,57 @@ def build_index_and_filter_files(
 
     index_manager = IndexManager(llm=llm, sources=sources, args=args)
 
-    if not args.skip_filter_index and args.enable_agentic_filter:                                            
+    if not args.skip_filter_index and args.enable_agentic_filter:
         # tuner = AgenticFilter(
         #     llm=index_manager.index_filter_llm or llm,
         #     conversation_history=[],
         #     args=args)
-        
+
         # query = args.query or ""
         # response = tuner.analyze(
         #     AgenticFilterRequest(user_input=query))
-                
-        # if response:            
+
+        # if response:
         #     for file in response.files:
         #         final_files[file.path] = TargetFile(
         #             file_path=file.path, reason="Agentic Filter")
-        
-        from autocoder.auto_coder_runner import run_agentic_filter               
-        response = run_agentic_filter(query=args.query)        
-        if response:            
+
+        from autocoder.auto_coder_runner import run_agentic_filter
+
+        response = run_agentic_filter(query=args.query)
+
+        if response:
             for file in response.files:
-                final_files[file.path] = TargetFile(
-                    file_path=file.path, reason="Agentic Filter")
-        
+                file_path = Path(file.path)
+                if not file_path.is_absolute():
+                    # 相对路径需要加上 source_dir 作为根目录
+                    file_path = Path(args.source_dir) / file_path
+                # 转换为绝对路径
+                absolute_path = str(file_path.resolve())
+                final_files[absolute_path] = TargetFile(
+                    file_path=absolute_path, reason="Agentic Filter"
+                )
+
     elif not args.skip_build_index and llm:
         # Phase 2: Build index
         printer.print_in_terminal("phase2_building_index")
         phase_start = time.monotonic()
-        
+
         index_data = index_manager.build_index()
         stats["indexed_files"] = len(index_data) if index_data else 0
         phase_end = time.monotonic()
         stats["timings"]["build_index"] = phase_end - phase_start
-        
+
         if not args.skip_filter_index and args.index_filter_model:
 
-            model_name = args.index_filter_model or args.model                        
+            model_name = args.index_filter_model or args.model
             printer.print_in_terminal(
-                "quick_filter_start", style="blue", model_name=model_name)
+                "quick_filter_start", style="blue", model_name=model_name
+            )
 
             quick_filter = QuickFilter(index_manager, stats, sources)
             query = args.query or ""
-            quick_filter_result = quick_filter.filter(
-                index_manager.read_index(), query)
+            quick_filter_result = quick_filter.filter(index_manager.read_index(), query)
 
             final_files.update(quick_filter_result.files)
 
@@ -133,15 +141,17 @@ def build_index_and_filter_files(
                 file_positions.update(quick_filter_result.file_positions)
 
         if not args.skip_filter_index and not args.index_filter_model:
-            model_name = getattr(index_manager.llm, 'default_model_name', None)
+            model_name = getattr(index_manager.llm, "default_model_name", None)
             if not model_name:
                 model_name = "unknown(without default model name)"
             printer.print_in_terminal(
-                "normal_filter_start", style="blue", model_name=model_name)
+                "normal_filter_start", style="blue", model_name=model_name
+            )
             normal_filter = NormalFilter(index_manager, stats, sources)
             query = args.query or ""
             normal_filter_result = normal_filter.filter(
-                index_manager.read_index(), query)
+                index_manager.read_index(), query
+            )
             # Merge normal filter results into final_files
             final_files.update(normal_filter_result.files)
 
@@ -193,21 +203,25 @@ def build_index_and_filter_files(
             header_style="bold magenta",
             # 设置表格最大宽度为终端宽度（留 10 字符边距）
             width=min(console_width - 10, 120),
-            expand=True
+            expand=True,
         )
 
         # 优化列配置
-        table.add_column("File Path",
-                         style="cyan",
-                         # 分配 60% 宽度给文件路径
-                         width=int((console_width - 10) * 0.6),
-                         overflow="fold",  # 自动折叠过长的路径
-                         no_wrap=False)  # 允许换行
+        table.add_column(
+            "File Path",
+            style="cyan",
+            # 分配 60% 宽度给文件路径
+            width=int((console_width - 10) * 0.6),
+            overflow="fold",  # 自动折叠过长的路径
+            no_wrap=False,
+        )  # 允许换行
 
-        table.add_column("Reason",
-                         style="green",
-                         width=int((console_width - 10) * 0.4),  # 分配 40% 宽度给原因
-                         no_wrap=False)
+        table.add_column(
+            "Reason",
+            style="green",
+            width=int((console_width - 10) * 0.4),  # 分配 40% 宽度给原因
+            no_wrap=False,
+        )
 
         # 添加处理过的文件路径
         for file, reason in data:
@@ -230,7 +244,8 @@ def build_index_and_filter_files(
 
     if args.index_filter_file_num > 0:
         logger.info(
-            f"Limiting files from {len(final_files)} to {args.index_filter_file_num}")
+            f"Limiting files from {len(final_files)} to {args.index_filter_file_num}"
+        )
 
     if args.skip_confirm:
         final_filenames = [file.file_path for file in final_files.values()]
@@ -246,8 +261,7 @@ def build_index_and_filter_files(
             )
             final_filenames = []
         else:
-            final_filenames = display_table_and_get_selections(
-                target_files_data)
+            final_filenames = display_table_and_get_selections(target_files_data)
 
         if args.index_filter_file_num > 0:
             final_filenames = final_filenames[: args.index_filter_file_num]
@@ -278,9 +292,13 @@ def build_index_and_filter_files(
     source_code_list = SourceCodeList(sources=[])
     depulicated_sources = set()
 
-    # 先去重
+    # for file in final_filenames:
+    #     print(f"{file} - {final_files[file].reason}")
+
+    # 先去重    
     temp_sources = []
     for file in sources:
+        # print(f"{file.module_name} in project")
         if file.module_name in final_filenames:
             if file.module_name in depulicated_sources:
                 continue
@@ -294,11 +312,11 @@ def build_index_and_filter_files(
         # 解析 conversation_prune_safe_zone_tokens 参数
         args_parser = AutoCoderArgsParser()
         parsed_safe_zone_tokens = args_parser.parse_conversation_prune_safe_zone_tokens(
-            args.conversation_prune_safe_zone_tokens,
-            args.code_model
+            args.conversation_prune_safe_zone_tokens, args.code_model
         )
         context_pruner = PruneContext(
-            max_tokens=parsed_safe_zone_tokens, args=args, llm=llm)
+            max_tokens=parsed_safe_zone_tokens, args=args, llm=llm
+        )
         # 如果 file_positions 不为空，则通过 file_positions 来获取文件
         if file_positions:
             # 拿到位置列表，然后根据位置排序 得到 [(pos,file_path)]
@@ -306,20 +324,28 @@ def build_index_and_filter_files(
             # 通过 [file_path] 顺序调整 temp_sources 的顺序
             # MARK
             # 将 file_positions 转换为 [(pos, file_path)] 的列表
-            position_file_pairs = [(pos, file_path)
-                                   for file_path, pos in file_positions.items()]
+            position_file_pairs = [
+                (pos, file_path) for file_path, pos in file_positions.items()
+            ]
             # 按位置排序
             position_file_pairs.sort(key=lambda x: x[0])
             # 提取排序后的文件路径列表
-            sorted_file_paths = [file_path for _,
-                                 file_path in position_file_pairs]
+            sorted_file_paths = [file_path for _, file_path in position_file_pairs]
             # 根据 sorted_file_paths 重新排序 temp_sources
-            temp_sources.sort(key=lambda x: sorted_file_paths.index(
-                x.module_name) if x.module_name in sorted_file_paths else len(sorted_file_paths))
+            temp_sources.sort(
+                key=lambda x: (
+                    sorted_file_paths.index(x.module_name)
+                    if x.module_name in sorted_file_paths
+                    else len(sorted_file_paths)
+                )
+            )
 
         query = args.query or ""
         pruned_files = context_pruner.handle_overflow(
-            temp_sources, [{"role": "user", "content": query}], args.context_prune_strategy)
+            temp_sources,
+            [{"role": "user", "content": query}],
+            args.context_prune_strategy,
+        )
         source_code_list.sources = pruned_files
 
     stats["final_files"] = len(source_code_list.sources)
@@ -333,56 +359,19 @@ def build_index_and_filter_files(
 
     # Calculate total filter time
     total_filter_time = (
-        stats["timings"]["quick_filter"] +
-        stats["timings"]["normal_filter"]["level1_filter"] +
-        stats["timings"]["normal_filter"]["level2_filter"] +
-        stats["timings"]["normal_filter"]["relevance_verification"]
+        stats["timings"]["quick_filter"]
+        + stats["timings"]["normal_filter"]["level1_filter"]
+        + stats["timings"]["normal_filter"]["level2_filter"]
+        + stats["timings"]["normal_filter"]["relevance_verification"]
     )
-
-    # Print final statistics in a more structured way
-    summary = f"""
-=== File Stat ===    
-• Total files scanned: {stats['total_files']}
-• Files indexed: {stats['indexed_files']}
-• Files filtered:
-  - Level 1 (query-based): {stats['level1_filtered']}
-  - Level 2 (related files): {stats['level2_filtered']}
-  - Relevance verified: {stats.get('verified_files', 0)}
-• Final files selected: {stats['final_files']}
-
-=== Time Stat ===
-• Index build: {stats['timings'].get('build_index', 0):.2f}s
-• Quick filter: {stats['timings'].get('quick_filter', 0):.2f}s
-• Normal filter: 
-    - Level 1 filter: {stats['timings']["normal_filter"].get('level1_filter', 0):.2f}s
-    - Level 2 filter: {stats['timings']["normal_filter"].get('level2_filter', 0):.2f}s
-    - Relevance check: {stats['timings']["normal_filter"].get('relevance_verification', 0):.2f}s
-• File selection: {stats['timings'].get('file_selection', 0):.2f}s
-• Total time: {total_time:.2f}s
-
-"""
-    # printer.print_panel(
-    #     summary,
-    #     text_options={"justify": "left", "style": "bold white"},
-    #     panel_options={
-    #         "title": "Indexing and Filtering Summary",
-    #         "border_style": "bold blue",
-    #         "padding": (1, 2),
-    #         "expand": False
-    #     }
-    # )
 
     get_event_manager(args.event_file).write_result(
         EventContentCreator.create_result(
             content=EventContentCreator.ResultContextUsedContent(
-                files=final_filenames,
-                title="Files Used as Context",
-                description=""
+                files=final_filenames, title="Files Used as Context", description=""
             ).to_dict()
         ),
-        metadata=EventMetadata(
-            action_file=args.file or ""
-        ).to_dict()
+        metadata=EventMetadata(action_file=args.file or "").to_dict(),
     )
 
     if args.file:
@@ -395,9 +384,11 @@ def build_index_and_filter_files(
         args.dynamic_urls = dynamic_urls
 
         update_yaml_success = action_yml_file_manager.update_yaml_field(
-            action_file_name, "dynamic_urls", args.dynamic_urls)
+            action_file_name, "dynamic_urls", args.dynamic_urls
+        )
         if not update_yaml_success:
             printer = Printer()
             printer.print_in_terminal(
-                "yaml_save_error", style="red", yaml_file=action_file_name)    
+                "yaml_save_error", style="red", yaml_file=action_file_name
+            )
     return source_code_list

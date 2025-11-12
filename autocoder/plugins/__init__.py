@@ -83,17 +83,6 @@ class Plugin:
         """
         return {}
 
-    def get_help_text(self) -> Optional[str]:
-        """Get the help text displayed in the startup screen.
-
-        If a plugin has a complex subcommand structure, it can customize the
-        startup screen display format through this method.
-
-        Returns:
-            Help text string (may include ANSI color codes), or None to use default display
-        """
-        return None
-
     def load_config(self, config_path: Optional[str] = None) -> bool:
         """加载插件配置。
 
@@ -894,7 +883,7 @@ class PluginManager:
             print("\033[1;34mLoaded Plugins:\033[0m", file=output)
             for plugin_id, plugin in self.plugins.items():
                 print(
-                    f"  - {plugin.description}",
+                    f"  - {plugin.name} (v{plugin.version}): {plugin.description}",
                     file=output,
                 )
 
@@ -1093,8 +1082,8 @@ class PluginManager:
         """处理动态补全命令
 
         Args:
-            command: 基础命令，如 /plugins 或 /git /github /modify
-            current_input: 当前完整的输入，如 /plugins/dirs /remove /usr 或 /git /github /modify personal
+            command: 基础命令，如 /plugins
+            current_input: 当前完整的输入，如 /plugins/dirs /remove /usr
 
         Returns:
             List[Tuple[str, str]]: 补全选项列表，每个选项为 (补全文本, 显示文本)
@@ -1104,30 +1093,18 @@ class PluginManager:
 
         # 处理补全选项
         processed_completions = []
-
-        # 获取命令的部分数
-        command_parts_count = len(command.split())
-
-        # 分割当前输入
         parts = current_input.split()
+        existing_input = ""
 
-        # 判断是否有尾部空格
-        has_trailing_space = current_input != current_input.rstrip()
-
-        # 确定当前正在输入的词（前缀）
-        if has_trailing_space:
-            # 有空格，说明当前词已完成，新词的前缀为空
-            existing_input = ""
-        elif len(parts) > command_parts_count:
-            # 无空格，取最后一个词作为前缀
+        # 如果输入包含子命令和参数
+        if len(parts) > 2:
+            # 获取最后一个部分作为补全前缀
             existing_input = parts[-1]
-        else:
-            existing_input = ""
 
-        # 只提供匹配前缀的补全
+        # 只提供未输入部分作为补全
         for completion_text, display_text in completions:
             if completion_text.startswith(existing_input):
-                remaining_text = completion_text[len(existing_input):]
+                remaining_text = completion_text[len(existing_input) :]
                 processed_completions.append((remaining_text, display_text))
 
         return processed_completions

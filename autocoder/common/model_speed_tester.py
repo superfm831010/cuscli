@@ -11,7 +11,7 @@ import byzerllm
 import importlib.resources as resources
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Tuple
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 class ModelSpeedTestResult(BaseModel):
     model_name: str
@@ -23,10 +23,6 @@ class ModelSpeedTestResult(BaseModel):
     generated_tokens_cost: float
     status: str
     error: Optional[str] = None
-
-    model_config = ConfigDict(
-        protected_namespaces=()  # 禁用保护命名空间检查，允许使用 model_name 等字段
-    )
 
 class SpeedTestResults(BaseModel):
     results: List[ModelSpeedTestResult]

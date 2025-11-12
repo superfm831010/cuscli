@@ -9,6 +9,7 @@ def setup_keybindings(
     voice_input_func,
     cycle_mode_func,
     toggle_human_as_model_func,
+    toggle_agentic_mode_func,
     configure_func,
 ):
     """设置所有键盘绑定
@@ -18,6 +19,7 @@ def setup_keybindings(
         voice_input_func: 语音输入函数
         cycle_mode_func: 模式切换函数
         toggle_human_as_model_func: 切换 human_as_model 函数
+        toggle_agentic_mode_func: 切换 agentic_mode 函数
         configure_func: 配置函数
 
     Returns:
@@ -63,7 +65,7 @@ def setup_keybindings(
         new_status = "true" if new_status_bool else "false"
         configure_func(f"human_as_model:{new_status}", skip_print=True)
         event.app.invalidate()
-
+    
     # 注册粘贴处理器
     register_paste_handler(kb)
 

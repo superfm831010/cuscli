@@ -111,10 +111,6 @@ class ResultTokenStatContent(BaseModel):
     output_cost:float = 0.0
     speed:float = 0.0
 
-    model_config = ConfigDict(
-        protected_namespaces=()  # 禁用保护命名空间检查，允许使用 model_name 等字段
-    )
-
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
         return self.model_dump()

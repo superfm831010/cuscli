@@ -32,9 +32,11 @@ from autocoder.common.core_config import get_memory_manager
 from autocoder.utils import get_last_yaml_file
 from autocoder.auto_coder import main as auto_coder_main
 from byzerllm.utils.nontext import Image
+from autocoder.chat_auto_coder_lang import get_message as get_i18n_message
 
 from autocoder.inner.async_command_handler import AsyncCommandHandler
 from autocoder.inner.queue_command_handler import QueueCommandHandler
+from autocoder.inner.merge_command_handler import MergeCommandHandler
 from autocoder.inner.conversation_command_handlers import (
     ConversationNewCommandHandler,
     ConversationResumeCommandHandler,
@@ -50,6 +52,9 @@ class RunAgentic:
     def __init__(self):
         """初始化 RunAgentic 类"""
         self._console = Console()
+        self._conversation_config = AgenticEditConversationConfig(
+            action=ConversationAction.CONTINUE
+        )
 
     def run(
         self,
@@ -68,22 +73,26 @@ class RunAgentic:
         Returns:
             conversation_id: 对话ID
         """
-        # 1. 初始化上下文
+        # 1. 检查是否是 /help 命令
+        if self._handle_help_command(query):
+            return None
+
+        # 2. 初始化上下文
         args, llm = self._initialize_context(query)
         if llm is None:
             return None
 
-        # 2. 解析命令信息
+        # 3. 解析命令信息
         command_infos = parse_query(query)
 
         # 3. 处理命令链
         should_terminate, conversation_config = self._process_command_chain(
-            query, args, command_infos
+            query, args, command_infos, llm, cancel_token
         )
         if should_terminate:
             # 如果命令已处理，返回相应的值
             if conversation_config is None:
-                return None  # async/queue 命令已处理
+                return None  # async/queue/merge 命令已处理
             else:
                 return conversation_config.conversation_id  # conversation 命令已处理
 
@@ -94,12 +103,13 @@ class RunAgentic:
 
         # 5. 确保对话ID存在
         self._ensure_conversation_id(conversation_config)
-
-        # 6. 执行任务
+         
+        # 6. 执行任务        
         self._execute_runner(llm, args, conversation_config, task_query, cancel_token)
 
         # 7. 刷新文件列表
         self._refresh_completer()
+        
         return conversation_config.conversation_id
 
     @byzerllm.prompt()
@@ -119,7 +129,9 @@ class RunAgentic:
         ],
         "reasoning": "Detailed explanation of your analysis process: what you searched for, what patterns you found, how you identified these files as relevant, and why each file would be involved in the context of the user's request."
         }
-        ```]]
+        ```
+        Never stop unless you think you have found the enough files to satisfy the user's request.
+        ]]
         """
 
     @byzerllm.prompt()
@@ -180,23 +192,12 @@ class RunAgentic:
             return
 
         # 2. 创建对话配置
-        conversation_config = AgenticEditConversationConfig(
-            action=ConversationAction.RESUME
-        )
+        conversation_config = self._ensure_conversation_id(self._conversation_config)
         conversation_config.query = query
 
         # 3. 处理特殊对话操作
         if self._handle_conversation_actions(conversation_config):
-            return conversation_config.conversation_id
-
-        # 4. 创建新对话
-        conversation_manager = get_conversation_manager()
-        conversation_id = conversation_manager.create_conversation(
-            name=query or "New Conversation",
-            description=query or "New Conversation",
-        )
-        conversation_manager.set_current_conversation(conversation_id)
-        conversation_config.conversation_id = conversation_id
+            return conversation_config.conversation_id        
 
         # 5. 配置过滤模式参数
         args_copy = deepcopy(args)
@@ -211,13 +212,52 @@ class RunAgentic:
             cancel_token=cancel_token,
             system_prompt=self._filter_plan.prompt(),
         )
-        result = runner.run(
-            AgenticEditRequest(
-                user_input=query + "\n" + self._filter_query_reminder.prompt(),
-            )
-        )
 
-        return to_model(result, AgenticFilterResponse)
+        # 执行并重试逻辑（最多重试3次）
+        max_retries = args_copy.agentic_filter_retries
+        last_exception = None
+
+        for attempt in range(max_retries):
+            try:
+                if attempt == 0:
+                    # 第一次执行
+                    result = runner.run(
+                        AgenticEditRequest(
+                            user_input=query
+                            + "\n"
+                            + self._filter_query_reminder.prompt(),
+                        )
+                    )
+                else:
+                    # 重试执行，将异常信息传递给模型
+                    exception_message = f"<异常>\n{str(last_exception)}\n\n根据异常修正错误，重新使用 attempt_completion 进行输出"
+                    global_logger.warning(
+                        f"Filter method retry attempt {attempt + 1}/{max_retries}, error: {last_exception}"
+                    )
+                    result = runner.run(
+                        AgenticEditRequest(
+                            user_input=exception_message,
+                        )
+                    )
+
+                # 尝试转换为模型
+                return to_model(result, AgenticFilterResponse)
+
+            except Exception as e:
+                last_exception = e
+                global_logger.error(
+                    f"Filter method failed on attempt {attempt + 1}/{max_retries}: {e}"
+                )
+
+                # 如果是最后一次尝试，抛出异常
+                if attempt == max_retries - 1:
+                    global_logger.error(
+                        f"Filter method failed after {max_retries} attempts"
+                    )
+                    raise
+
+        # 理论上不会到达这里，但为了类型安全
+        raise RuntimeError("Filter method failed unexpectedly")
 
     def run_with_events(
         self,
@@ -322,6 +362,24 @@ class RunAgentic:
 
     # ==================== 内部辅助方法 ====================
 
+    def _handle_help_command(self, query: str) -> bool:
+        """
+        处理 /help 命令
+
+        Args:
+            query: 用户查询
+
+        Returns:
+            bool: 如果是 /help 命令返回 True，否则返回 False
+        """
+        # 去除前后空格并检查是否是 /help 命令
+        query_stripped = query.strip()
+        if query_stripped == "/help" or query_stripped == "":
+            help_text = get_i18n_message("auto_help_text")
+            print(help_text)
+            return True
+        return False
+
     def _show_llm_error(self, error: Exception) -> None:
         """显示LLM配置错误"""
         self._console.print(
@@ -366,7 +424,7 @@ class RunAgentic:
         return args, llm
 
     def _process_command_chain(
-        self, query: str, args: AutoCoderArgs, command_infos: Any
+        self, query: str, args: AutoCoderArgs, command_infos: Any, llm: Any = None, cancel_token: Optional[str] = None
     ) -> Tuple[bool, Optional[AgenticEditConversationConfig]]:
         """
         处理命令链，使用责任链模式
@@ -375,16 +433,18 @@ class RunAgentic:
             query: 用户查询
             args: 配置参数
             command_infos: 命令信息
+            llm: LLM实例
+            cancel_token: 取消令牌
 
         Returns:
             tuple: (should_terminate, conversation_config)
-                - should_terminate=True, conversation_config=None: async/queue已处理，返回None
+                - should_terminate=True, conversation_config=None: async/queue/merge已处理，返回None
                 - should_terminate=True, conversation_config=obj: conversation handler已处理，返回conversation_id
                 - should_terminate=False, conversation_config=obj: 继续执行后续逻辑
         """
         # 初始化对话配置
         conversation_config = AgenticEditConversationConfig(
-            action=ConversationAction.RESUME
+            action=ConversationAction.CONTINUE
         )
 
         # 处理 async 指令
@@ -399,25 +459,53 @@ class RunAgentic:
         if queue_result is None:
             return True, None
 
-        # 处理 conversation handlers
-        conversation_handlers = [
-            (ConversationNewCommandHandler(), "handle_new_command"),
-            (ConversationResumeCommandHandler(), "handle_resume_command"),
-            (ConversationListCommandHandler(), "handle_list_command"),
-            (ConversationRenameCommandHandler(), "handle_rename_command"),
-        ]
+        # 处理 merge 指令（需要 llm 和 conversation_config）
+        if llm is not None:
+            # 确保对话ID存在
+            self._ensure_conversation_id(conversation_config)
+            merge_handler = MergeCommandHandler()
+            merge_result = merge_handler.handle_merge_command(
+                query, args, llm, conversation_config, cancel_token
+            )
+            if merge_result is None:
+                return True, None
 
-        for handler, method_name in conversation_handlers:
-            method = getattr(handler, method_name)
-            result = method(query, conversation_config)
-            if result is None:
-                return True, conversation_config
+        # 处理 conversation handlers
+        conversation_new_handler = ConversationNewCommandHandler()
+        new_handler_result = conversation_new_handler.handle_new_command(
+            query, conversation_config
+        )
+        if new_handler_result is None:
+            return True, conversation_config
+
+        conversation_resume_handler = ConversationResumeCommandHandler()
+        resume_handler_result = conversation_resume_handler.handle_resume_command(
+            query, conversation_config
+        )
+        if resume_handler_result is None:
+            return True, conversation_config
+
+        conversation_list_handler = ConversationListCommandHandler()
+        list_handler_result = conversation_list_handler.handle_list_command(
+            query, conversation_config
+        )
+        if list_handler_result is None:
+            return True, conversation_config
+
+        conversation_rename_handler = ConversationRenameCommandHandler()
+        rename_handler_result = conversation_rename_handler.handle_rename_command(
+            query, conversation_config
+        )
+        if rename_handler_result is None:
+            return True, conversation_config
 
         # 处理 command 指令
+        
         command_handler = ConversationCommandCommandHandler()
         command_result = command_handler.handle_command_command(
             query, conversation_config, command_infos
         )
+        
         if command_result is None:
             return True, conversation_config
 
@@ -425,7 +513,7 @@ class RunAgentic:
 
     def _ensure_conversation_id(
         self, conversation_config: AgenticEditConversationConfig
-    ) -> str:
+    ) -> AgenticEditConversationConfig:
         """
         确保对话ID存在
 
@@ -434,8 +522,21 @@ class RunAgentic:
 
         Returns:
             str: 对话ID
-        """
-        if conversation_config.action == ConversationAction.RESUME and not conversation_config.conversation_id:
+        """        
+        if conversation_config.action == ConversationAction.CONTINUE:
+            conversation_manager = get_conversation_manager()
+            conversation_id = conversation_manager.get_current_conversation_id()
+            if not conversation_id:
+                conversation_id = conversation_manager.create_conversation(
+                    name=conversation_config.query or "New Conversation",
+                    description=conversation_config.query or "New Conversation",
+                )
+            conversation_config.conversation_id = conversation_id            
+        
+        if (
+            conversation_config.action == ConversationAction.RESUME
+            and not conversation_config.conversation_id
+        ):
             conversation_manager = get_conversation_manager()
             conversation_id = conversation_manager.get_current_conversation_id()
             if not conversation_id:
@@ -453,8 +554,9 @@ class RunAgentic:
             )
             conversation_manager.set_current_conversation(conversation_id)
             conversation_config.conversation_id = conversation_id
-
-        return conversation_config.conversation_id
+        
+        self._conversation_config = conversation_config
+        return self._conversation_config
 
     def _execute_runner(
         self,

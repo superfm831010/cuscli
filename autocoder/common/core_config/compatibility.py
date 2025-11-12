@@ -112,3 +112,40 @@ def get_human_as_model_string() -> str:
         if _default_memory_manager is None:
             _default_memory_manager = get_memory_manager()
     return _default_memory_manager.get_human_as_model_string()
+
+
+# Agentic mode management compatibility functions
+def get_agentic_mode() -> str:
+    """Get agentic_mode status (compatibility function)."""
+    global _default_memory_manager
+    with _default_memory_manager_lock:
+        if _default_memory_manager is None:
+            _default_memory_manager = get_memory_manager()
+    return _default_memory_manager.get_agentic_mode()
+
+
+def set_agentic_mode(mode: str):
+    """Set agentic_mode (compatibility function)."""
+    global _default_memory_manager
+    with _default_memory_manager_lock:
+        if _default_memory_manager is None:
+            _default_memory_manager = get_memory_manager()
+    _default_memory_manager.set_agentic_mode(mode)
+
+
+def toggle_agentic_mode() -> str:
+    """Toggle agentic_mode (compatibility function)."""
+    global _default_memory_manager
+    with _default_memory_manager_lock:
+        if _default_memory_manager is None:
+            _default_memory_manager = get_memory_manager()
+    return _default_memory_manager.toggle_agentic_mode()
+
+
+def get_agentic_mode_string() -> str:
+    """Get agentic_mode status as string (compatibility function)."""
+    global _default_memory_manager
+    with _default_memory_manager_lock:
+        if _default_memory_manager is None:
+            _default_memory_manager = get_memory_manager()
+    return _default_memory_manager.get_agentic_mode_string()

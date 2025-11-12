@@ -5,7 +5,11 @@ import byzerllm
 from autocoder.common import sys_prompt
 from concurrent.futures import ThreadPoolExecutor
 import json
-from autocoder.common.utils_code_auto_generate import chat_with_continue,stream_chat_with_continue,ChatWithContinueResult
+from autocoder.common.utils_code_auto_generate import (
+    chat_with_continue,
+    stream_chat_with_continue,
+    ChatWithContinueResult,
+)
 from autocoder.utils.auto_coder_utils.chat_stream_out import stream_out
 from autocoder.common.stream_out_type import CodeGenerateStreamOutType
 from autocoder.common.auto_coder_lang import get_message_with_format
@@ -16,11 +20,13 @@ from autocoder.common import SourceCodeList
 from autocoder.privacy.model_filter import ModelPathFilter
 from autocoder.memory.active_context_manager import ActiveContextManager
 from autocoder.common.rulefiles import get_rules
-from autocoder.run_context import get_run_context,RunMode
+from autocoder.run_context import get_run_context, RunMode
 import os
 import uuid
 from datetime import datetime
 from autocoder.common.save_formatted_log import save_formatted_log
+import platform
+
 
 class CodeAutoGenerateStrictDiff:
     def __init__(
@@ -34,14 +40,18 @@ class CodeAutoGenerateStrictDiff:
         if not self.llm:
             raise ValueError(
                 "Please provide a valid model instance to use for code generation."
-            )        
+            )
         self.llms = self.llm.get_sub_client("code_model") or [self.llm]
         if not isinstance(self.llms, list):
-            self.llms = [self.llms]    
+            self.llms = [self.llms]
 
     @byzerllm.prompt(llm=lambda self: self.llm)
     def multi_round_instruction(
-        self, instruction: str, content: str, context: str = "", package_context: str = ""
+        self,
+        instruction: str,
+        content: str,
+        context: str = "",
+        package_context: str = "",
     ) -> str:
         """
         如果你需要生成代码，对于每个需要更改的文件，写出类似于 unified diff 的更改，就像`diff -U0`会产生的那样。
@@ -123,6 +133,12 @@ class CodeAutoGenerateStrictDiff:
 
         现在让我们开始一个新的任务:
 
+        <env>
+        当前工作目录: {{ current_dir }}
+        操作系统: {{ os_info }}
+        当前时间: {{ current_time }}
+        </env>
+
         {%- if structure %}
         ====
         {{ structure }}
@@ -162,7 +178,7 @@ class CodeAutoGenerateStrictDiff:
         ##File: {{ key }}
         {{ value }}
         </user_rule>
-        {% endfor %}        
+        {% endfor %}
         {% endif %}
 
         ====
@@ -173,12 +189,19 @@ class CodeAutoGenerateStrictDiff:
 
         每次生成一个文件的diff，然后询问我是否继续，当我回复继续，继续生成下一个文件的diff。当没有后续任务时，请回复 "__完成__" 或者 "__EOF__"。
         """
-        
+        # 收集环境信息
+        current_dir = os.getcwd()
+        os_info = f"{platform.system()} {platform.release()}"
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
         if not self.args.include_project_structure:
             return {
-                "structure": "",                
+                "structure": "",
+                "current_dir": current_dir,
+                "os_info": os_info,
+                "current_time": current_time,
             }
-        
+
         extra_docs = get_rules()
 
         return {
@@ -188,11 +211,18 @@ class CodeAutoGenerateStrictDiff:
                 else ""
             ),
             "extra_docs": extra_docs,
+            "current_dir": current_dir,
+            "os_info": os_info,
+            "current_time": current_time,
         }
 
     @byzerllm.prompt(llm=lambda self: self.llm)
     def single_round_instruction(
-        self, instruction: str, content: str, context: str = "", package_context: str = ""
+        self,
+        instruction: str,
+        content: str,
+        context: str = "",
+        package_context: str = "",
     ) -> str:
         """
         如果你需要生成代码，对于每个需要更改的文件，写出类似于 unified diff 的更改，就像`diff -U0`会产生的那样。
@@ -277,6 +307,12 @@ class CodeAutoGenerateStrictDiff:
 
         现在让我们开始一个新的任务:
 
+        <env>
+        当前工作目录: {{ current_dir }}
+        操作系统: {{ os_info }}
+        当前时间: {{ current_time }}
+        </env>
+
         {%- if structure %}
         {{ structure }}
         {%- endif %}
@@ -305,10 +341,17 @@ class CodeAutoGenerateStrictDiff:
 
         {{ instruction }}
         """
-        
+        # 收集环境信息
+        current_dir = os.getcwd()
+        os_info = f"{platform.system()} {platform.release()}"
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
         if not self.args.include_project_structure:
             return {
-                "structure": "",                
+                "structure": "",
+                "current_dir": current_dir,
+                "os_info": os_info,
+                "current_time": current_time,
             }
 
         return {
@@ -316,22 +359,30 @@ class CodeAutoGenerateStrictDiff:
                 self.action.pp.get_tree_like_directory_structure()
                 if self.action
                 else ""
-            )
+            ),
+            "current_dir": current_dir,
+            "os_info": os_info,
+            "current_time": current_time,
         }
 
     def single_round_run(
         self, query: str, source_code_list: SourceCodeList
     ) -> CodeGenerateResult:
-        llm_config = {"human_as_model": self.args.human_as_model}               
-        
+        llm_config = {"human_as_model": self.args.human_as_model}
+
         source_content = source_code_list.to_str()
 
         # 获取包上下文信息
         package_context = ""
-        
-        if self.args.enable_active_context and self.args.enable_active_context_in_generate:
+
+        if (
+            self.args.enable_active_context
+            and self.args.enable_active_context_in_generate
+        ):
             # 初始化活动上下文管理器
-            active_context_manager = ActiveContextManager(self.llm, self.args.source_dir)
+            active_context_manager = ActiveContextManager(
+                self.llm, self.args.source_dir
+            )
             # 获取活动上下文信息
             result = active_context_manager.load_active_contexts_for_files(
                 [source.module_name for source in source_code_list.sources]
@@ -340,31 +391,35 @@ class CodeAutoGenerateStrictDiff:
             if result.contexts:
                 package_context_parts = []
                 for dir_path, context in result.contexts.items():
-                    package_context_parts.append(f"<package_info>{context.content}</package_info>")
-                
+                    package_context_parts.append(
+                        f"<package_info>{context.content}</package_info>"
+                    )
+
                 package_context = "\n".join(package_context_parts)
 
         if self.args.template == "common":
             init_prompt = self.single_round_instruction.prompt(
-                instruction=query, content=source_content, context=self.args.context,
-                package_context=package_context
+                instruction=query,
+                content=source_content,
+                context=self.args.context,
+                package_context=package_context,
             )
         elif self.args.template == "auto_implement":
             init_prompt = self.auto_implement_function.prompt(
                 instruction=query, content=source_content
             )
 
-        with open(self.args.target_file, "w",encoding="utf-8") as file:
+        with open(self.args.target_file, "w", encoding="utf-8") as file:
             file.write(init_prompt)
 
         conversations = []
 
         if self.args.system_prompt and self.args.system_prompt.strip() == "claude":
             conversations.append(
-                {"role": "system", "content": sys_prompt.claude_sys_prompt.prompt()})
+                {"role": "system", "content": sys_prompt.claude_sys_prompt.prompt()}
+            )
         elif self.args.system_prompt:
-            conversations.append(
-                {"role": "system", "content": self.args.system_prompt})
+            conversations.append({"role": "system", "content": self.args.system_prompt})
 
         conversations.append({"role": "user", "content": init_prompt})
 
@@ -375,13 +430,13 @@ class CodeAutoGenerateStrictDiff:
                 project_root=self.args.source_dir,
                 json_text=conversations_json,
                 suffix="conversations",
-                log_subdir="manuals"
+                log_subdir="manuals",
             )
         except Exception as e:
-            printer.print_in_terminal("conversations_save_failed",
-                                      style="red",
-                                      error=str(e))
-        
+            printer.print_in_terminal(
+                "conversations_save_failed", style="red", error=str(e)
+            )
+
         conversations_list = []
         results = []
         input_tokens_count = 0
@@ -391,90 +446,113 @@ class CodeAutoGenerateStrictDiff:
         model_names = []
 
         printer = Printer()
-        estimated_input_tokens = count_tokens(json.dumps(conversations, ensure_ascii=False))
-        printer.print_in_terminal("estimated_input_tokens_in_generate", style="yellow",
-                                  estimated_input_tokens_in_generate=estimated_input_tokens,
-                                  generate_mode="strict_diff"
-                                  )
+        estimated_input_tokens = count_tokens(
+            json.dumps(conversations, ensure_ascii=False)
+        )
+        printer.print_in_terminal(
+            "estimated_input_tokens_in_generate",
+            style="yellow",
+            estimated_input_tokens_in_generate=estimated_input_tokens,
+            generate_mode="strict_diff",
+        )
 
         if not self.args.human_as_model or get_run_context().mode == RunMode.WEB:
-            with ThreadPoolExecutor(max_workers=len(self.llms) * self.generate_times_same_model) as executor:
+            with ThreadPoolExecutor(
+                max_workers=len(self.llms) * self.generate_times_same_model
+            ) as executor:
                 futures = []
                 count = 0
                 for llm in self.llms:
                     for _ in range(self.generate_times_same_model):
-                        
+
                         model_names_list = llm_utils.get_llm_names(llm)
                         model_name = None
                         if model_names_list:
-                            model_name = model_names_list[0]                                                    
-                        
+                            model_name = model_names_list[0]
+
                         for _ in range(self.generate_times_same_model):
                             model_names.append(model_name)
                             if count == 0:
+
                                 def job():
                                     stream_generator = stream_chat_with_continue(
-                                        llm=llm, 
-                                        conversations=conversations, 
+                                        llm=llm,
+                                        conversations=conversations,
                                         llm_config=llm_config,
-                                        args=self.args
+                                        args=self.args,
                                     )
                                     full_response, last_meta = stream_out(
-                                    stream_generator,
-                                    model_name=model_name,
-                                    title=get_message_with_format(
-                                        "code_generate_title", model_name=model_name),
-                                    args=self.args,
-                                    extra_meta={
-                                        "stream_out_type": CodeGenerateStreamOutType.CODE_GENERATE.value
-                                    })
+                                        stream_generator,
+                                        model_name=model_name,
+                                        title=get_message_with_format(
+                                            "code_generate_title", model_name=model_name
+                                        ),
+                                        args=self.args,
+                                        extra_meta={
+                                            "stream_out_type": CodeGenerateStreamOutType.CODE_GENERATE.value
+                                        },
+                                    )
                                     return ChatWithContinueResult(
                                         content=full_response,
                                         input_tokens_count=last_meta.input_tokens_count,
-                                        generated_tokens_count=last_meta.generated_tokens_count
+                                        generated_tokens_count=last_meta.generated_tokens_count,
                                     )
+
                                 futures.append(executor.submit(job))
-                            else:                                
-                                futures.append(executor.submit(
-                                    chat_with_continue, 
-                                    llm=llm, 
-                                    conversations=conversations, 
-                                    llm_config=llm_config,
-                                    args=self.args
-                                ))
+                            else:
+                                futures.append(
+                                    executor.submit(
+                                        chat_with_continue,
+                                        llm=llm,
+                                        conversations=conversations,
+                                        llm_config=llm_config,
+                                        args=self.args,
+                                    )
+                                )
                             count += 1
                 temp_results = [future.result() for future in futures]
                 for result in temp_results:
                     results.append(result.content)
                     input_tokens_count += result.input_tokens_count
                     generated_tokens_count += result.generated_tokens_count
-                    model_info = llm_utils.get_model_info(model_name, self.args.product_mode)
+                    model_info = llm_utils.get_model_info(
+                        model_name, self.args.product_mode
+                    )
                     input_cost = model_info.get("input_price", 0) if model_info else 0
                     output_cost = model_info.get("output_price", 0) if model_info else 0
-                    input_tokens_cost += input_cost * result.input_tokens_count / 1000000
-                    generated_tokens_cost += output_cost * result.generated_tokens_count / 1000000
+                    input_tokens_cost += (
+                        input_cost * result.input_tokens_count / 1000000
+                    )
+                    generated_tokens_cost += (
+                        output_cost * result.generated_tokens_count / 1000000
+                    )
             for result in results:
                 conversations_list.append(
-                    conversations + [{"role": "assistant", "content": result}])
-        else:            
+                    conversations + [{"role": "assistant", "content": result}]
+                )
+        else:
             for _ in range(self.args.human_model_num):
                 single_result = chat_with_continue(
-                    llm=self.llms[0], 
-                    conversations=conversations, 
+                    llm=self.llms[0],
+                    conversations=conversations,
                     llm_config=llm_config,
-                    args=self.args
-                )                
+                    args=self.args,
+                )
                 results.append(single_result.content)
                 input_tokens_count += single_result.input_tokens_count
                 generated_tokens_count += single_result.generated_tokens_count
-                conversations_list.append(conversations + [{"role": "assistant", "content": single_result.content}])
-        
+                conversations_list.append(
+                    conversations
+                    + [{"role": "assistant", "content": single_result.content}]
+                )
+
         statistics = {
             "input_tokens_count": input_tokens_count,
             "generated_tokens_count": generated_tokens_count,
             "input_tokens_cost": input_tokens_cost,
-            "generated_tokens_cost": generated_tokens_cost
-        }        
+            "generated_tokens_cost": generated_tokens_cost,
+        }
 
-        return CodeGenerateResult(contents=results, conversations=conversations_list, metadata=statistics)
-    
+        return CodeGenerateResult(
+            contents=results, conversations=conversations_list, metadata=statistics
+        )

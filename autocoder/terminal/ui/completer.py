@@ -3,6 +3,8 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from prompt_toolkit.completion import Completer, Completion
+from typing import List, Set
+import os
 
 
 class EnhancedCompleter(Completer):
@@ -11,6 +13,41 @@ class EnhancedCompleter(Completer):
     def __init__(self, base_completer: Completer, plugin_manager):
         self.base_completer: Completer = base_completer
         self.plugin_manager = plugin_manager
+        self._custom_commands_cache: Set[str] = set()
+        self._cache_valid = False
+
+    def _get_custom_commands(self) -> List[str]:
+        """获取自定义命令列表（从 .autocodercommands 目录）"""
+        if self._cache_valid and self._custom_commands_cache:
+            return sorted(list(self._custom_commands_cache))
+        
+        try:
+            from autocoder.common.command_file_manager.manager import CommandManager
+            
+            # 创建命令管理器
+            command_manager = CommandManager()
+            
+            # 列出所有命令文件
+            result = command_manager.list_command_files(recursive=True)
+            
+            if result.success:
+                commands = set()
+                for file_name in result.command_files:
+                    # 去掉 .md 后缀和路径前缀，只保留命令名
+                    command_name = os.path.basename(file_name)
+                    if command_name.endswith('.md'):
+                        command_name = command_name[:-3]
+                    # 添加 / 前缀形成完整命令
+                    commands.add(f"/{command_name}")
+                
+                self._custom_commands_cache = commands
+                self._cache_valid = True
+                return sorted(list(commands))
+        except Exception as e:
+            # 静默处理异常，返回空列表
+            pass
+        
+        return []
 
     def get_completions(self, document, complete_event):
         # 获取当前输入的文本
@@ -27,46 +64,35 @@ class EnhancedCompleter(Completer):
                 _input_one_space = " ".join(current_input.split())
                 # 先尝试动态补全特定命令
                 dynamic_cmds = self.plugin_manager.get_dynamic_cmds()
-
-                # 最长命令优先匹配，避免短命令抢占长命令的补全权
-                sorted_dynamic_cmds = sorted(dynamic_cmds, key=len, reverse=True)
-
-                for dynamic_cmd in sorted_dynamic_cmds:
+                for dynamic_cmd in dynamic_cmds:
                     if _input_one_space.startswith(dynamic_cmd):
-                        # 精确匹配：确保匹配到的是完整命令（末尾是空格或输入结束）
-                        next_char_pos = len(dynamic_cmd)
-                        if next_char_pos == len(_input_one_space) or (
-                            next_char_pos < len(_input_one_space)
-                            and _input_one_space[next_char_pos] == " "
-                        ):
-                            # 使用 PluginManager 处理动态补全，通常是用于命令或子命令动态的参数值列表的补全
-                            completions = self.plugin_manager.process_dynamic_completions(
-                                dynamic_cmd, current_input
+                        # 使用 PluginManager 处理动态补全，通常是用于命令或子命令动态的参数值列表的补全
+                        completions = self.plugin_manager.process_dynamic_completions(
+                            dynamic_cmd, current_input
+                        )
+                        for completion_text, display_text in completions:
+                            yield Completion(
+                                completion_text,
+                                start_position=0,
+                                display=display_text,
                             )
-                            for completion_text, display_text in completions:
-                                yield Completion(
-                                    completion_text,
-                                    start_position=0,
-                                    display=display_text,
-                                )
-                            return
+                        return
 
                 # 如果不是特定命令，检查一般命令 + 空格的情况, 通常是用于固定的下级子命令列表的补全
+                cmd_parts = current_input.split(maxsplit=1)
+                base_cmd = cmd_parts[0]
+
                 # 获取插件命令补全
                 plugin_completions_dict = self.plugin_manager.get_plugin_completions()
 
-                # 找到最长的匹配命令前缀（支持多级命令）
-                matched_cmd = self._find_longest_matching_command(
-                    _input_one_space, plugin_completions_dict
-                )
-
-                # 如果找到匹配的命令前缀，进行处理
-                if matched_cmd:
+                # 如果命令存在于补全字典中，进行处理
+                if base_cmd in plugin_completions_dict:
                     yield from self._process_command_completions(
-                        matched_cmd, current_input, plugin_completions_dict[matched_cmd]
+                        base_cmd, current_input, plugin_completions_dict[base_cmd]
                     )
                     return
             # 处理直接命令补全 - 如果输入不包含空格，匹配整个命令
+            # 1. 插件和内置命令
             for command in self.plugin_manager.get_all_commands_with_prefix(
                 current_input
             ):
@@ -75,6 +101,16 @@ class EnhancedCompleter(Completer):
                     start_position=0,
                     display=command,
                 )
+            
+            # 2. 自定义命令（从 .autocodercommands 目录）
+            custom_commands = self._get_custom_commands()
+            for command in custom_commands:
+                if command.startswith(current_input):
+                    yield Completion(
+                        command[len(current_input) :],
+                        start_position=0,
+                        display=command,
+                    )
 
         # 获取并返回基础补全器的补全
         if self.base_completer:
@@ -83,54 +119,13 @@ class EnhancedCompleter(Completer):
             ):
                 yield completion
 
-    def _find_longest_matching_command(self, current_input, plugin_completions_dict):
-        """找到最长的匹配命令前缀（支持多级命令）
-
-        Args:
-            current_input: 标准化后的当前输入（如 "/git /github"）
-            plugin_completions_dict: 插件补全字典
-
-        Returns:
-            匹配的命令前缀，如果没有匹配返回None
-        """
-        # 收集所有匹配的命令前缀
-        matched_commands = []
-
-        for cmd_prefix in plugin_completions_dict.keys():
-            # 检查当前输入是否以该命令前缀开头
-            if current_input.startswith(cmd_prefix):
-                # 精确匹配：确保匹配到的是完整命令（末尾是空格或输入结束）
-                next_char_pos = len(cmd_prefix)
-                if next_char_pos == len(current_input) or (
-                    next_char_pos < len(current_input)
-                    and current_input[next_char_pos] == " "
-                ):
-                    matched_commands.append(cmd_prefix)
-
-        # 返回最长的匹配（支持多级命令，如 "/git /github" 优先于 "/git"）
-        if matched_commands:
-            return max(matched_commands, key=len)
-
-        return None
-
     def _process_command_completions(self, command, current_input, completions):
         """处理通用命令补全"""
         # 提取子命令前缀
-        # 注意：这里需要根据命令的层级来提取子命令前缀
-        # 例如：command="/git /github", current_input="/git /github /setup"
-        # 应该提取 "/setup" 作为子命令前缀
-
-        # 计算命令前缀的单词数
-        command_parts_count = len(command.split())
-
-        # 分割当前输入
-        parts = current_input.split()
+        parts = current_input.split(maxsplit=1)
         cmd_prefix = ""
-
-        # 如果输入的部分数大于命令的部分数，说明用户开始输入子命令了
-        if len(parts) > command_parts_count:
-            # 获取命令之后的部分作为子命令前缀
-            cmd_prefix = " ".join(parts[command_parts_count:])
+        if len(parts) > 1:
+            cmd_prefix = parts[1].strip()
 
         # 对于任何命令，当子命令前缀为空或与补全选项匹配时，都显示补全
         for completion in completions:
@@ -174,61 +169,48 @@ class EnhancedCompleter(Completer):
                         executor, self.plugin_manager.get_dynamic_cmds
                     )
 
-                    # 最长命令优先匹配，避免短命令抢占长命令的补全权
-                    sorted_dynamic_cmds = sorted(dynamic_cmds, key=len, reverse=True)
-
-                    for dynamic_cmd in sorted_dynamic_cmds:
+                    for dynamic_cmd in dynamic_cmds:
                         if _input_one_space.startswith(dynamic_cmd):
-                            # 精确匹配：确保匹配到的是完整命令（末尾是空格或输入结束）
-                            next_char_pos = len(dynamic_cmd)
-                            if next_char_pos == len(_input_one_space) or (
-                                next_char_pos < len(_input_one_space)
-                                and _input_one_space[next_char_pos] == " "
-                            ):
-                                # 异步处理动态补全
-                                completions = await loop.run_in_executor(
-                                    executor,
-                                    self.plugin_manager.process_dynamic_completions,
-                                    dynamic_cmd,
-                                    current_input,
+                            # 异步处理动态补全
+                            completions = await loop.run_in_executor(
+                                executor,
+                                self.plugin_manager.process_dynamic_completions,
+                                dynamic_cmd,
+                                current_input,
+                            )
+                            for completion_text, display_text in completions:
+                                yield Completion(
+                                    completion_text,
+                                    start_position=0,
+                                    display=display_text,
                                 )
-                                for completion_text, display_text in completions:
-                                    yield Completion(
-                                        completion_text,
-                                        start_position=0,
-                                        display=display_text,
-                                    )
-                                return
+                            return
 
                     # 如果不是特定命令，检查一般命令 + 空格的情况
+                    cmd_parts = current_input.split(maxsplit=1)
+                    base_cmd = cmd_parts[0]
+
                     # 异步获取插件命令补全
                     plugin_completions_dict = await loop.run_in_executor(
                         executor, self.plugin_manager.get_plugin_completions
                     )
 
-                    # 找到最长的匹配命令前缀（支持多级命令）
-                    matched_cmd = await loop.run_in_executor(
-                        executor,
-                        self._find_longest_matching_command,
-                        _input_one_space,
-                        plugin_completions_dict,
-                    )
-
-                    # 如果找到匹配的命令前缀，进行处理
-                    if matched_cmd:
+                    # 如果命令存在于补全字典中，进行处理
+                    if base_cmd in plugin_completions_dict:
                         # 异步处理命令补全
                         completions_list = await loop.run_in_executor(
                             executor,
                             self._get_command_completions_list,
-                            matched_cmd,
+                            base_cmd,
                             current_input,
-                            plugin_completions_dict[matched_cmd],
+                            plugin_completions_dict[base_cmd],
                         )
                         for completion in completions_list:
                             yield completion
                         return
                 else:
                     # 处理直接命令补全 - 异步获取所有匹配的命令
+                    # 1. 插件和内置命令
                     commands = await loop.run_in_executor(
                         executor,
                         self.plugin_manager.get_all_commands_with_prefix,
@@ -240,6 +222,19 @@ class EnhancedCompleter(Completer):
                             start_position=0,
                             display=command,
                         )
+                    
+                    # 2. 自定义命令（从 .autocodercommands 目录）
+                    custom_commands = await loop.run_in_executor(
+                        executor,
+                        self._get_custom_commands,
+                    )
+                    for command in custom_commands:
+                        if command.startswith(current_input):
+                            yield Completion(
+                                command[len(current_input) :],
+                                start_position=0,
+                                display=command,
+                            )
             finally:
                 executor.shutdown(wait=False)
 

@@ -1,15 +1,21 @@
 """命令处理器 - 处理各种用户命令"""
 
+from pathlib import Path
+import asyncio
+
 from autocoder.common.terminal_paste import resolve_paste_placeholders
 from autocoder.common.core_config import get_memory_manager
 from autocoder.common.global_cancel import CancelRequestedException
 from autocoder.events.event_manager_singleton import gengerate_event_file_path
 from autocoder.terminal.utils.shell import get_shell, run_shell_command_async
-from autocoder.chat_auto_coder_lang import (
-    get_message,
-    get_message_with_format as get_message_with_format_local,
+from autocoder.chat_auto_coder_lang import get_message as get_message_lang
+from autocoder.common.ac_style_command_parser import parse_query
+from autocoder.common.international import get_message, get_message_with_format
+from autocoder.workflow_agents import (
+    run_workflow_from_yaml,
+    print_workflow_result,
+    list_available_workflows,
 )
-import asyncio
 
 
 class CommandProcessor:
@@ -297,7 +303,7 @@ class CommandProcessor:
         self.global_cancel.register_token(event_file)
         query = user_input[len("/coding") :].strip()
         if not query:
-            print(f"\033[91m{get_message('please_enter_request')}\033[0m")
+            print(f"\033[91m{get_message_lang('please_enter_request')}\033[0m")
             return True
         self.coding(query, cancel_token=event_file)
         return True
@@ -309,7 +315,7 @@ class CommandProcessor:
         self.global_cancel.register_token(event_file)
         query = user_input[len("/chat") :].strip()
         if not query:
-            print(f"\033[91m{get_message('please_enter_request')}\033[0m")
+            print(f"\033[91m{get_message_lang('please_enter_request')}\033[0m")
         else:
             self.chat(query)
         return True
@@ -318,7 +324,7 @@ class CommandProcessor:
         """/design 命令"""
         query = user_input[len("/design") :].strip()
         if not query:
-            print(f"\033[91m{get_message('please_enter_design_request')}\033[0m")
+            print(f"\033[91m{get_message_lang('please_enter_design_request')}\033[0m")
         else:
             self.design(query)
         return True
@@ -329,7 +335,7 @@ class CommandProcessor:
 
         query = user_input[len("/summon") :].strip()
         if not query:
-            print(f"\033[91m{get_message('please_enter_request')}\033[0m")
+            print(f"\033[91m{get_message_lang('please_enter_request')}\033[0m")
         else:
             summon(query)
         return True
@@ -356,7 +362,7 @@ class CommandProcessor:
 
         query = user_input[len("/mcp") :].strip()
         if not query:
-            print(get_message("please_enter_query"))
+            print(get_message_lang("please_enter_query"))
         else:
             mcp(query)
         return True
@@ -396,7 +402,7 @@ class CommandProcessor:
         if not command:
             # 如果没有命令参数，切换到 shell 模式
             memory_manager.set_mode("shell")
-            print(get_message("switched_to_shell_mode"))
+            print(get_message_lang("switched_to_shell_mode"))
         else:
             if command.startswith("/chat"):
                 event_file, file_id = gengerate_event_file_path()
@@ -408,18 +414,108 @@ class CommandProcessor:
                 self.execute_shell_command(command)
         return True
 
+    def handle_workflow(self, user_input: str, context: dict) -> bool:
+        """/workflow 命令"""
+        # 解析命令参数
+        query = user_input[len("/workflow") :].strip()
+
+        # 如果是 /workflow /help，打印帮助信息
+        if query == "/help" or query == "help" or not query:
+            self._print_workflow_help()
+            return True
+
+        event_file, _ = gengerate_event_file_path()
+        self.global_cancel.register_token(event_file)
+        self.configure(f"event_file:{event_file}")
+
+        # 使用 ac_style_command_parser 解析参数
+        parsed = parse_query(f"/workflow {query}")
+        workflow_info = parsed.get("workflow", {})
+        args = workflow_info.get("args", [])
+        kwargs = workflow_info.get("kwargs", {})
+
+        if not args:
+            print(f"\033[91m{get_message('workflow_error_no_name')}\033[0m")
+            print(get_message("workflow_help_hint"))
+            return True
+
+        workflow_name = args[0]
+
+        # 获取当前目录
+        source_dir = str(Path.cwd())
+
+        # 运行 workflow
+        try:
+            print(
+                f"\n🚀 {get_message_with_format('workflow_running', workflow_name=workflow_name)}"
+            )
+            if kwargs:
+                print(
+                    f"📋 {get_message_with_format('workflow_parameters', kwargs=kwargs)}"
+                )
+            print()
+
+            result = run_workflow_from_yaml(
+                yaml_path=workflow_name,
+                source_dir=source_dir,
+                vars_override=kwargs,
+                cancel_token=event_file,
+            )
+
+            # 打印结果
+            print_workflow_result(result)
+
+        except FileNotFoundError as e:
+            print(
+                f"\033[91m❌ {get_message_with_format('workflow_not_found', workflow_name=workflow_name)}\033[0m"
+            )
+            print(f"\n{get_message('workflow_available_list')}")
+            workflows = list_available_workflows(source_dir)
+            if workflows:
+                for name, path in workflows.items():
+                    print(f"  - {name}: {path}")
+            else:
+                print(f"  {get_message('workflow_none_found')}")
+        except Exception as e:
+            print(
+                f"\033[91m❌ {get_message_with_format('workflow_run_failed', error=str(e))}\033[0m"
+            )
+            if self.debug:
+                import traceback
+
+                traceback.print_exc()
+
+        return True
+
+    def _print_workflow_help(self):
+        """打印 workflow 命令帮助信息"""
+        # 使用国际化的帮助文本
+        print(get_message("workflow_help_text"))
+
+        # 列出可用的 workflows
+        source_dir = str(Path.cwd())
+        workflows = list_available_workflows(source_dir)
+
+        if workflows:
+            print(f"\n✨ {get_message('workflow_available_title')}")
+            for name, path in workflows.items():
+                print(f"  - {name}")
+                print(f"    {path}")
+        else:
+            print(f"\n⚠️  {get_message('workflow_no_workflows_found')}")
+
+        print()
+
     def handle_unknown_or_fallback(self, user_input: str, context: dict) -> bool:
         """处理未知命令或非命令输入"""
         if user_input and user_input.strip():
             if user_input.startswith("/"):
-                print(
-                    f"\033[91m{get_message_with_format_local('unknown_command', command=user_input)}\033[0m"
-                )
-                print(get_message("type_help_for_commands"))
+                command = user_input.split(" ")[0][1:]
+                query = user_input[len(command) + 1 :].strip()
+                user_input = f"/auto /command {command}.md {query}"
             else:
-                # 只有非命令输入才执行auto_command
-                event_file, _ = gengerate_event_file_path()
-                self.global_cancel.register_token(event_file)
-                self.configure(f"event_file:{event_file}")
-                self.run_agentic(user_input, cancel_token=event_file)
+                user_input = f"/auto {user_input}"
+
+            # 只有非命令输入才执行auto_command
+            self.handle_auto(user_input, context)
         return True

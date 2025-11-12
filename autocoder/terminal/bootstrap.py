@@ -28,6 +28,8 @@ from autocoder.common.core_config import (
     set_mode,
     toggle_human_as_model,
     get_human_as_model_string,
+    toggle_agentic_mode,
+    get_agentic_mode_string,
 )
 from autocoder.plugins import PluginManager
 from autocoder.chat_auto_coder_lang import (
@@ -162,8 +164,10 @@ def run_cli():
         base_completer=completer,
         get_mode_func=get_mode,
         get_human_as_model_string_func=get_human_as_model_string,
+        get_agentic_mode_string_func=get_agentic_mode_string,
         cycle_mode_func=cycle_mode,
         toggle_human_as_model_func=toggle_human_as_model,
+        toggle_agentic_mode_func=toggle_agentic_mode,
         voice_input_func=wrapped_functions.get("voice_input"),
         get_mcp_server_func=get_mcp_server,
         stop_engine_func=stop_engine,

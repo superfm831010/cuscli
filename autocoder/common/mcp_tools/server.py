@@ -237,7 +237,7 @@ class McpServer:
 
                 elif isinstance(request, McpServerInfoRequest):
                     try:
-                        llm = get_single_llm(request.model or "gpt-4", product_mode=request.product_mode or "saas")
+                        llm = get_single_llm(request.model, product_mode=request.product_mode or "lite")
                         if llm is None:
                             raise ValueError("Failed to get LLM instance")
                         mcp_executor = McpExecutor(hub, llm)

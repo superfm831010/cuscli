@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from rich.console import Console
 from autocoder.common import files as FileUtils
 
+
 class RegPattern(BaseModel):
     pattern: str = Field(
         ...,
@@ -167,12 +168,12 @@ class PyProject:
 
     def should_exclude(self, file_path):
         for pattern in self.exclude_patterns:
-            if pattern.search(file_path):                
+            if pattern.search(file_path):
                 return True
         return False
 
     def output(self):
-        with open(self.target_file, "r",encoding="utf-8") as file:
+        with open(self.target_file, "r", encoding="utf-8") as file:
             return file.read()
 
     def is_python_file(self, file_path):
@@ -181,7 +182,9 @@ class PyProject:
     def read_file_content(self, file_path):
         if self.args.auto_merge == "strict_diff":
             result = []
-            for line_number, line in FileUtils.read_file_with_line_numbers(file_path,line_number_start=1):
+            for line_number, line in FileUtils.read_file_with_line_numbers(
+                file_path, line_number_start=1
+            ):
                 result.append(f"{line_number}:{line}")
             return "\n".join(result)
 
@@ -231,20 +234,25 @@ class PyProject:
     def get_rag_source_codes(self):
         if not self.args.enable_rag_search and not self.args.enable_rag_context:
             return []
-                    
+
         else:
             console = Console()
-            console.print(f"\n[bold blue]Starting RAG search for:[/bold blue] {self.args.query}")
-            
+            console.print(
+                f"\n[bold blue]Starting RAG search for:[/bold blue] {self.args.query}"
+            )
+
         from autocoder.rag.rag_entry import RAGFactory
+
         rag = RAGFactory.get_rag(self.llm, self.args, "")
         docs = rag.search(self.args.query)
         for doc in docs:
-            doc.tag = "RAG"                    
+            doc.tag = "RAG"
         else:
             console = Console()
-            console.print(f"[bold green]Found {len(docs)} relevant documents[/bold green]")
-            
+            console.print(
+                f"[bold green]Found {len(docs)} relevant documents[/bold green]"
+            )
+
         return docs
 
     def get_search_source_codes(self):
@@ -273,7 +281,7 @@ class PyProject:
         return temp + []
 
     def get_source_codes(self) -> Generator[SourceCode, None, None]:
-        for root, dirs, files in os.walk(self.directory,followlinks=True):
+        for root, dirs, files in os.walk(self.directory, followlinks=True):
             dirs[:] = [d for d in dirs if d not in self.default_exclude_dirs]
             for file in files:
                 file_path = os.path.join(root, file)
@@ -337,27 +345,24 @@ class PyProject:
         if self.git_url is not None:
             self.clone_repository()
 
+        # 先收集所有sources
+        for code in self.get_rest_source_codes():
+            self.sources.append(code)
+
+        for code in self.get_search_source_codes():
+            self.sources.append(code)
+
+        for package in packages:
+            for code in self.get_package_source_codes(package):
+                self.sources.append(code)
+
+        for code in self.get_source_codes():
+            self.sources.append(code)
+
+        # 如果target_file存在，才写入文件
         if self.target_file:
-            with open(self.target_file, "w",encoding="utf-8") as file:
-
-                for code in self.get_rest_source_codes():
-                    self.sources.append(code)                    
-                    file.write(f"##File: {code.module_name}\n")
-                    file.write(f"{code.source_code}\n\n")
-
-                for code in self.get_search_source_codes():                    
-                    self.sources.append(code)                    
-                    file.write(f"##File: {code.module_name}\n")
-                    file.write(f"{code.source_code}\n\n")
-
-                for package in packages:
-                    for code in self.get_package_source_codes(package):
-                        self.sources.append(code)
-                        file.write(f"##File: {code.module_name}\n")
-                        file.write(f"{code.source_code}\n\n")
-
-                for code in self.get_source_codes():                    
-                    self.sources.append(code)
+            with open(self.target_file, "w", encoding="utf-8") as file:
+                for code in self.sources:
                     file.write(f"##File: {code.module_name}\n")
                     file.write(f"{code.source_code}\n\n")
 

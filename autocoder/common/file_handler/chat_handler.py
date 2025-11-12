@@ -6,23 +6,28 @@ from autocoder.common.international import get_message
 from autocoder.common.ac_style_command_parser import create_config, parse_typed_query
 from autocoder.common.ac_style_command_parser.parser import parse_query
 from autocoder.auto_coder_runner import (
-    get_current_memory, get_current_files, convert_config_value,
-    convert_yaml_config_to_str, get_llm_friendly_package_docs,
-    get_global_memory_file_paths, auto_coder_main
+    get_current_memory,
+    get_current_files,
+    convert_config_value,
+    convert_yaml_config_to_str,
+    get_llm_friendly_package_docs,
+    get_global_memory_file_paths,
+    auto_coder_main,
 )
 from byzerllm.utils.nontext import Image
 
 
 class ChatHandler:
     """处理聊天相关的操作"""
-    
+
     def __init__(self):
         self._config = None
-    
+
     def _create_config(self):
         """创建 chat 命令的类型化配置"""
         if self._config is None:
-            self._config = (create_config()
+            self._config = (
+                create_config()
                 .collect_remainder("query")  # 收集剩余参数作为聊天查询
                 .command("new")
                 .max_args(0)  # 开启新会话
@@ -43,38 +48,49 @@ class ChatHandler:
                 .build()
             )
         return self._config
-    
+
     def handle_chat_command(self, query: str) -> Optional[None]:
         """
         处理聊天命令的主入口
-        
+
         Args:
             query: 查询字符串
-            
+
         Returns:
             None: 表示处理了命令，应该返回而不继续执行
         """
         if not query or not query.strip():
             return self._handle_no_args()
-        
+
+        # 检查是否是 /help 命令
+        query_stripped = query.strip()
+        if query_stripped == "/help":
+            self._handle_help_command()
+            return None
+
         # 执行聊天逻辑
         return self._handle_chat(query)
-    
+
     def _handle_no_args(self) -> None:
         """处理无参数情况"""
         from rich.console import Console
         from rich.panel import Panel
-        
+
         console = Console()
         console.print(
             Panel(
                 "Please provide a chat query or command.",
                 title="Chat Command",
-                border_style="yellow"
+                border_style="yellow",
             )
         )
         return None
-    
+
+    def _handle_help_command(self) -> None:
+        """处理 /help 命令"""
+        help_text = get_message("chat_help_text")
+        print(help_text)
+
     def _handle_chat(self, query: str) -> None:
         """处理聊天逻辑"""
         memory = get_current_memory()
@@ -82,7 +98,8 @@ class ChatHandler:
 
         yaml_config = {
             "include_file": ["./base/base.yml"],
-            "include_project_structure": conf.get("include_project_structure", "false") in ["true", "True"],
+            "include_project_structure": conf.get("include_project_structure", "false")
+            in ["true", "True"],
             "human_as_model": conf.get("human_as_model", "false") == "true",
             "skip_build_index": conf.get("skip_build_index", "true") == "true",
             "skip_confirm": conf.get("skip_confirm", "true") == "true",
@@ -90,7 +107,9 @@ class ChatHandler:
             "exclude_files": memory.get("exclude_files", []),
         }
 
-        current_files = get_current_files() + get_llm_friendly_package_docs(return_paths=True)
+        current_files = get_current_files() + get_llm_friendly_package_docs(
+            return_paths=True
+        )
 
         if conf.get("enable_global_memory", "false") in ["true", "True", True]:
             current_files += get_global_memory_file_paths()
@@ -107,7 +126,7 @@ class ChatHandler:
                 query = " ".join(commands_infos["query"]["args"])
             else:
                 temp_query = ""
-                for (command, command_info) in commands_infos.items():
+                for command, command_info in commands_infos.items():
                     if command_info["args"]:
                         temp_query = " ".join(command_info["args"])
                 query = temp_query
@@ -157,5 +176,5 @@ class ChatHandler:
             execute_ask()
         finally:
             os.remove(execute_file)
-            
+
         return None

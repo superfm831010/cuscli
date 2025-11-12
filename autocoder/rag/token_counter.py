@@ -63,3 +63,6 @@ class TokenCounter:
 
     def count_tokens(self, text: str) -> int:
         return self.pool.apply(count_tokens_worker, (text,))
+    
+    def close(self):
+        self.pool.terminate()        

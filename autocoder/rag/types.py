@@ -14,9 +14,6 @@ class RecallStat(BaseModel):
     cost:float = 0.0
     duration: float = 0.0
 
-    class Config:
-        protected_namespaces = ()  # 禁用保护命名空间检查，允许使用 model_name 字段
-
 
 class ChunkStat(BaseModel):
     total_input_tokens: int
@@ -24,9 +21,6 @@ class ChunkStat(BaseModel):
     model_name: str = "unknown"
     cost:float = 0.0
     duration: float = 0.0
-
-    class Config:
-        protected_namespaces = ()  # 禁用保护命名空间检查，允许使用 model_name 字段
 
 
 class AnswerStat(BaseModel):
@@ -36,9 +30,6 @@ class AnswerStat(BaseModel):
     cost:float = 0.0
     duration: float = 0.0
 
-    class Config:
-        protected_namespaces = ()  # 禁用保护命名空间检查，允许使用 model_name 字段
-
 
 class OtherStat(BaseModel):
     total_input_tokens: int = 0
@@ -46,9 +37,6 @@ class OtherStat(BaseModel):
     model_name: str = "unknown"
     cost:float = 0.0
     duration: float = 0.0
-
-    class Config:
-        protected_namespaces = ()  # 禁用保护命名空间检查，允许使用 model_name 字段
 
 
 class ChunkRange(BaseModel):

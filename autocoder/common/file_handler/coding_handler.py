@@ -8,14 +8,22 @@ from rich.table import Table
 
 from autocoder.common.international import get_message
 from autocoder.common.ac_style_command_parser import create_config, parse_typed_query
-from autocoder.common.conversations.get_conversation_manager import get_conversation_manager
+from autocoder.common.conversations.get_conversation_manager import (
+    get_conversation_manager,
+)
 from autocoder.common.core_config import get_memory_manager
 from autocoder.common.result_manager import ResultManager
 from autocoder.auto_coder_runner import (
-    get_current_files, get_last_yaml_file, convert_config_value,
-    convert_yaml_config_to_str, get_llm_friendly_package_docs,
-    get_global_memory_file_paths, auto_coder_main, completer,
-    get_current_memory, convert_yaml_to_config
+    get_current_files,
+    get_last_yaml_file,
+    convert_config_value,
+    convert_yaml_config_to_str,
+    get_llm_friendly_package_docs,
+    get_global_memory_file_paths,
+    auto_coder_main,
+    completer,
+    get_current_memory,
+    convert_yaml_to_config,
 )
 from autocoder.utils.llms import get_single_llm
 from autocoder.agent.auto_guess_query import AutoGuessQuery
@@ -28,18 +36,29 @@ class CodingHandler:
     def __init__(self):
         self.console = Console()
         self._config = None
+        self.namespace = self._generate_namespace()
+
+    def _generate_namespace(self) -> Optional[str]:
+        """
+        生成命名空间，用于会话隔离
+        
+        Returns:
+            str: 基于项目路径的命名空间
+        """
+        return None
 
     def _create_config(self):
         """创建 coding 命令的类型化配置"""
         if self._config is None:
-            self._config = (create_config()
-                            .collect_remainder("query")  # 收集剩余参数作为代码生成查询
-                            .command("apply")
-                            .max_args(0)  # 应用历史对话上下文
-                            .command("next")
-                            .max_args(0)  # 生成下一步任务预测
-                            .build()
-                            )
+            self._config = (
+                create_config()
+                .collect_remainder("query")  # 收集剩余参数作为代码生成查询
+                .command("apply")
+                .max_args(0)  # 应用历史对话上下文
+                .command("next")
+                .max_args(0)  # 生成下一步任务预测
+                .build()
+            )
         return self._config
 
     def handle_coding_command(self, query: str, cancel_token=None) -> Optional[None]:
@@ -55,6 +74,12 @@ class CodingHandler:
         """
         if not query or not query.strip():
             return self._handle_no_args()
+
+        # 检查是否是 /help 命令
+        query_stripped = query.strip()
+        if query_stripped == "/help":
+            self._handle_help_command()
+            return None
 
         # 保存原始查询字符串，用于处理没有命令的情况
         self._original_query = query.strip()
@@ -79,24 +104,27 @@ class CodingHandler:
             Panel(
                 "Please provide a coding request or query.",
                 title="Coding Command",
-                border_style="yellow"
+                border_style="yellow",
             )
         )
         return None
-        
+
+    def _handle_help_command(self) -> None:
+        """处理 /help 命令"""
+        help_text = get_message("coding_help_text")
+        print(help_text)
 
     def _handle_next_command(self, result) -> None:
         """处理 /next 子命令"""
         # 修复：当没有解析到命令时，使用原始查询字符串
-        if hasattr(result, 'query') and result.query:
+        if hasattr(result, "query") and result.query:
             query = result.query
-        elif hasattr(result, '_query') and result._query:
+        elif hasattr(result, "_query") and result._query:
             query = result._query
         else:
             # 如果解析结果中没有 query，说明输入的内容没有被识别为命令
             # 这时应该将原始输入作为 query 使用
-            query = self._original_query if hasattr(
-                self, '_original_query') else ""
+            query = self._original_query if hasattr(self, "_original_query") else ""
 
         self.code_next(query)
         return None
@@ -131,11 +159,9 @@ class CodingHandler:
                 os.remove(temp_yaml)
 
         product_mode = conf.get("product_mode", "lite")
-        llm = get_single_llm(args.chat_model or args.model,
-                             product_mode=product_mode)
+        llm = get_single_llm(args.chat_model or args.model, product_mode=product_mode)
 
-        auto_guesser = AutoGuessQuery(
-            llm=llm, project_dir=os.getcwd(), skip_diff=True)
+        auto_guesser = AutoGuessQuery(llm=llm, project_dir=os.getcwd(), skip_diff=True)
 
         predicted_tasks = auto_guesser.predict_next_tasks(
             5, is_human_as_model=args.human_as_model
@@ -149,25 +175,22 @@ class CodingHandler:
         console = Console()
 
         # Create main panel for all predicted tasks
-        table = Table(show_header=True,
-                      header_style="bold magenta", show_lines=True)
+        table = Table(show_header=True, header_style="bold magenta", show_lines=True)
         table.add_column("Priority", style="cyan", width=8)
-        table.add_column("Task Description", style="green",
-                         width=40, overflow="fold")
+        table.add_column("Task Description", style="green", width=40, overflow="fold")
         table.add_column("Files", style="yellow", width=30, overflow="fold")
         table.add_column("Reason", style="blue", width=30, overflow="fold")
-        table.add_column("Dependencies", style="magenta",
-                         width=30, overflow="fold")
+        table.add_column("Dependencies", style="magenta", width=30, overflow="fold")
 
         for task in predicted_tasks:
             # Format file paths to be more readable
-            file_list = "\n".join([os.path.relpath(f, os.getcwd())
-                                  for f in task.urls])
+            file_list = "\n".join([os.path.relpath(f, os.getcwd()) for f in task.urls])
 
             # Format dependencies to be more readable
             dependencies = (
-                "\n".join(
-                    task.dependency_queries) if task.dependency_queries else "None"
+                "\n".join(task.dependency_queries)
+                if task.dependency_queries
+                else "None"
             )
 
             table.add_row(
@@ -183,18 +206,19 @@ class CodingHandler:
             )
         )
 
-    def _handle_coding_generation(self, result, is_apply: bool, cancel_token=None) -> None:
+    def _handle_coding_generation(
+        self, result, is_apply: bool, cancel_token=None
+    ) -> None:
         """处理代码生成逻辑"""
         # 修复：当没有解析到命令时，使用原始查询字符串
-        if hasattr(result, 'query') and result.query:
+        if hasattr(result, "query") and result.query:
             query = result.query
-        elif hasattr(result, '_query') and result._query:
+        elif hasattr(result, "_query") and result._query:
             query = result._query
         else:
             # 如果解析结果中没有 query，说明输入的内容没有被识别为命令
             # 这时应该将原始输入作为 query 使用
-            query = self._original_query if hasattr(
-                self, '_original_query') else ""
+            query = self._original_query if hasattr(self, "_original_query") else ""
 
         # 获取配置和状态
         memory_manager = get_memory_manager()
@@ -225,14 +249,14 @@ class CodingHandler:
             # 添加组上下文
             if current_groups:
                 yaml_config["context"] = self._build_groups_context(
-                    current_groups, groups, groups_info, yaml_config.get(
-                        "context", "")
+                    current_groups, groups, groups_info, yaml_config.get("context", "")
                 )
 
             # 处理 /apply 逻辑
             if is_apply:
                 yaml_config["context"] = self._apply_chat_history(
-                    yaml_config.get("context", ""))
+                    yaml_config.get("context", "")
+                )
 
             # 保存和执行
             print(yaml_config)
@@ -243,8 +267,14 @@ class CodingHandler:
         completer.refresh_files()
         return None
 
-    def _build_yaml_config(self, conf: dict, memory_manager, current_files: list,
-                           is_apply: bool, cancel_token) -> dict:
+    def _build_yaml_config(
+        self,
+        conf: dict,
+        memory_manager,
+        current_files: list,
+        is_apply: bool,
+        cancel_token,
+    ) -> dict:
         """构建 YAML 配置"""
         yaml_config = {
             "include_file": ["./base/base.yml"],
@@ -253,7 +283,8 @@ class CodingHandler:
             "skip_build_index": conf.get("skip_build_index", "true") == "true",
             "skip_confirm": conf.get("skip_confirm", "true") == "true",
             "silence": conf.get("silence", "true") == "true",
-            "include_project_structure": conf.get("include_project_structure", "false") == "true",
+            "include_project_structure": conf.get("include_project_structure", "false")
+            == "true",
             "exclude_files": memory_manager.get_exclude_files(),
         }
 
@@ -266,16 +297,22 @@ class CodingHandler:
             if converted_value is not None:
                 yaml_config[key] = converted_value
 
-        yaml_config["urls"] = current_files + \
-            get_llm_friendly_package_docs(return_paths=True)
+        yaml_config["urls"] = current_files + get_llm_friendly_package_docs(
+            return_paths=True
+        )
 
         if conf.get("enable_global_memory", "false") in ["true", "True", True]:
             yaml_config["urls"] += get_global_memory_file_paths()
 
         return yaml_config
 
-    def _build_groups_context(self, current_groups: list, groups: dict,
-                              groups_info: dict, existing_context: str) -> str:
+    def _build_groups_context(
+        self,
+        current_groups: list,
+        groups: dict,
+        groups_info: dict,
+        existing_context: str,
+    ) -> str:
         """构建组上下文信息"""
         active_groups_context = "下面是对上面文件按分组给到的一些描述，当用户的需求正好匹配描述的时候，参考描述来做修改：\n"
 
@@ -292,6 +329,7 @@ class CodingHandler:
 
     def _apply_chat_history(self, existing_context: str) -> str:
         """应用聊天历史上下文"""
+
         def error_message():
             self.console.print(
                 Panel(
@@ -302,22 +340,21 @@ class CodingHandler:
                 )
             )
 
-        try:
-            # 使用 conversations 模块获取聊天历史，命名空间为 "manual"
+        try:            
             conversation_manager = get_conversation_manager()
-
-            # 获取 "manual" 命名空间的当前会话ID
+            
             current_conversation_id = conversation_manager.get_current_conversation_id(
-                "manual")
+                self.namespace
+            )
 
             conversations = []
             if current_conversation_id:
                 # 获取当前会话的消息列表
-                messages = conversation_manager.get_messages(
-                    current_conversation_id)
+                messages = conversation_manager.get_messages(current_conversation_id)
                 # 转换为原有格式
                 conversations = [
-                    {"role": msg["role"], "content": msg["content"]} for msg in messages]
+                    {"role": msg["role"], "content": msg["content"]} for msg in messages
+                ]
 
             if not conversations:
                 error_message()
@@ -331,7 +368,7 @@ class CodingHandler:
                 elif conv["role"] == "assistant":
                     context += f"你: {conv['content']}\n"
             context += "</history>\n"
-
+            
             return context
 
         except Exception as e:
@@ -346,7 +383,9 @@ class CodingHandler:
             )
             return existing_context
 
-    def _save_and_execute_yaml(self, yaml_config: dict, latest_yaml_file: str, query: str):
+    def _save_and_execute_yaml(
+        self, yaml_config: dict, latest_yaml_file: str, query: str
+    ):
         """保存并执行 YAML 配置"""
         yaml_content = convert_yaml_config_to_str(yaml_config=yaml_config)
 
@@ -363,8 +402,8 @@ class CodingHandler:
                 meta={
                     "commit_message": f"auto_coder_{latest_yaml_file}",
                     "action": "coding",
-                    "input": {"query": query}
-                }
+                    "input": {"query": query},
+                },
             )
 
         execute_coding()

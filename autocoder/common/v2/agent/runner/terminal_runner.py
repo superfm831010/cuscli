@@ -104,10 +104,10 @@ class TerminalRunner(BaseRunner):
             "output_cost": 0.0
         }
 
-        try:
-            self.apply_pre_changes()
-            event_stream = self.analyze(request)
-            for event in event_stream:
+        try:            
+            self.apply_pre_changes()            
+            event_stream = self.analyze(request)            
+            for event in event_stream:                
                 if isinstance(event, ConversationIdEvent):
                     console.print(f"[dim]Conversation ID: {event.conversation_id}[/dim]")
                     continue
@@ -146,10 +146,6 @@ class TerminalRunner(BaseRunner):
                         console.print(f"[dim]conversation tokens: {event.tokens_used} -> {event.pruned_tokens_used} (conversation round: {event.conversation_round})[/dim]")
                     else:
                         console.print(f"[dim]conversation tokens: {event.tokens_used} (conversation round: {event.conversation_round})[/dim]")
-
-                    # 无论是否剪裁，都显示醒目的等待提示，让用户知道 Agent 正在长时间思考
-                    thinking_notice = get_message("agent_thinking_notice")
-                    console.print(f"\n[bold yellow]{thinking_notice}[/bold yellow]\n")
                     
                 elif isinstance(event, LLMThinkingEvent):
                     # Render thinking within a less prominent style, maybe grey?

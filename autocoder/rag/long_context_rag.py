@@ -1186,3 +1186,7 @@ class LongContextRAG:
         # 将总成本保存到 rag_stat
         rag_stat.cost = total_cost
         return total_cost
+    
+    def close(self):
+        if self.tokenizer and isinstance(self.tokenizer, TokenCounter):
+            self.tokenizer.close()

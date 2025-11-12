@@ -1,17 +1,12 @@
-
-import os
 import time
 import json
-from typing import Dict, Any, List
 from rich.console import Console
 from rich.panel import Panel
-from rich.markdown import Markdown
-from rich.live import Live
 from prompt_toolkit import prompt
 from prompt_toolkit.formatted_text import FormattedText
 from loguru import logger
 import byzerllm
-
+from typing import Optional
 from autocoder.common.auto_coder_lang import get_message
 from autocoder.common.memory_manager import save_to_memory_file
 from autocoder.common.utils_code_auto_generate import stream_chat_with_continue
@@ -26,16 +21,9 @@ from autocoder.events.event_types import EventMetadata
 from autocoder.common.mcp_tools.server import get_mcp_server
 from autocoder.common.mcp_tools.types import McpRequest
 from autocoder.utils.llms import get_llm_names
-from autocoder.utils.request_queue import (
-    request_queue,
-    RequestValue,
-    DefaultValue,
-    RequestOption,
-)
 from autocoder.run_context import get_run_context, RunMode
 from autocoder.common.action_yml_file_manager import ActionYmlFileManager
 from autocoder.common.conversations.get_conversation_manager import get_conversation_manager
-from autocoder.common.conversations.exceptions import ConversationManagerError
 
 
 class ChatAgent:
@@ -49,14 +37,14 @@ class ChatAgent:
         # 生成命名空间用于会话隔离
         self.namespace = self._generate_namespace()
 
-    def _generate_namespace(self) -> str:
+    def _generate_namespace(self) -> Optional[str]:
         """
         生成命名空间，用于会话隔离
         
         Returns:
             str: 基于项目路径的命名空间
         """
-        return "manual"
+        return None
 
     def run(self):
         """执行 chat 命令的主要逻辑"""
@@ -94,8 +82,6 @@ class ChatAgent:
         # 获取聊天模型
         if self.llm.get_sub_client("chat_model"):
             chat_llm = self.llm.get_sub_client("chat_model")
-        elif self.llm.get_sub_client("code_model"):
-            chat_llm = self.llm.get_sub_client("code_model")
         else:
             chat_llm = self.llm
 
@@ -209,17 +195,19 @@ class ChatAgent:
             source_count += 1
 
         # 构建索引和过滤文件
-        if "no_context" not in commands_info:
-            from autocoder.index.index import IndexManager
+        if "no_context" not in commands_info:            
             from autocoder.index.entry import build_index_and_filter_files
             from autocoder.pyproject import PyProject
             from autocoder.tsproject import TSProject
             from autocoder.suffixproject import SuffixProject
+            from autocoder.default_project import DefaultProject
 
             if self.args.project_type == "ts":
                 pp = TSProject(args=self.args, llm=self.llm)
             elif self.args.project_type == "py":
                 pp = PyProject(args=self.args, llm=self.llm)
+            elif not self.args.project_type or self.args.project_type == "*":
+                pp = DefaultProject(args=self.args, llm=self.llm)
             else:
                 pp = SuffixProject(args=self.args, llm=self.llm, file_filter=None)
             pp.run()

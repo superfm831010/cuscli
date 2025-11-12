@@ -6,8 +6,7 @@ from rich.panel import Panel
 from rich.table import Table
 from autocoder.common.international import get_message, get_message_with_format
 from autocoder.common.ac_style_command_parser import create_config, parse_typed_query
-# Import ConversationAction using string constants to avoid pydantic issues
-# from autocoder.common.v2.agent.agentic_edit_types import ConversationAction
+from autocoder.common.v2.agent.agentic_edit_types import AgenticEditConversationConfig
 from autocoder.common.conversations.get_conversation_manager import get_conversation_manager
 from loguru import logger as global_logger
 
@@ -34,7 +33,7 @@ class ConversationNewCommandHandler:
             )
         return self._config
 
-    def handle_new_command(self, query: str, conversation_config) -> Optional[Union[str, None]]:
+    def handle_new_command(self, query: str, conversation_config:AgenticEditConversationConfig) -> Optional[Union[str, None]]:
         """
         处理 new 指令的主入口
 
@@ -172,7 +171,7 @@ class ConversationResumeCommandHandler:
             )
             return None
 
-    def handle_resume_command(self, query: str, conversation_config) -> Optional[Union[str, None]]:
+    def handle_resume_command(self, query: str, conversation_config:AgenticEditConversationConfig) -> Optional[Union[str, None]]:
         """
         处理 resume 指令的主入口
 
@@ -272,7 +271,7 @@ class ConversationRenameCommandHandler:
             )
         return self._config
 
-    def handle_rename_command(self, query: str, conversation_config) -> Optional[Union[str, None]]:
+    def handle_rename_command(self, query: str, conversation_config:AgenticEditConversationConfig) -> Optional[Union[str, None]]:
         """
         处理 rename 指令的主入口
 
@@ -457,8 +456,6 @@ class ConversationCommandCommandHandler:
         if not result.has_command("command"):
             return "continue"  # 不是 command 指令，继续执行
 
-        # 设置对话动作
-        conversation_config.action = "command"
         
         # 渲染命令文件
         try:
@@ -513,7 +510,7 @@ class ConversationListCommandHandler:
             )
         return self._config
 
-    def handle_list_command(self, query: str, conversation_config) -> Optional[Union[str, None]]:
+    def handle_list_command(self, query: str, conversation_config:AgenticEditConversationConfig) -> Optional[Union[str, None]]:
         """
         处理 list 指令的主入口
 

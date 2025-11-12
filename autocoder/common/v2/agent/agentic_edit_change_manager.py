@@ -89,6 +89,9 @@ class AgenticEditChangeManager:
     def apply_pre_changes(self):
         """应用预处理变更，通常用于在主要变更前创建提交点"""
         # get the file name
+        if not self.args.file:
+            logger.warning("No self.args.file set, skip to apply pre changes")
+            return
         file_name = os.path.basename(self.args.file)
         if not self.args.skip_commit:
             try:
@@ -116,6 +119,10 @@ class AgenticEditChangeManager:
         """
         Apply all tracked file changes to the original project directory.
         """
+        if not self.args.file:
+            logger.warning("No self.args.file set, skip to apply pre changes")
+            return
+
         if not self.args.skip_commit:
             try:
                 file_name = os.path.basename(self.args.file)

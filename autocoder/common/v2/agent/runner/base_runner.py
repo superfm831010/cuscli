@@ -9,11 +9,10 @@ import logging
 from typing import Generator, Any, Dict, Optional, Callable, List
 
 from autocoder.common.v2.agent.agentic_edit_types import (
-    AgenticEditRequest, AgentEvent, CompletionEvent, 
-    AgenticEditConversationConfig, CommandConfig, MemoryConfig
+    AgenticEditRequest, AgentEvent,
+    AgenticEditConversationConfig
 )
-from autocoder.common import AutoCoderArgs, SourceCodeList
-from autocoder.common.v2.agent.agentic_edit import AgenticEdit
+from autocoder.common import AutoCoderArgs
 from autocoder.common.printer import Printer
 
 logger = logging.getLogger(__name__)
@@ -42,6 +41,8 @@ class BaseRunner:
             args: 自动编码器参数
             conversation_config: 会话配置（可选）
         """
+        from autocoder.common.v2.agent.agentic_edit import AgenticEdit
+        
         self.llm = llm
         self.args = args
         self.conversation_config = conversation_config  

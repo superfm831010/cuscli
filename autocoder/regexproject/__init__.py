@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from rich.console import Console
 from autocoder.common import files as FileUtils
 
+
 class RegPattern(BaseModel):
     pattern: str = Field(
         ...,
@@ -76,7 +77,7 @@ class RegexProject:
             raise ValueError("Invalid project_type format. Expected 'regex//<pattern>'")
 
     def output(self):
-        with open(self.target_file, "r",encoding="utf-8") as file:
+        with open(self.target_file, "r", encoding="utf-8") as file:
             return file.read()
 
     def is_regex_match(self, file_path):
@@ -91,7 +92,7 @@ class RegexProject:
         return SourceCode(module_name=module_name, source_code=source_code)
 
     def get_source_codes(self) -> Generator[SourceCode, None, None]:
-        for root, dirs, files in os.walk(self.directory,followlinks=True):
+        for root, dirs, files in os.walk(self.directory, followlinks=True):
             for file in files:
                 file_path = os.path.join(root, file)
                 if self.is_regex_match(file_path):
@@ -118,19 +119,22 @@ class RegexProject:
     def get_rag_source_codes(self):
         if not self.args.enable_rag_search and not self.args.enable_rag_context:
             return []
-            
+
         console = Console()
-        console.print(f"\n[bold blue]Starting RAG search for:[/bold blue] {self.args.query}")
-            
+        console.print(
+            f"\n[bold blue]Starting RAG search for:[/bold blue] {self.args.query}"
+        )
+
         from autocoder.rag.rag_entry import RAGFactory
+
         rag = RAGFactory.get_rag(self.llm, self.args, "")
         docs = rag.search(self.args.query)
         for doc in docs:
             doc.tag = "RAG"
-            
+
         console = Console()
         console.print(f"[bold green]Found {len(docs)} relevant documents[/bold green]")
-            
+
         return docs
 
     def get_search_source_codes(self):
@@ -211,20 +215,20 @@ class RegexProject:
         if self.git_url is not None:
             self.clone_repository()
 
+        # 先收集所有sources
+        for code in self.get_source_codes():
+            self.sources.append(code)
+
+        for code in self.get_rest_source_codes():
+            self.sources.append(code)
+
+        for code in self.get_search_source_codes():
+            self.sources.append(code)
+
+        # 如果target_file存在，才写入文件
         if self.target_file:
-            with open(self.target_file, "w",encoding="utf-8") as file:
-                for code in self.get_source_codes():
-                    self.sources.append(code)
-                    file.write(f"##File: {code.module_name}\n")
-                    file.write(f"{code.source_code}\n\n")
-
-                for code in self.get_rest_source_codes():
-                    self.sources.append(code)
-                    file.write(f"##File: {code.module_name}\n")
-                    file.write(f"{code.source_code}\n\n")
-
-                for code in self.get_search_source_codes():
-                    self.sources.append(code)
+            with open(self.target_file, "w", encoding="utf-8") as file:
+                for code in self.sources:
                     file.write(f"##File: {code.module_name}\n")
                     file.write(f"{code.source_code}\n\n")
 

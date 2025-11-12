@@ -86,112 +86,6 @@ import argparse
 import time
 
 
-def print_warning_box(message: str, width: int = 78, color: str = "\033[1;33m"):
-    """
-    打印带有完整边框的警告消息框(支持终端兼容性)
-
-    Args:
-        message: 要显示的消息文本
-        width: 边框宽度（默认78，为80字符终端留出边距）
-        color: ANSI颜色代码（默认黄色加粗）
-    """
-    from autocoder.common.terminal_compat import get_terminal_capability
-
-    term = get_terminal_capability()
-
-    # 根据终端能力选择边框字符
-    if term.supports_unicode():
-        # Unicode框线字符
-        top_left, top_right = "╔", "╗"
-        bottom_left, bottom_right = "╚", "╝"
-        horizontal, vertical = "═", "║"
-    else:
-        # 纯ASCII字符
-        top_left, top_right = "+", "+"
-        bottom_left, bottom_right = "+", "+"
-        horizontal, vertical = "=", "|"
-
-    reset = "\033[0m" if term.ansi_support else ""
-    text_color = "\033[1;31m" if term.ansi_support else ""  # 红色加粗用于文字
-    box_color = color if term.ansi_support else ""
-
-    # 计算内容宽度（边框占用4个字符：左边"║ "和右边" ║"）
-    content_width = width - 4
-
-    def get_char_width(char):
-        """获取单个字符的显示宽度（考虑东亚宽字符）"""
-        code = ord(char)
-        # 东亚宽字符（中文、日文、韩文等）占2个宽度
-        if (0x1100 <= code <= 0x115F or  # Hangul Jamo
-            0x2E80 <= code <= 0x9FFF or  # CJK & CJK Ext A
-            0xAC00 <= code <= 0xD7A3 or  # Hangul Syllables
-            0xF900 <= code <= 0xFAFF or  # CJK Compatibility Ideographs
-            0xFE30 <= code <= 0xFE4F or  # CJK Compatibility Forms
-            0xFF00 <= code <= 0xFF60 or  # Fullwidth Forms
-            0xFFE0 <= code <= 0xFFE6 or  # Fullwidth Forms
-            0x20000 <= code <= 0x2FFFD or  # CJK Ext B, C, D, E
-            0x30000 <= code <= 0x3FFFD):   # CJK Ext F
-            return 2
-        # Zero-width characters (组合字符、变音符号等)
-        elif (0x0300 <= code <= 0x036F or  # Combining Diacritical Marks
-              0xFE00 <= code <= 0xFE0F or  # Variation Selectors
-              0xFE20 <= code <= 0xFE2F):   # Combining Half Marks
-            return 0
-        # 普通ASCII字符占1个宽度
-        else:
-            return 1
-
-    def get_display_width(text):
-        """计算文本的实际显示宽度"""
-        return sum(get_char_width(char) for char in text)
-
-    def wrap_text_by_display_width(text, max_width):
-        """按显示宽度换行文本，确保不超出边框"""
-        lines = []
-        current_line = ""
-        current_width = 0
-
-        for char in text:
-            char_width = get_char_width(char)
-
-            # 如果加上这个字符会超出宽度，开始新行
-            if current_width + char_width > max_width and current_line:
-                lines.append(current_line)
-                current_line = char
-                current_width = char_width
-            else:
-                current_line += char
-                current_width += char_width
-
-        # 添加最后一行
-        if current_line:
-            lines.append(current_line)
-
-        return lines
-
-    # 使用自定义换行（按显示宽度）
-    lines = []
-    for line in message.split('\n'):
-        if line.strip():
-            wrapped = wrap_text_by_display_width(line, content_width)
-            lines.extend(wrapped)
-
-    # 打印顶部边框
-    print(f"{box_color}{top_left}{horizontal * (width - 2)}{top_right}{reset}")
-
-    # 打印每行内容（带左右边框）
-    for line in lines:
-        # 计算实际显示宽度
-        line_display_width = get_display_width(line)
-        # 计算需要填充的空格数
-        padding_needed = content_width - line_display_width
-        padded_line = line + ' ' * padding_needed
-        print(f"{box_color}{vertical}{reset} {text_color}{padded_line}{reset} {box_color}{vertical}{reset}")
-
-    # 打印底部边框
-    print(f"{box_color}{bottom_left}{horizontal * (width - 2)}{bottom_right}{reset}")
-
-
 class TaskEvent:
     def __init__(self):
         self.state = "idle"  # idle, pending, started, running, completed
@@ -276,6 +170,8 @@ def parse_arguments():
 
 
 def show_help():
+    print(f"\033[1m{get_message('official_doc')}\033[0m")
+    print()
     print(f"\033[1m{get_message('supported_commands')}\033[0m")
     print()
     print(
@@ -356,14 +252,6 @@ def show_help():
         for cmd, (_, desc, plugin_id) in plugin_manager.command_handlers.items():
             plugin = plugin_manager.get_plugin(plugin_id)
             if plugin:
-                # 检查插件是否有自定义帮助文本
-                if hasattr(plugin, 'get_help_text') and callable(plugin.get_help_text):
-                    help_text = plugin.get_help_text()
-                    if help_text:
-                        print(help_text)
-                        continue
-
-                # 默认显示方式（用于没有实现 get_help_text 的插件）
                 print(
                     f"  \033[94m{cmd}\033[0m - \033[92m{desc} ({get_message('plugin_from')} {plugin.plugin_name()})\033[0m"
                 )
@@ -380,6 +268,41 @@ class EnhancedCompleter(Completer):
     def __init__(self, base_completer: Completer, plugin_manager: PluginManager):
         self.base_completer: Completer = base_completer
         self.plugin_manager: PluginManager = plugin_manager
+        self._custom_commands_cache = set()
+        self._cache_valid = False
+
+    def _get_custom_commands(self):
+        """获取自定义命令列表（从 .autocodercommands 目录）"""
+        if self._cache_valid and self._custom_commands_cache:
+            return sorted(list(self._custom_commands_cache))
+        
+        try:
+            from autocoder.common.command_file_manager.manager import CommandManager
+            
+            # 创建命令管理器
+            command_manager = CommandManager()
+            
+            # 列出所有命令文件
+            result = command_manager.list_command_files(recursive=True)
+            
+            if result.success:
+                commands = set()
+                for file_name in result.command_files:
+                    # 去掉 .md 后缀和路径前缀，只保留命令名
+                    command_name = os.path.basename(file_name)
+                    if command_name.endswith('.md'):
+                        command_name = command_name[:-3]
+                    # 添加 / 前缀形成完整命令
+                    commands.add(f"/{command_name}")
+                
+                self._custom_commands_cache = commands
+                self._cache_valid = True
+                return sorted(list(commands))
+        except Exception:
+            # 静默处理异常，返回空列表
+            pass
+        
+        return []
 
     def get_completions(self, document, complete_event):
         # 获取当前输入的文本
@@ -396,45 +319,35 @@ class EnhancedCompleter(Completer):
                 _input_one_space = " ".join(current_input.split())
                 # 先尝试动态补全特定命令
                 dynamic_cmds = self.plugin_manager.get_dynamic_cmds()
-
-                # 按长度排序，最长的命令优先匹配（避免短命令误匹配长命令）
-                sorted_dynamic_cmds = sorted(dynamic_cmds, key=len, reverse=True)
-
-                for dynamic_cmd in sorted_dynamic_cmds:
+                for dynamic_cmd in dynamic_cmds:
                     if _input_one_space.startswith(dynamic_cmd):
-                        # 精确匹配：确保匹配的是完整命令（后面是空格或结尾）
-                        next_char_pos = len(dynamic_cmd)
-                        if (next_char_pos == len(_input_one_space) or
-                            _input_one_space[next_char_pos] == ' '):
-
-                            # 使用 PluginManager 处理动态补全，通常是用于命令或子命令动态的参数值列表的补全
-                            completions = self.plugin_manager.process_dynamic_completions(
-                                dynamic_cmd, current_input
+                        # 使用 PluginManager 处理动态补全，通常是用于命令或子命令动态的参数值列表的补全
+                        completions = self.plugin_manager.process_dynamic_completions(
+                            dynamic_cmd, current_input
+                        )
+                        for completion_text, display_text in completions:
+                            yield Completion(
+                                completion_text,
+                                start_position=0,
+                                display=display_text,
                             )
-                            for completion_text, display_text in completions:
-                                yield Completion(
-                                    completion_text,
-                                    start_position=0,
-                                    display=display_text,
-                                )
-                            return
+                        return
 
                 # 如果不是特定命令，检查一般命令 + 空格的情况, 通常是用于固定的下级子命令列表的补全
+                cmd_parts = current_input.split(maxsplit=1)
+                base_cmd = cmd_parts[0]
+
                 # 获取插件命令补全
                 plugin_completions_dict = self.plugin_manager.get_plugin_completions()
 
-                # 找到最长的匹配命令前缀（支持多级命令）
-                matched_cmd = self._find_longest_matching_command(
-                    _input_one_space, plugin_completions_dict
-                )
-
-                # 如果找到匹配的命令前缀，进行处理
-                if matched_cmd:
+                # 如果命令存在于补全字典中，进行处理
+                if base_cmd in plugin_completions_dict:
                     yield from self._process_command_completions(
-                        matched_cmd, current_input, plugin_completions_dict[matched_cmd]
+                        base_cmd, current_input, plugin_completions_dict[base_cmd]
                     )
                     return
             # 处理直接命令补全 - 如果输入不包含空格，匹配整个命令
+            # 1. 插件和内置命令
             for command in self.plugin_manager.get_all_commands_with_prefix(
                 current_input
             ):
@@ -443,6 +356,16 @@ class EnhancedCompleter(Completer):
                     start_position=0,
                     display=command,
                 )
+            
+            # 2. 自定义命令（从 .autocodercommands 目录）
+            custom_commands = self._get_custom_commands()
+            for command in custom_commands:
+                if command.startswith(current_input):
+                    yield Completion(
+                        command[len(current_input) :],
+                        start_position=0,
+                        display=command,
+                    )
 
         # 获取并返回基础补全器的补全
         if self.base_completer:
@@ -451,65 +374,16 @@ class EnhancedCompleter(Completer):
             ):
                 yield completion
 
-    def _find_longest_matching_command(self, current_input, plugin_completions_dict):
-        """找到最长的匹配命令前缀（支持多级命令）
-
-        Args:
-            current_input: 标准化后的当前输入（如 "/git /github"）
-            plugin_completions_dict: 插件补全字典
-
-        Returns:
-            匹配的命令前缀，如果没有匹配返回None
-        """
-        # 收集所有匹配的命令前缀
-        matched_commands = []
-
-        for cmd_prefix in plugin_completions_dict.keys():
-            # 检查当前输入是否以该命令前缀开头
-            if current_input.startswith(cmd_prefix):
-                # 精确匹配：确保匹配到的是完整命令（末尾是空格或输入结束）
-                next_char_pos = len(cmd_prefix)
-                if next_char_pos == len(current_input) or (
-                    next_char_pos < len(current_input)
-                    and current_input[next_char_pos] == " "
-                ):
-                    matched_commands.append(cmd_prefix)
-
-        # 返回最长的匹配（支持多级命令，如 "/git /github" 优先于 "/git"）
-        if matched_commands:
-            return max(matched_commands, key=len)
-
-        return None
-
     def _process_command_completions(self, command, current_input, completions):
-        """处理通用命令补全，支持多个并行选项和非选项参数（如 commit hash）"""
-        # 计算命令前缀的单词数
-        command_parts_count = len(command.split())
-
-        # 分割当前输入
-        parts = current_input.split()
+        """处理通用命令补全"""
+        # 提取子命令前缀
+        parts = current_input.split(maxsplit=1)
         cmd_prefix = ""
+        if len(parts) > 1:
+            cmd_prefix = parts[1].strip()
 
-        # 获取已输入的选项（只统计以 / 开头的）
-        entered_options = set()
-        if len(parts) > command_parts_count:
-            for part in parts[command_parts_count:]:
-                if part.startswith("/"):
-                    entered_options.add(part)
-
-        # 判断最后一个词是否是选项前缀
-        if len(parts) > command_parts_count:
-            last_word = parts[-1]
-            # 只有以 / 开头的才作为选项前缀，否则显示所有可用选项
-            if last_word.startswith("/"):
-                cmd_prefix = last_word
-
-        # 补全选项
+        # 对于任何命令，当子命令前缀为空或与补全选项匹配时，都显示补全
         for completion in completions:
-            # 过滤掉已经输入的选项，避免重复补全
-            if completion in entered_options:
-                continue
-
             if cmd_prefix == "" or completion.startswith(cmd_prefix):
                 # 只提供未输入部分作为补全
                 remaining_text = completion[len(cmd_prefix) :]
@@ -553,60 +427,48 @@ class EnhancedCompleter(Completer):
                         executor, self.plugin_manager.get_dynamic_cmds
                     )
 
-                    # 按长度排序，最长的命令优先匹配（避免短命令误匹配长命令）
-                    sorted_dynamic_cmds = sorted(dynamic_cmds, key=len, reverse=True)
-
-                    for dynamic_cmd in sorted_dynamic_cmds:
+                    for dynamic_cmd in dynamic_cmds:
                         if _input_one_space.startswith(dynamic_cmd):
-                            # 精确匹配：确保匹配的是完整命令（后面是空格或结尾）
-                            next_char_pos = len(dynamic_cmd)
-                            if (next_char_pos == len(_input_one_space) or
-                                _input_one_space[next_char_pos] == ' '):
-
-                                # 异步处理动态补全
-                                completions = await loop.run_in_executor(
-                                    executor,
-                                    self.plugin_manager.process_dynamic_completions,
-                                    dynamic_cmd,
-                                    current_input,
+                            # 异步处理动态补全
+                            completions = await loop.run_in_executor(
+                                executor,
+                                self.plugin_manager.process_dynamic_completions,
+                                dynamic_cmd,
+                                current_input,
+                            )
+                            for completion_text, display_text in completions:
+                                yield Completion(
+                                    completion_text,
+                                    start_position=0,
+                                    display=display_text,
                                 )
-                                for completion_text, display_text in completions:
-                                    yield Completion(
-                                        completion_text,
-                                        start_position=0,
-                                        display=display_text,
-                                    )
-                                return
+                            return
 
                     # 如果不是特定命令，检查一般命令 + 空格的情况
+                    cmd_parts = current_input.split(maxsplit=1)
+                    base_cmd = cmd_parts[0]
+
                     # 异步获取插件命令补全
                     plugin_completions_dict = await loop.run_in_executor(
                         executor, self.plugin_manager.get_plugin_completions
                     )
 
-                    # 找到最长的匹配命令前缀（支持多级命令）
-                    matched_cmd = await loop.run_in_executor(
-                        executor,
-                        self._find_longest_matching_command,
-                        _input_one_space,
-                        plugin_completions_dict,
-                    )
-
-                    # 如果找到匹配的命令前缀，进行处理
-                    if matched_cmd:
+                    # 如果命令存在于补全字典中，进行处理
+                    if base_cmd in plugin_completions_dict:
                         # 异步处理命令补全
                         completions_list = await loop.run_in_executor(
                             executor,
                             self._get_command_completions_list,
-                            matched_cmd,
+                            base_cmd,
                             current_input,
-                            plugin_completions_dict[matched_cmd],
+                            plugin_completions_dict[base_cmd],
                         )
                         for completion in completions_list:
                             yield completion
                         return
                 else:
                     # 处理直接命令补全 - 异步获取所有匹配的命令
+                    # 1. 插件和内置命令
                     commands = await loop.run_in_executor(
                         executor,
                         self.plugin_manager.get_all_commands_with_prefix,
@@ -618,6 +480,19 @@ class EnhancedCompleter(Completer):
                             start_position=0,
                             display=command,
                         )
+                    
+                    # 2. 自定义命令（从 .autocodercommands 目录）
+                    custom_commands = await loop.run_in_executor(
+                        executor,
+                        self._get_custom_commands,
+                    )
+                    for command in custom_commands:
+                        if command.startswith(current_input):
+                            yield Completion(
+                                command[len(current_input) :],
+                                start_position=0,
+                                display=command,
+                            )
             finally:
                 executor.shutdown(wait=False)
 
@@ -829,11 +704,7 @@ async def process_user_input(user_input: str, new_prompt_callback, session=None)
             if plugin_result:
                 plugin_name, handler, args = plugin_result
                 if handler:
-                    # 检查handler是否是异步函数
-                    if asyncio.iscoroutinefunction(handler):
-                        await handler(*args)
-                    else:
-                        handler(*args)
+                    handler(*args)
                     plugin_handled = True
 
         # 如果插件已处理命令，直接返回
@@ -1055,17 +926,16 @@ async def process_user_input(user_input: str, new_prompt_callback, session=None)
         else:
             # 对于未识别的命令，显示提示信息而不是执行auto_command
             if user_input and user_input.strip():
-                if user_input.startswith("/"):
-                    print(
-                        f"\033[91m{get_message_with_format_local('unknown_command', command=user_input)}\033[0m"
-                    )
-                    print(get_message("type_help_for_commands"))
-                else:
-                    # 只有非命令输入才执行auto_command
-                    event_file, _ = gengerate_event_file_path()
-                    global_cancel.register_token(event_file)
-                    configure(f"event_file:{event_file}")
-                    run_agentic(user_input, cancel_token=event_file)
+                if user_input.startswith("/"):                    
+                    command = user_input.split(" ")[0][1:]
+                    query = user_input[len(command) + 1:].strip()
+                    user_input = f"/command {command}.md {query}"                    
+                
+                # 只有非命令输入才执行auto_command
+                event_file, _ = gengerate_event_file_path()
+                global_cancel.register_token(event_file)
+                configure(f"event_file:{event_file}")
+                run_agentic(user_input, cancel_token=event_file)
 
     except EOFError:
         # 重新抛出这些异常，让主循环处理
@@ -1214,17 +1084,6 @@ async def run_app():
     # 注册粘贴处理器
     register_paste_handler(kb)
 
-    # 多行输入模式下的键绑定
-    # Enter键：提交输入（而不是换行）
-    @kb.add("enter")
-    def _(event):
-        event.current_buffer.validate_and_handle()
-
-    # Alt+Enter：插入换行符（而不是提交）
-    @kb.add("escape", "enter")  # Alt+Enter在终端中通常被解析为Escape+Enter
-    def _(event):
-        event.current_buffer.insert_text('\n')
-
     # 应用插件的键盘绑定
     plugin_manager.apply_keybindings(kb)
 
@@ -1232,8 +1091,10 @@ async def run_app():
         mode = get_mode()
         human_as_model = get_human_as_model_string()
         MODES = {
-            "auto_detect": "自然语言自动识别",
-            "shell": "Shell模式",
+            "normal": "normal",
+            "auto_detect": "nature language auto detect",
+            "voice_input": "voice input",
+            "shell": "shell",
         }
         if mode not in MODES:
             mode = "auto_detect"
@@ -1266,7 +1127,7 @@ async def run_app():
             # 静默处理异常，不影响底部工具栏的显示
             pass
 
-        return f"[Enter]=提交 [Alt+Enter]=换行 | Current Dir: {pwd} \n模式: {MODES[mode]}(ctrl+k切换) | {plugin_info}{async_tasks_info}"
+        return f"Current Dir: {pwd} \nMode: {MODES[mode]}(ctrl+k) | Human as Model: {human_as_model}(ctrl+n) | {plugin_info}{async_tasks_info}"
 
     # 创建增强补全器
     enhanced_completer = EnhancedCompleter(completer, plugin_manager)
@@ -1286,8 +1147,6 @@ async def run_app():
         complete_while_typing=False,
         key_bindings=kb,
         bottom_toolbar=get_bottom_toolbar,
-        multiline=True,  # 启用多行输入模式
-        prompt_continuation=lambda width, line_number, is_soft_wrap: "... ",  # 续行提示符
         # 注意：bracketed paste 通过 Keys.BracketedPaste 键绑定处理
     )
 
@@ -1331,45 +1190,25 @@ async def run_app():
         }
     )
 
-    # 显示启动信息 - 根据终端能力自适应
-    from autocoder.common.terminal_compat import get_terminal_capability
-
-    term = get_terminal_capability()
-
-    if term.supports_unicode() and term.ansi_support:
-        # 终端支持Unicode和ANSI,显示彩色ASCII logo
-        print(
-            f"""\033[1;32m  ██████╗██╗   ██╗███████╗          ██████╗██╗     ██╗
- ██╔════╝██║   ██║██╔════╝         ██╔════╝██║     ██║
- ██║     ██║   ██║███████╗ ██████  ██║     ██║     ██║
- ██║     ██║   ██║╚════██║         ██║     ██║     ██║
- ╚██████╗╚██████╔╝███████║         ╚██████╗███████╗██║
-  ╚═════╝ ╚═════╝ ╚══════╝          ╚═════╝╚══════╝╚═╝
-                                             {__version__}
-                            Produced by 黄埔海关科技处\033[0m"""
-        )
-    else:
-        # 降级为纯ASCII logo(兼容传统Windows终端)
-        print(f"""
-  ====================================
-   CUS-CLI - Custom CLI Tool
-   Version: {__version__}
-   Produced by 黄埔海关科技处
-  ====================================
-""")
+    # 显示启动信息
+    print(
+        f"""
+    \033[1;32m  ____ _           _          _         _               ____          _           
+    / ___| |__   __ _| |_       / \\  _   _| |_ ___        / ___|___   __| | ___ _ __ 
+    | |   | '_ \\ / _` | __|____ / _ \\| | | | __/ _ \\ _____| |   / _ \\ / _` |/ _ \\ '__|
+    | |___| | | | (_| | ||_____/ ___ \\ |_| | || (_) |_____| |__| (_) | (_| |  __/ |   
+    \\____|_| |_|\\__,_|\\__|   /_/   \\_\\__,_|\\__\\___/       \\____\\___/ \\__,_|\\___|_| 
+                                                                        v{__version__}
+    \033[0m"""
+    )
     print(f"\033[1;34m{get_message('type_help_to_see_commands')}\033[0m\n")
 
     # 显示插件信息
     if plugin_manager.plugins:
         print(f"\033[1;34m{get_message('loaded_plugins_title')}\033[0m")
         for name, plugin in plugin_manager.plugins.items():
-            print(f"  - {plugin.description}")
+            print(f"  - {name} (v{plugin.version}): {plugin.description}")
         print()
-
-    # 显示模型能力要求警告（醒目格式）
-    print()
-    print_warning_box(get_message('model_capability_warning'), width=78, color="\033[1;33m")
-    print()
 
     show_help()
 
@@ -1389,7 +1228,7 @@ async def run_app():
                 prompt_message = [
                     ("class:username", "coding"),
                     ("class:at", "@"),
-                    ("class:host", "cuscli.chat"),
+                    ("class:host", "auto-coder.chat"),
                     ("class:colon", ":"),
                     ("class:path", "~"),
                     ("class:dollar", "$ "),

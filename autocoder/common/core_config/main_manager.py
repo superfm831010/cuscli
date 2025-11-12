@@ -14,6 +14,7 @@ from .lib_manager import LibManagerMixin
 from .conversation_manager import ConversationManagerMixin
 from .mode_manager import ModeManagerMixin
 from .human_as_model_manager import HumanAsModelManagerMixin
+from .agentic_mode_manager import AgenticModeManagerMixin
 
 
 class MemoryManager(
@@ -24,7 +25,8 @@ class MemoryManager(
     LibManagerMixin,
     ConversationManagerMixin,
     ModeManagerMixin,
-    HumanAsModelManagerMixin
+    HumanAsModelManagerMixin,
+    AgenticModeManagerMixin
 ):
     """
     Complete memory manager for auto-coder sessions.
@@ -38,6 +40,7 @@ class MemoryManager(
     - ConversationManagerMixin: Conversation history management
     - ModeManagerMixin: Mode management functionality
     - HumanAsModelManagerMixin: Human as model configuration management
+    - AgenticModeManagerMixin: Agentic mode configuration management
     
     Provides thread-safe persistence of configuration and session data.
     """

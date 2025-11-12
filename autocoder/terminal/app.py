@@ -34,8 +34,10 @@ class TerminalApp:
         base_completer,
         get_mode_func,
         get_human_as_model_string_func,
+        get_agentic_mode_string_func,
         cycle_mode_func,
         toggle_human_as_model_func,
+        toggle_agentic_mode_func,
         voice_input_func,
         get_mcp_server_func,
         stop_engine_func,
@@ -48,8 +50,10 @@ class TerminalApp:
         self.base_completer = base_completer
         self.get_mode = get_mode_func
         self.get_human_as_model_string = get_human_as_model_string_func
+        self.get_agentic_mode_string = get_agentic_mode_string_func
         self.cycle_mode = cycle_mode_func
         self.toggle_human_as_model = toggle_human_as_model_func
+        self.toggle_agentic_mode = toggle_agentic_mode_func
         self.voice_input = voice_input_func
         self.get_mcp_server = get_mcp_server_func
         self.stop_engine = stop_engine_func
@@ -145,6 +149,9 @@ class TerminalApp:
         self.command_registry.register("/debug", self.command_processor.handle_debug)
         self.command_registry.register(
             "/shell", self.command_processor.handle_shell_command
+        )
+        self.command_registry.register(
+            "/workflow", self.command_processor.handle_workflow
         )
 
         # 兜底处理器
@@ -286,12 +293,14 @@ class TerminalApp:
             self.voice_input,
             self.cycle_mode,
             self.toggle_human_as_model,
+            self.toggle_agentic_mode,
             self.configure,
         )
 
         toolbar_func = get_bottom_toolbar_func(
             self.get_mode,
             self.get_human_as_model_string,
+            self.get_agentic_mode_string,
             self.plugin_manager,
         )
 
@@ -362,7 +371,7 @@ class TerminalApp:
                     prompt_message = [
                         ("class:username", "coding"),
                         ("class:at", "@"),
-                        ("class:host", "cuscli.chat"),
+                        ("class:host", "auto-coder.chat"),
                         ("class:colon", ":"),
                         ("class:path", "~"),
                         ("class:dollar", "$ "),

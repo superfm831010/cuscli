@@ -34,6 +34,10 @@ from .compatibility import (
     set_human_as_model,
     toggle_human_as_model,
     get_human_as_model_string,
+    get_agentic_mode,
+    set_agentic_mode,
+    toggle_agentic_mode,
+    get_agentic_mode_string,
 )
 
 # Export all public interfaces
@@ -52,4 +56,8 @@ __all__ = [
     'set_human_as_model',
     'toggle_human_as_model',
     'get_human_as_model_string',
+    'get_agentic_mode',
+    'set_agentic_mode',
+    'toggle_agentic_mode',
+    'get_agentic_mode_string',
 ]

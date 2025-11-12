@@ -21,19 +21,7 @@ from autocoder.agent.base_agentic.types import AgentRequest, AgenticEditConversa
 from autocoder.common import SourceCodeList
 from autocoder.rag.tools import register_search_tool, register_recall_tool, register_todo_read_tool, register_todo_write_tool, register_web_search_tool, register_web_crawl_tool
 from byzerllm.utils.types import SingleOutputMeta
-from autocoder.utils.llms import get_single_llm
 import uuid
-try:
-    from autocoder_pro.rag.llm_compute import LLMComputeEngine
-    pro_version = version("auto-coder-pro")
-    autocoder_version = version("auto-coder")
-    logger.warning(
-        f"auto-coder-pro({pro_version}) plugin is enabled in auto-coder.rag({autocoder_version})")
-except ImportError:
-    logger.warning(
-        "Please install auto-coder-pro to enhance llm compute ability")
-    LLMComputeEngine = None
-
 
 class RAGAgent(BaseAgent):
     def __init__(self, name: str,
@@ -351,3 +339,6 @@ class AgenticRAG:
                     ))
 
         return _generate_sream(), context
+    
+    def close(self):
+        self.rag.close()

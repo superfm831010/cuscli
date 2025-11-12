@@ -310,7 +310,7 @@ class AgenticEdit:
 
          **Batch Command Execution**: This tool also supports executing multiple commands in a single call using JSON, YAML, or newline-separated formats. By default, multiple commands run in parallel for better performance. Use serial execution when commands depend on each other.
          **Background Command Execution**: This tool also supports running commands in the background. Set the background parameter to 'true' for long-running processes (e.g., 'npm run dev') to keep the session responsive while the process continues running.
-         **Sub Agent Execution**: You can also delegate tasks to sub-agents using pipe syntax like `echo 'task description' | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose` or `cat task_file.txt | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose`. The --is-sub-agent flag indicates this agent is called by another agent rather than directly by a human. The --verbose flag enables detailed logging for sub-agent execution progress.
+         **Sub Agent Execution**: You can also delegate tasks to sub-agents using pipe syntax like `echo 'task description' | auto-coder.run --model {{ current_model }} --is-sub-agent` or `cat task_file.txt | auto-coder.run --model {{ current_model }} --is-sub-agent`. The --is-sub-agent flag indicates this agent is called by another agent rather than directly by a human.
 
          For command chaining, use the appropriate chaining syntax for the user's shell. Prefer to execute complex CLI commands over creating executable scripts, as they are more flexible and easier to run. Commands will be executed in the current working directory: {{current_project}}
 
@@ -772,6 +772,26 @@ class AgenticEdit:
          - max_depth: (optional) Maximum crawling depth from the starting URL. Default varies by provider.
          - allow_subdomains: (optional) Whether to allow crawling subdomains, "true" or "false". Default is "false".
          - crawl_entire_domain: (optional) Whether to crawl the entire domain, "true" or "false". Default is "false". (Firecrawl only)
+
+         ## load_extra_document
+         Description: Load a built-in extra document and return full document, so you can include it in the conversation to guide your reasoning or execution. Use this to quickly reference internal specifications/templates.
+         Parameters:
+         - name: (required) The document name to load. Currently supported: "workflow_subagents"
+         Usage:
+         <load_extra_document>
+         <name>workflow_subagents</name>
+         </load_extra_document>
+
+         ## execute_workflow
+         Description: Execute a predefined workflow by name. Workflows are YAML files that define multi-step subagent collaboration patterns. Use this to run complex multi-agent workflows that are already configured in the project.
+         Parameters:
+         - name: (required) The workflow name (without .yaml extension). The tool will search for the workflow in priority order: .autocoderworkflow/, .auto-coder/.autocoderworkflow/, ~/.auto-coder/.autocoderworkflow/
+         - vars_override: (optional) JSON string to override workflow variables, e.g., '{"query": "your custom query", "project_type": "*"}'
+         Usage:
+         <execute_workflow>
+         <name>coder</name>
+         <vars_override>{"query": "implement user authentication"}</vars_override>
+         </execute_workflow>
 
          Usage Examples:
 
@@ -1606,8 +1626,8 @@ class AgenticEdit:
 
          <execute_command>
          <command>[
-           "echo 'Create a header component with navigation menu in src/components/Header.tsx' | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose",
-           "echo 'Create a footer component with copyright and links in src/components/Footer.tsx' | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose",
+           "echo 'Create a header component with navigation menu in src/components/Header.tsx' | auto-coder.run --model {{ current_model }} --is-sub-agent",
+           "echo 'Create a footer component with copyright and links in src/components/Footer.tsx' | auto-coder.run --model {{ current_model }} --is-sub-agent",
          ]</command>
          <requires_approval>false</requires_approval>
          <timeout>300</timeout>
@@ -1628,8 +1648,8 @@ class AgenticEdit:
          <command>
          mode: parallel
          cmds:
-         - echo 'Create User model with TypeScript interfaces in src/models/User.ts. Include fields: id, username, email, password, createdAt, updatedAt' | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
-         - echo 'Implement UserService class in src/services/UserService.ts with methods: createUser, getUser, updateUser, deleteUser, listUsers' | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
+         - echo 'Create User model with TypeScript interfaces in src/models/User.ts. Include fields: id, username, email, password, createdAt, updatedAt' | auto-coder.run --model {{ current_model }} --is-sub-agent
+         - echo 'Implement UserService class in src/services/UserService.ts with methods: createUser, getUser, updateUser, deleteUser, listUsers' | auto-coder.run --model {{ current_model }} --is-sub-agent
          </command>
          <requires_approval>false</requires_approval>
          <timeout>600</timeout>
@@ -1643,27 +1663,102 @@ class AgenticEdit:
          4. Cost Consideration: Multiple parallel agents increase API usage
          5. Quality Control: Review all sub-agent outputs for consistency
 
+         ## Get specific sub-agent output
+
+         If you want to control the final output of the subagent, you can add the following content in your prompt/task description
+         when invoking the subagent:
+
+         you should output what you find in attempt_completion tool in this format:
+
+         ```json
+         {
+            "files": [
+               {
+                  "path": "path/to/file.py",
+                  "operation": "modify"
+               }
+            ]
+         }
+         ```
+
+         you can always get the output of the subagent by using the attempt_completion tool. If you run the subagent in background, you can use the background_task tool to get the output of the subagent.
+
          ## Advanced Pattern: Staged Parallel Execution
 
          For complex projects, use staged execution where later stages depend on earlier ones:
 
          ```bash
          # Stage 1: Create base structures (parallel)
-         echo "Create base interfaces and types" | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
-         echo "Set up project configuration files" | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
+         echo "Create base interfaces and types" | auto-coder.run --model {{ current_model }} --is-sub-agent
+         echo "Set up project configuration files" | auto-coder.run --model {{ current_model }} --is-sub-agent
 
          # Wait for Stage 1 completion, then...
 
          # Stage 2: Implement core logic (parallel)
-         echo "Implement services using the interfaces" | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
-         echo "Create API routes using the services" | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
+         echo "Implement services using the interfaces" | auto-coder.run --model {{ current_model }} --is-sub-agent
+         echo "Create API routes using the services" | auto-coder.run --model {{ current_model }} --is-sub-agent
 
          # Stage 3: Testing and documentation (parallel)
-         echo "Write tests for all services" | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
-         echo "Generate API documentation" | auto-coder.run --model {{ current_model }} --is-sub-agent --verbose
+         echo "Write tests for all services" | auto-coder.run --model {{ current_model }} --is-sub-agent
+         echo "Generate API documentation" | auto-coder.run --model {{ current_model }} --is-sub-agent
          ```
 
          {{sub_agents_content}}
+
+         ====
+
+         WORKFLOW SUBAGENTS
+
+         ## Overview
+
+         For complex multi-step tasks involving multiple subagents, defining a workflow in YAML format is often more efficient and maintainable than executing subagents step by step. Workflows provide declarative multi-agent orchestration with dependency management, conversation sharing, and output mapping.
+
+         ## When to Use Workflow vs Direct Subagent Execution
+
+         **Use Workflow (execute_workflow tool) when:**
+         - Need to control whether to share conversation context across multiple agents
+         - Complex coordination logic is clearly defined (conditional execution, DAG dependencies)
+
+         **Use Direct Subagent Execution (execute_command with auto-coder.run) when:**
+         - Simple parallel tasks with no dependencies
+         - Need tocheck the output from previous subagent and then decide the next step
+
+         ## How to Create and Execute Workflows
+
+         **Step 1: Learn the Workflow Specification**
+
+         Use the load_extra_document tool to get the complete YAML specification:
+
+         <load_extra_document>
+         <name>workflow_subagents</name>
+         </load_extra_document>
+
+         **Step 2: Create Your Workflow YAML**
+
+         Create a workflow file in `./.autocoderworkflow/` directory (or `.auto-coder/.autocoderworkflow/`).
+
+         **Step 3: Execute the Workflow**
+
+         Once the YAML file is created, execute it using the execute_workflow tool:
+
+         <execute_workflow>
+         <name>my-workflow</name>
+         <vars_override>{"query": "implement user login feature"}</vars_override>
+         </execute_workflow>
+
+         The tool will:
+         - Locate the workflow file by name (searches in priority directories)
+         - Execute all steps in topological order based on dependencies
+         - Handle conversation sharing and context passing between agents
+         - Return detailed execution results for each step
+
+         ## Benefits of Workflow Approach
+
+         - **Reusability**: Define once, execute multiple times with different inputs
+         - **Maintainability**: YAML configuration is easier to review and modify than code
+         - **Visibility**: Clear dependency graph and execution flow
+         - **Consistency**: Standardized multi-agent collaboration patterns
+         - **Error Handling**: Structured error reporting for each step
 
          ====
 
@@ -2169,9 +2264,9 @@ class AgenticEdit:
 
         self.callbacks.execute_callbacks(
             AgenticCallbackPoint.POST_LLM_FRIENDLY_PACKAGES_LOADED, agentic_context
-        )            
-        
-        if not self.conversation_config.is_sub_agent:            
+        )
+
+        if not self.conversation_config.is_sub_agent:
             # Add tools usage information from tools_manager
             self.callbacks.execute_callbacks(
                 AgenticCallbackPoint.PRE_TOOLS_LOADED, agentic_context
@@ -2179,7 +2274,7 @@ class AgenticEdit:
             try:
                 tools_manager = ToolsManager()
                 tools_prompt = tools_manager.get_tools_prompt.prompt()
-                
+
                 if tools_prompt and tools_prompt.strip():
                     conversations.append(
                         {
@@ -2190,8 +2285,8 @@ class AgenticEdit:
 
                     conversations.append(
                         {
-                            "role": "assistant", 
-                            "content": "我已经了解了当前项目中可用的工具命令。在处理您的请求时，我会适当地引用这些工具的功能和使用方法。",
+                            "role": "assistant",
+                            "content": "I have learned about the available tool commands in the current project. When processing your request, I will appropriately reference the functionality and usage methods of these tools.",
                         }
                     )
 
@@ -2202,11 +2297,10 @@ class AgenticEdit:
                 AgenticCallbackPoint.POST_TOOLS_LOADED, agentic_context
             )
 
-        
         # Add user rules from @rulefiles/ as first conversation round
         self.callbacks.execute_callbacks(
             AgenticCallbackPoint.PRE_RULES_LOADED, agentic_context
-        )            
+        )
         if self.args.include_rules:
             try:
                 # Get formatted rules text for conversation
@@ -2831,198 +2925,153 @@ class AgenticEdit:
                 return None
 
         last_metadata = None
-        retry_count = 0
-        max_retries = self.args.agentic_connection_retries
 
-        while True:
-            try:
-                for content_chunk, metadata in generator:
-                    global_cancel.check_and_raise(token=self.cancel_token)
-                    if not content_chunk:
-                        last_metadata = metadata
-                        continue
-
+        try:
+            for content_chunk, metadata in generator:
+                global_cancel.check_and_raise(token=self.cancel_token)
+                if not content_chunk:
                     last_metadata = metadata
-                    buffer += content_chunk
+                    continue
 
-                    while True:
-                        # Check for transitions: thinking -> text, tool -> text, text -> thinking, text -> tool
-                        next_event_pos = len(buffer)
-                        found_event = False
+                last_metadata = metadata
+                buffer += content_chunk
 
-                        # 1. Check for </thinking> if inside thinking block
-                        if in_thinking_block:
-                            end_think_pos = buffer.find(thinking_end_tag)
-                            if end_think_pos != -1:
-                                thinking_content = buffer[:end_think_pos]
-                                yield LLMThinkingEvent(text=thinking_content)
-                                buffer = buffer[end_think_pos + len(thinking_end_tag) :]
-                                in_thinking_block = False
-                                found_event = True
-                                continue  # Restart loop with updated buffer/state
-                            else:
-                                # Need more data to close thinking block
-                                break
+                while True:
+                    # Check for transitions: thinking -> text, tool -> text, text -> thinking, text -> tool
+                    next_event_pos = len(buffer)
+                    found_event = False
 
-                        # 2. Check for </tool_tag> if inside tool block
-                        elif in_tool_block:
-                            end_tag = f"</{current_tool_tag}>"
-                            end_tool_pos = buffer.find(end_tag)
-                            if end_tool_pos != -1:
-                                tool_block_end_index = end_tool_pos + len(end_tag)
-                                tool_xml = buffer[:tool_block_end_index]
-                                tool_obj = parse_tool_xml(tool_xml, current_tool_tag)
-
-                                if tool_obj:
-                                    # Reconstruct the XML accurately here AFTER successful parsing
-                                    # This ensures the XML yielded matches what was parsed.
-                                    reconstructed_xml = self._reconstruct_tool_xml(
-                                        tool_obj
-                                    )
-                                    if reconstructed_xml.startswith("<error>"):
-                                        yield ErrorEvent(
-                                            message=f"Failed to reconstruct XML for tool {current_tool_tag}"
-                                        )
-                                    else:
-                                        yield ToolCallEvent(
-                                            tool=tool_obj, tool_xml=reconstructed_xml
-                                        )
-                                else:
-                                    # yield ErrorEvent(message=f"Failed to parse tool: <{current_tool_tag}>")
-                                    # Optionally yield the raw XML as plain text?
-                                    yield LLMOutputEvent(
-                                        text=f"Failed to parse tool: <{current_tool_tag}> {tool_xml}"
-                                    )
-
-                                buffer = buffer[tool_block_end_index:]
-                                in_tool_block = False
-                                current_tool_tag = None
-                                found_event = True
-                                continue  # Restart loop
-                            else:
-                                # Need more data to close tool block
-                                break
-
-                        # 3. Check for <thinking> or <tool_tag> if in plain text state
+                    # 1. Check for </thinking> if inside thinking block
+                    if in_thinking_block:
+                        end_think_pos = buffer.find(thinking_end_tag)
+                        if end_think_pos != -1:
+                            thinking_content = buffer[:end_think_pos]
+                            yield LLMThinkingEvent(text=thinking_content)
+                            buffer = buffer[end_think_pos + len(thinking_end_tag) :]
+                            in_thinking_block = False
+                            found_event = True
+                            continue  # Restart loop with updated buffer/state
                         else:
-                            start_think_pos = buffer.find(thinking_start_tag)
-                            tool_match = tool_start_pattern.search(buffer)
-                            start_tool_pos = tool_match.start() if tool_match else -1
-                            tool_name = tool_match.group(1) if tool_match else None
-
-                            # Determine which tag comes first (if any)
-                            first_tag_pos = -1
-                            is_thinking = False
-                            is_tool = False
-
-                            if start_think_pos != -1 and (
-                                start_tool_pos == -1 or start_think_pos < start_tool_pos
-                            ):
-                                first_tag_pos = start_think_pos
-                                is_thinking = True
-                            elif start_tool_pos != -1 and (
-                                start_think_pos == -1
-                                or start_tool_pos < start_think_pos
-                            ):
-                                # Check if it's a known tool
-                                if tool_name in TOOL_MODEL_MAP:
-                                    first_tag_pos = start_tool_pos
-                                    is_tool = True
-                                else:
-                                    # Unknown tag, treat as text for now, let buffer grow
-                                    pass
-
-                            if (
-                                first_tag_pos != -1
-                            ):  # Found either <thinking> or a known <tool>
-                                # Yield preceding text if any
-                                preceding_text = buffer[:first_tag_pos]
-                                if preceding_text:
-                                    yield LLMOutputEvent(text=preceding_text)
-
-                                # Transition state
-                                if is_thinking:
-                                    buffer = buffer[
-                                        first_tag_pos + len(thinking_start_tag) :
-                                    ]
-                                    in_thinking_block = True
-                                elif is_tool:
-                                    # Keep the starting tag
-                                    buffer = buffer[first_tag_pos:]
-                                    in_tool_block = True
-                                    current_tool_tag = tool_name
-
-                                found_event = True
-                                continue  # Restart loop
-
-                            else:
-                                # No tags found, or only unknown tags found. Need more data or end of stream.
-                                # Yield text chunk but keep some buffer for potential tag start
-                                # Keep last 100 chars
-                                split_point = max(0, len(buffer) - 100)
-                                text_to_yield = buffer[:split_point]
-                                if text_to_yield:
-                                    yield LLMOutputEvent(text=text_to_yield)
-                                    buffer = buffer[split_point:]
-                                break  # Need more data
-
-                        # If no event was processed in this iteration, break inner loop
-                        if not found_event:
+                            # Need more data to close thinking block
                             break
-                # 如果成功执行完毕，跳出重试循环
-                break
 
-            except Exception as e:
+                    # 2. Check for </tool_tag> if inside tool block
+                    elif in_tool_block:
+                        end_tag = f"</{current_tool_tag}>"
+                        end_tool_pos = buffer.find(end_tag)
+                        if end_tool_pos != -1:
+                            tool_block_end_index = end_tool_pos + len(end_tag)
+                            tool_xml = buffer[:tool_block_end_index]
+                            tool_obj = parse_tool_xml(tool_xml, current_tool_tag)
 
-                if isinstance(e, CancelRequestedException):
-                    raise e
+                            if tool_obj:
+                                # Reconstruct XML accurately here AFTER successful parsing
+                                # This ensures XML yielded matches what was parsed.
+                                reconstructed_xml = self._reconstruct_tool_xml(tool_obj)
+                                if reconstructed_xml.startswith("<error>"):
+                                    yield ErrorEvent(
+                                        message=f"Failed to reconstruct XML for tool {current_tool_tag}"
+                                    )
+                                else:
+                                    yield ToolCallEvent(
+                                        tool=tool_obj, tool_xml=reconstructed_xml
+                                    )
+                            else:
+                                # yield ErrorEvent(message=f"Failed to parse tool: <{current_tool_tag}>")
+                                # Optionally yield raw XML as plain text?
+                                yield LLMOutputEvent(
+                                    text=f"Failed to parse tool: <{current_tool_tag}> {tool_xml}"
+                                )
 
-                retry_count += 1
+                            buffer = buffer[tool_block_end_index:]
+                            in_tool_block = False
+                            current_tool_tag = None
+                            found_event = True
+                            continue  # Restart loop
+                        else:
+                            # Need more data to close tool block
+                            break
 
-                # 获取完整的堆栈信息并截取最后200个字符
-                import traceback
-
-                full_traceback = traceback.format_exc()
-                error_detail = (
-                    full_traceback[-300:]
-                    if len(full_traceback) > 300
-                    else full_traceback
-                )
-
-                # 检查是否需要重试
-                if max_retries == -1 or retry_count <= max_retries:
-                    retry_info = f"Connection error, retrying attempt {retry_count}"
-                    if max_retries != -1:
-                        retry_info += f" (max {max_retries} retries)"
+                    # 3. Check for <thinking> or <tool_tag> if in plain text state
                     else:
-                        retry_info += " (infinite retry mode)"
+                        start_think_pos = buffer.find(thinking_start_tag)
+                        tool_match = tool_start_pattern.search(buffer)
+                        start_tool_pos = tool_match.start() if tool_match else -1
+                        tool_name = tool_match.group(1) if tool_match else None
 
-                    logger.warning(
-                        f"LLM connection failed: {error_detail}, {retry_info}"
-                    )
-                    yield LLMOutputEvent(
-                        text=f"\n⚠️ {retry_info}, waiting 10 seconds before continuing...\nError: {error_detail}\n"
-                    )
+                        # Determine which tag comes first (if any)
+                        first_tag_pos = -1
+                        is_thinking = False
+                        is_tool = False
 
-                    # 等待10秒
-                    time.sleep(10)
+                        if start_think_pos != -1 and (
+                            start_tool_pos == -1 or start_think_pos < start_tool_pos
+                        ):
+                            first_tag_pos = start_think_pos
+                            is_thinking = True
+                        elif start_tool_pos != -1 and (
+                            start_think_pos == -1 or start_tool_pos < start_think_pos
+                        ):
+                            # Check if it's a known tool
+                            if tool_name in TOOL_MODEL_MAP:
+                                first_tag_pos = start_tool_pos
+                                is_tool = True
+                            else:
+                                # Unknown tag, treat as text for now, let buffer grow
+                                pass
 
-                    # 重置状态以便重试
-                    buffer = ""
-                    in_tool_block = False
-                    in_thinking_block = False
-                    current_tool_tag = None
+                        if (
+                            first_tag_pos != -1
+                        ):  # Found either <thinking> or a known <tool>
+                            # Yield preceding text if any
+                            preceding_text = buffer[:first_tag_pos]
+                            if preceding_text:
+                                yield LLMOutputEvent(text=preceding_text)
 
-                    continue  # 继续重试循环
-                else:
-                    # 超过最大重试次数，抛出异常
-                    logger.error(
-                        f"LLM connection failed after {max_retries} retries, error: {error_detail}"
-                    )
-                    yield ErrorEvent(
-                        message=f"Connection failed after {max_retries} retries, please try again later. Error: {error_detail}"
-                    )
-                    break
+                            # Transition state
+                            if is_thinking:
+                                buffer = buffer[
+                                    first_tag_pos + len(thinking_start_tag) :
+                                ]
+                                in_thinking_block = True
+                            elif is_tool:
+                                # Keep starting tag
+                                buffer = buffer[first_tag_pos:]
+                                in_tool_block = True
+                                current_tool_tag = tool_name
+
+                            found_event = True
+                            continue  # Restart loop
+
+                        else:
+                            # No tags found, or only unknown tags found. Need more data or end of stream.
+                            # Yield text chunk but keep some buffer for potential tag start
+                            # Keep last 100 chars
+                            split_point = max(0, len(buffer) - 100)
+                            text_to_yield = buffer[:split_point]
+                            if text_to_yield:
+                                yield LLMOutputEvent(text=text_to_yield)
+                                buffer = buffer[split_point:]
+                            break  # Need more data
+
+                    # If no event was processed in this iteration, break inner loop
+                    if not found_event:
+                        break
+
+        except Exception as e:
+            if isinstance(e, CancelRequestedException):
+                raise e
+
+            # 获取完整的堆栈信息并截取最后200个字符
+            import traceback
+
+            full_traceback = traceback.format_exc()
+            error_detail = (
+                full_traceback[-300:] if len(full_traceback) > 300 else full_traceback
+            )
+
+            logger.error(f"LLM connection failed: {error_detail}")
+            yield ErrorEvent(message=f"Connection failed. Error: {error_detail}")
 
         # After generator exhausted, yield any remaining content
         if in_thinking_block:

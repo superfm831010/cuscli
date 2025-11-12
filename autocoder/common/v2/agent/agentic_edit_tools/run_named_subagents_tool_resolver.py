@@ -124,13 +124,11 @@ class RunNamedSubagentsToolResolver(BaseToolResolver):
                 parallel = execution_mode == "parallel"
                 # 从 AutoCoderArgs 获取子代理调用超时时间（秒），默认 30 分钟
                 timeout_seconds = self.args.call_subagent_timeout
-                # 启用 verbose 以实时打印子进程输出，避免输出缓冲导致的"卡住"问题
                 results = execute_commands(
                     commands=commands,
                     parallel=parallel,
                     timeout=timeout_seconds + 60,
-                    per_command_timeout=timeout_seconds,
-                    verbose=True
+                    per_command_timeout=timeout_seconds
                 )
                 
                 # 5. 处理执行结果
@@ -484,8 +482,7 @@ class RunNamedSubagentsToolResolver(BaseToolResolver):
         safe_prompt_path = shlex.quote(temp_file_path)
         
         # 构建命令，使用 --system-prompt-path 而不是 --system-prompt
-        # 添加 --verbose 标志以确保子代理执行时有控制台日志输出
-        command = f'echo {safe_query} | auto-coder.run --model {safe_model} --system-prompt-path {safe_prompt_path} --is-sub-agent --verbose'
+        command = f'echo {safe_query} | auto-coder.run --model {safe_model} --system-prompt-path {safe_prompt_path} --is-sub-agent'
         
         return command
     

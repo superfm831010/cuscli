@@ -5,13 +5,14 @@ from pathlib import Path
 
 
 def get_bottom_toolbar_func(
-    get_mode_func, get_human_as_model_string_func, plugin_manager
+    get_mode_func, get_human_as_model_string_func, get_agentic_mode_string_func, plugin_manager
 ):
     """创建底部工具栏函数
 
     Args:
         get_mode_func: 获取当前模式的函数
         get_human_as_model_string_func: 获取 human_as_model 字符串的函数
+        get_agentic_mode_string_func: 获取 agentic_mode 字符串的函数
         plugin_manager: 插件管理器
 
     Returns:
@@ -21,9 +22,12 @@ def get_bottom_toolbar_func(
     def get_bottom_toolbar():
         mode = get_mode_func()
         human_as_model = get_human_as_model_string_func()
+        agentic_mode = get_agentic_mode_string_func()
         MODES = {
-            "auto_detect": "自然语言自动识别",
-            "shell": "Shell模式",
+            "normal": "normal",
+            "auto_detect": "nature language auto detect",
+            "voice_input": "voice input",
+            "shell": "shell",
         }
         if mode not in MODES:
             mode = "auto_detect"
@@ -55,6 +59,6 @@ def get_bottom_toolbar_func(
             # 静默处理异常，不影响底部工具栏的显示
             pass
 
-        return f"Current Dir: {pwd} \n模式: {MODES[mode]}(ctrl+k切换) | {plugin_info}{async_tasks_info}"
+        return f"PWD: {pwd} \nInput: {MODES[mode]} | Human as Model: {human_as_model} | Agentic Mode: {agentic_mode} | {plugin_info}{async_tasks_info}"
 
     return get_bottom_toolbar

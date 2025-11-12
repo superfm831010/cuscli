@@ -2,6 +2,8 @@ import os
 import tempfile
 import threading
 import subprocess
+import time
+import re
 from pathlib import Path
 from typing import Optional, Union
 from rich.console import Console
@@ -20,6 +22,43 @@ class AsyncCommandHandler:
         self.console = Console()
         self._config = None
 
+    def _parse_time_string(self, time_str: str) -> int:
+        """
+        解析时间字符串，支持 5s, 5m, 5h, 5d 格式
+
+        Args:
+            time_str: 时间字符串，如 "5s", "10m", "2h", "1d"
+
+        Returns:
+            时间的秒数
+
+        Raises:
+            ValueError: 如果时间格式不正确
+        """
+        time_str = time_str.strip()
+        pattern = r"^(\d+)([smhd])$"
+        match = re.match(pattern, time_str)
+
+        if not match:
+            raise ValueError(
+                f"Invalid time format: {time_str}. Expected format: <number><unit>, "
+                "where unit is one of: s (seconds), m (minutes), h (hours), d (days). "
+                "Example: 5s, 10m, 2h, 1d"
+            )
+
+        value = int(match.group(1))
+        unit = match.group(2)
+
+        # 转换为秒
+        multipliers = {
+            "s": 1,  # 秒
+            "m": 60,  # 分钟
+            "h": 3600,  # 小时
+            "d": 86400,  # 天
+        }
+
+        return value * multipliers[unit]
+
     def _create_config(self):
         """创建 async 命令的类型化配置"""
         if self._config is None:
@@ -37,6 +76,9 @@ class AsyncCommandHandler:
                 .command("effect")
                 .positional("value", type=int)
                 .max_args(1)
+                .command("time")
+                .positional("value", required=True)
+                .max_args(1)
                 .command("name")
                 .positional("value", required=True)
                 .max_args(1)
@@ -51,9 +93,14 @@ class AsyncCommandHandler:
                 .command("task")
                 .positional("task_id", required=False)
                 .max_args(1)
+                .command("drop")
+                .positional("task_id", required=True)
+                .max_args(1)
                 .command("libs")
                 .positional("value", required=True)
                 .max_args(1)
+                .command("help")
+                .max_args(0)
                 .build()
             )
         return self._config
@@ -78,6 +125,10 @@ class AsyncCommandHandler:
         if not result.has_command("async"):
             return "continue"  # 不是 async 指令，继续执行
 
+        # 检查 help 命令
+        if result.has_command("help"):
+            return self._handle_help_command()
+
         # 检查各种子命令
         if result.has_command("list"):
             return self._handle_list_command()
@@ -88,8 +139,28 @@ class AsyncCommandHandler:
         if result.has_command("task"):
             return self._handle_task_command(result)
 
+        if result.has_command("drop"):
+            return self._handle_drop_command(result)
+
+        # 如果没有任何 query 且没有其他子命令，显示 help
+        async_query = result.query or ""
+        if not async_query.strip():
+            return self._handle_help_command()
+
         # 处理异步任务执行
         return self._handle_async_execution(result, args)
+
+    def _handle_help_command(self) -> str:
+        """处理 help 子命令 - 显示帮助信息"""
+        help_text = get_message("async_help_text")
+        self.console.print(
+            Panel(
+                help_text,
+                title=get_message("async_task_title"),
+                border_style="blue",
+            )
+        )
+        return None
 
     def _handle_list_command(self) -> None:
         """处理 list 子命令 - 显示任务列表"""
@@ -251,7 +322,9 @@ class AsyncCommandHandler:
                         try:
                             sub_process = psutil.Process(task.sub_pid)
                             self._terminate_process_tree(sub_process)
-                            killed_processes.append(f"子进程 {task.sub_pid} (auto-coder.run)")
+                            killed_processes.append(
+                                f"子进程 {task.sub_pid} (auto-coder.run)"
+                            )
                         except psutil.NoSuchProcess:
                             pass
                     else:
@@ -279,7 +352,8 @@ class AsyncCommandHandler:
                             get_message_with_format(
                                 "async_task_terminated_success",
                                 task_id=task_id,
-                                pid=f"已终止进程:\n" + "\n".join(f"  - {p}" for p in killed_processes),
+                                pid=f"已终止进程:\n"
+                                + "\n".join(f"  - {p}" for p in killed_processes),
                             ),
                             title=get_message("async_terminate_success"),
                             border_style="green",
@@ -288,7 +362,9 @@ class AsyncCommandHandler:
                 else:
                     self.console.print(
                         Panel(
-                            get_message_with_format("async_no_valid_pid", task_id=task_id),
+                            get_message_with_format(
+                                "async_no_valid_pid", task_id=task_id
+                            ),
                             title=get_message("async_terminate_warning"),
                             border_style="yellow",
                         )
@@ -379,6 +455,176 @@ class AsyncCommandHandler:
                         "async_task_detail_load_error", error=str(e)
                     ),
                     title=get_message("async_task_param_error"),
+                    border_style="red",
+                )
+            )
+
+        return None
+
+    def _handle_drop_command(self, result) -> None:
+        """处理 drop 子命令 - 删除任务及其相关文件"""
+        drop_command = result.get_command("drop")
+        if not drop_command or not drop_command.args:
+            self.console.print(
+                Panel(
+                    get_message("async_provide_task_id"),
+                    title=get_message("async_task_param_error"),
+                    border_style="red",
+                )
+            )
+            return None
+
+        task_id = drop_command.args[0]
+        meta_dir = os.path.join(self.async_agent_dir, "meta")
+
+        try:
+            # 导入并初始化任务元数据管理器
+            from autocoder.sdk.async_runner.task_metadata import TaskMetadataManager
+
+            metadata_manager = TaskMetadataManager(meta_dir)
+
+            # 获取任务详情
+            task = metadata_manager.load_task_metadata(task_id)
+
+            if not task:
+                self.console.print(
+                    Panel(
+                        get_message_with_format(
+                            "async_task_not_found", task_id=task_id
+                        ),
+                        title=get_message("async_task_not_exist"),
+                        border_style="red",
+                    )
+                )
+                return None
+
+            # 检查任务状态，如果是运行中的任务，需要先终止
+            if task.status == "running":
+                self.console.print(
+                    Panel(
+                        get_message_with_format(
+                            "async_task_drop_running_warning", task_id=task_id
+                        ),
+                        title=get_message("async_task_status_error"),
+                        border_style="yellow",
+                    )
+                )
+
+                # 询问用户是否要终止并删除
+                try:
+                    import psutil
+
+                    # 先终止进程
+                    killed_processes = []
+
+                    if task.sub_pid > 0 and psutil.pid_exists(task.sub_pid):
+                        try:
+                            sub_process = psutil.Process(task.sub_pid)
+                            self._terminate_process_tree(sub_process)
+                            killed_processes.append(f"子进程 {task.sub_pid}")
+                        except psutil.NoSuchProcess:
+                            pass
+
+                    if task.pid > 0 and psutil.pid_exists(task.pid):
+                        try:
+                            main_process = psutil.Process(task.pid)
+                            self._terminate_process_tree(main_process)
+                            killed_processes.append(f"主进程 {task.pid}")
+                        except psutil.NoSuchProcess:
+                            pass
+
+                    if killed_processes:
+                        self.console.print(
+                            Panel(
+                                get_message_with_format(
+                                    "async_task_terminated_before_drop",
+                                    task_id=task_id,
+                                    processes="\n".join(
+                                        f"  - {p}" for p in killed_processes
+                                    ),
+                                ),
+                                title=get_message("async_terminate_success"),
+                                border_style="green",
+                            )
+                        )
+
+                except ImportError:
+                    self.console.print(
+                        Panel(
+                            get_message("async_missing_psutil"),
+                            title=get_message("async_dependency_missing"),
+                            border_style="red",
+                        )
+                    )
+                    return None
+
+            # 删除任务相关的文件和目录
+            deleted_items = []
+
+            # 1. 删除工作目录
+            if task.worktree_path and os.path.exists(task.worktree_path):
+                try:
+                    import shutil
+
+                    shutil.rmtree(task.worktree_path)
+                    deleted_items.append(f"工作目录: {task.worktree_path}")
+                except Exception as e:
+                    global_logger.warning(
+                        f"Failed to delete worktree {task.worktree_path}: {e}"
+                    )
+
+            # 2. 删除日志文件
+            if task.log_file and os.path.exists(task.log_file):
+                try:
+                    os.remove(task.log_file)
+                    deleted_items.append(f"日志文件: {task.log_file}")
+                except Exception as e:
+                    global_logger.warning(
+                        f"Failed to delete log file {task.log_file}: {e}"
+                    )
+
+            # 3. 删除任务元数据文件
+            try:
+                metadata_file = os.path.join(meta_dir, f"{task_id}.json")
+                if os.path.exists(metadata_file):
+                    os.remove(metadata_file)
+                    deleted_items.append(f"元数据文件: {metadata_file}")
+            except Exception as e:
+                global_logger.warning(
+                    f"Failed to delete metadata file {metadata_file}: {e}"
+                )
+
+            # 显示删除结果
+            if deleted_items:
+                self.console.print(
+                    Panel(
+                        get_message_with_format(
+                            "async_task_drop_success",
+                            task_id=task_id,
+                            deleted_items="\n".join(
+                                f"  ✓ {item}" for item in deleted_items
+                            ),
+                        ),
+                        title=get_message("async_task_drop_title"),
+                        border_style="green",
+                    )
+                )
+            else:
+                self.console.print(
+                    Panel(
+                        get_message_with_format(
+                            "async_task_drop_no_files", task_id=task_id
+                        ),
+                        title=get_message("async_task_drop_title"),
+                        border_style="yellow",
+                    )
+                )
+
+        except Exception as e:
+            self.console.print(
+                Panel(
+                    get_message_with_format("async_drop_command_error", error=str(e)),
+                    title=get_message("async_processing_error"),
                     border_style="red",
                 )
             )
@@ -590,7 +836,26 @@ class AsyncCommandHandler:
             worktree_name = result.name
 
         loop_count = 1
-        if result.has_command("loop"):
+        max_duration_seconds = None
+
+        if result.has_command("time"):
+            # 如果设置了 time 参数，解析时间并设置一个很大的 loop_count
+            try:
+                max_duration_seconds = self._parse_time_string(result.time)
+                loop_count = 100000
+                global_logger.info(
+                    f"Time-based execution enabled: will run for {max_duration_seconds} seconds (max {loop_count} iterations)"
+                )
+            except ValueError as e:
+                self.console.print(
+                    Panel(
+                        str(e),
+                        title="时间参数格式错误",
+                        border_style="red",
+                    )
+                )
+                return None
+        elif result.has_command("loop"):
             loop_count = result.loop
         elif result.has_command("effect"):
             loop_count = result.effect
@@ -601,7 +866,13 @@ class AsyncCommandHandler:
 
         # 执行异步任务
         self._execute_async_task(
-            async_query, model, task_prefix, worktree_name, loop_count, include_libs
+            async_query,
+            model,
+            task_prefix,
+            worktree_name,
+            loop_count,
+            include_libs,
+            max_duration_seconds,
         )
         return None
 
@@ -613,6 +884,7 @@ class AsyncCommandHandler:
         worktree_name: str,
         loop_count: int,
         include_libs: str = "",
+        max_duration_seconds: Optional[int] = None,
     ):
         """执行异步任务"""
         # 创建临时文件并写入查询内容
@@ -657,8 +929,26 @@ class AsyncCommandHandler:
                 global_logger.info(f"Async command result: {v.stdout}")
 
             try:
+                # 如果设置了时间限制，记录开始时间
+                start_time = time.time() if max_duration_seconds is not None else None
+
                 for i in range(loop_count):
                     execute(i)
+
+                    # 如果设置了时间限制，检查是否超时
+                    if start_time is not None:
+                        elapsed_time = time.time() - start_time
+                        if elapsed_time >= max_duration_seconds:
+                            global_logger.info(
+                                f"Time limit reached: {elapsed_time:.2f} seconds >= {max_duration_seconds} seconds. "
+                                f"Completed {i + 1} iterations."
+                            )
+                            break
+                        else:
+                            remaining_time = max_duration_seconds - elapsed_time
+                            global_logger.info(
+                                f"Iteration {i + 1} completed. Elapsed: {elapsed_time:.2f}s, Remaining: {remaining_time:.2f}s"
+                            )
             except Exception as e:
                 global_logger.error(f"Error executing async command: {e}")
             finally:

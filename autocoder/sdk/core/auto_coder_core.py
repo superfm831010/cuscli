@@ -40,11 +40,7 @@ class AutoCoderCore:
         self.bridge = AutoCoderBridge(cwd_str,options)
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._console = Console()
-
-        # 滚动进度显示器（用于非verbose模式）
-        self._rolling_display = None
-        self._progress_buffer = []
-
+        
         # 用于累计TokenUsageEvent数据
         self._accumulated_token_usage = {
             "model_name": "",
@@ -57,48 +53,12 @@ class AutoCoderCore:
     def _render_stream_event(self, event: StreamEvent, show_terminal: bool = True) -> None:
         """
         渲染流式事件到终端
-
+        
         Args:
             event: 流式事件
             show_terminal: 是否显示到终端
         """
-        # 如果不显示到终端，但有滚动显示器，仍然捕获思考和输出事件
         if not show_terminal:
-            if self._rolling_display is not None:
-                try:
-                    event_class_name = type(event).__name__
-
-                    # 捕获 LLMThinkingEvent
-                    if 'LLMThinkingEvent' in event_class_name:
-                        text = getattr(event, 'text', '')
-                        if text.strip():
-                            self._rolling_display._process_line(f"[思考] {text.strip()}")
-                    # 捕获 LLMOutputEvent
-                    elif 'LLMOutputEvent' in event_class_name:
-                        text = getattr(event, 'text', '')
-                        if text.strip():
-                            self._rolling_display._process_line(f"[输出] {text.strip()}")
-                    # 捕获 ToolCallEvent
-                    elif 'ToolCallEvent' in event_class_name:
-                        tool = getattr(event, 'tool', None)
-                        tool_name = type(tool).__name__ if tool else "Unknown Tool"
-                        self._rolling_display._process_line(f"[工具] {tool_name}")
-                    # 捕获旧格式的事件
-                    elif hasattr(event, 'event_type'):
-                        if event.event_type == "llm_thinking":
-                            text = event.data.get("text", "")
-                            if text.strip():
-                                self._rolling_display._process_line(f"[思考] {text.strip()}")
-                        elif event.event_type == "llm_output":
-                            text = event.data.get("text", "")
-                            if text.strip():
-                                self._rolling_display._process_line(f"[输出] {text.strip()}")
-                        elif event.event_type == "tool_call":
-                            tool_name = event.data.get("tool_name", "Unknown Tool")
-                            self._rolling_display._process_line(f"[工具] {tool_name}")
-                except Exception:
-                    # 静默处理错误，不影响主流程
-                    pass
             return
         
         # 如果输出格式是 JSON 相关，输出 JSON 格式
@@ -974,55 +934,36 @@ class AutoCoderCore:
     async def query_stream(self, prompt: str, show_terminal: Optional[bool] = None) -> AsyncIterator[StreamEvent]:
         """
         异步流式查询 - 使用 run_auto_command
-
+        
         Args:
             prompt: 查询提示
             show_terminal: 是否显示到终端，None时使用配置中的verbose设置
-
+            
         Yields:
             StreamEvent: 响应事件流
-
+            
         Raises:
             BridgeError: 桥接层错误
         """
         # 如果没有明确指定show_terminal，使用verbose配置
         if show_terminal is None:
             show_terminal = self.options.verbose
-
+        
         # 如果verbose为False，则强制show_terminal为False
         if not self.options.verbose:
             show_terminal = False
-
-        # 判断是否需要启动滚动显示器：非verbose模式且非JSON输出
-        use_rolling_display = (
-            not show_terminal
-            and self.options.output_format not in ["json", "stream-json"]
-        )
-
-        # 启动滚动显示器
-        if use_rolling_display:
-            try:
-                from autocoder.utils.rolling_display import RollingDisplay
-                self._rolling_display = RollingDisplay(
-                    max_lines=5,
-                    title="🤖 Agent 正在思考和执行任务..."
-                )
-                self._rolling_display.start()
-            except Exception as e:
-                # 如果滚动显示器启动失败，继续执行但不使用它
-                self._rolling_display = None
-
+            
         try:
             # 重置累计的 token 使用情况
             self._reset_token_usage()
-
+            
             # 先返回用户消息
             user_message = StreamEvent(event_type="start", data={"query": prompt})
             yield user_message
-
+            
             # 在线程池中执行同步调用
             loop = asyncio.get_event_loop()
-
+            
             # 使用 run_auto_command 进行代码修改，传递 cancel_token
             event_stream = await loop.run_in_executor(
                 self._executor,
@@ -1032,31 +973,22 @@ class AutoCoderCore:
                 None,   # pr (使用默认值)
                 None    # extra_args
             )
-
-            # 处理事件流并转换为消息
+            
+            # 处理事件流并转换为消息            
             for event in event_stream:
                 # 渲染事件到终端
-                self._render_stream_event(event, show_terminal)
-                yield event
-
+                self._render_stream_event(event, show_terminal)                
+                yield event                                  
+            
             # 打印最终的累计 token 使用情况
             if show_terminal:
                 self._print_final_token_usage()
-
+            
         except Exception as e:
             # 在异常时也打印累计的 token 使用情况
             if show_terminal:
                 self._print_final_token_usage()
             raise e
-        finally:
-            # 停止滚动显示器
-            if self._rolling_display is not None:
-                try:
-                    self._rolling_display.stop()
-                except Exception:
-                    pass
-                finally:
-                    self._rolling_display = None
     
     def query_sync(self, prompt: str, show_terminal: Optional[bool] = None) -> List[StreamEvent]:
         """

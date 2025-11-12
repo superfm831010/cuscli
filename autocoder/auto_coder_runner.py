@@ -90,15 +90,6 @@ from autocoder.common.v2.agent.runner import (
 from autocoder.completer import CommandCompleterV2
 from autocoder.common.core_config import get_memory_manager, load_memory as _load_memory
 from autocoder.common.global_cancel import global_cancel
-from autocoder.inner.async_command_handler import AsyncCommandHandler
-from autocoder.inner.queue_command_handler import QueueCommandHandler
-from autocoder.inner.conversation_command_handlers import (
-    ConversationNewCommandHandler,
-    ConversationResumeCommandHandler,
-    ConversationListCommandHandler,
-    ConversationRenameCommandHandler,
-    ConversationCommandCommandHandler,
-)
 
 # 对外API，用于第三方集成 auto-coder 使用。
 
@@ -195,6 +186,7 @@ commands = [
     "/conf/import",
     "/exclude_dirs",
     "/queue",
+    "/workflow"
 ]
 
 
@@ -359,7 +351,6 @@ def stop():
 def initialize_system(args: InitializeSystemRequest):
     from autocoder.utils.model_provider_selector import ModelProviderSelector
     from autocoder.common.llms import LLMManager
-    from autocoder.common.llms.guided_setup import guide_first_model_setup
 
     print(f"\n\033[1;34m{get_message('initializing')}\033[0m")
 
@@ -376,42 +367,17 @@ def initialize_system(args: InitializeSystemRequest):
         else:
             print(f"  {message}")
 
-    if not os.path.exists(base_persist_dir):
-        os.makedirs(base_persist_dir, exist_ok=True)
-        print_status(
-            get_message_with_format("created_dir", path=base_persist_dir), "success"
-        )
+        if not os.path.exists(base_persist_dir):
+            os.makedirs(base_persist_dir, exist_ok=True)
+            print_status(
+                get_message_with_format("created_dir", path=base_persist_dir), "success"
+            )
 
-    # 新增：检查是否有模型配置，如果没有则引导用户配置
-    llm_manager = LLMManager()
-    all_models = llm_manager.get_all_models()
+        if first_time[0]:
+            configure("project_type:*", skip_print=True)
+            configure_success[0] = True
 
-    if not all_models:  # 没有任何模型配置
-        print_status("未检测到任何模型配置", "warning")
-        configured_model_name = guide_first_model_setup()
-
-        # 如果配置成功，立即激活该模型为默认模型
-        if configured_model_name:
-            configure(f"model:{configured_model_name}", skip_print=True)
-            print_status(f"已将模型 {configured_model_name} 设置为默认模型", "success")
-    else:
-        # 如果有模型配置，自动将第一个模型设置为默认模型
-        first_model = llm_manager.get_first_available_model()
-        if first_model:
-            # 检查当前配置中是否已经有 model 设置
-            memory_manager = get_memory_manager()
-            current_model = memory_manager.get_config("model", None)
-
-            # 如果没有配置或配置的模型不存在，则使用第一个可用模型
-            if not current_model or not llm_manager.check_model_exists(current_model):
-                configure(f"model:{first_model.name}", skip_print=True)
-                print_status(f"自动设置默认模型: {first_model.name}", "success")
-
-    if first_time[0]:
-        configure("project_type:*", skip_print=True)
-        configure_success[0] = True
-
-    print_status(get_message("init_complete"), "success")
+        print_status(get_message("init_complete"), "success")
 
     init_project_if_required(target_dir=project_root, project_type="*")
 
@@ -604,8 +570,7 @@ def convert_config_value(key, value):
         else:
             return value
     else:
-        # 记录警告但不阻塞处理，跳过无效的配置键
-        global_logger.warning(f"Skipping invalid configuration key: '{key}' with value '{value}'")
+        print(f"Invalid configuration key: {key}")
         return None
 
 
@@ -860,6 +825,7 @@ def init_project_if_required(target_dir: str, project_type: str):
             ".autocodercommands",
             ".autocoderagents",
             ".autocoderlinters",
+            ".autocoderworkflow"
         ]
 
         try:
@@ -1636,13 +1602,7 @@ def index_build():
         "exclude_files": memory.get("exclude_files", []),
     }
 
-    # 过滤并转换配置项
     for key, value in conf.items():
-        # 跳过包含空格的无效配置键（可能是配置文件损坏导致）
-        if ' ' in key:
-            global_logger.warning(f"Skipping invalid configuration key with spaces: '{key}'")
-            continue
-
         converted_value = convert_config_value(key, value)
         if converted_value is not None:
             yaml_config[key] = converted_value

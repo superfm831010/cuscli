@@ -8,6 +8,7 @@ from prompt_toolkit.completion import Completer, Completion, CompleteEvent
 from prompt_toolkit.document import Document
 
 from autocoder.common import AutoCoderArgs
+
 # Only need MemoryConfig now
 from autocoder.common.command_completer import MemoryConfig
 from autocoder.common.llms import LLMManager
@@ -16,34 +17,77 @@ from autocoder.common.command_file_manager import CommandManager
 # Define command structure in a more structured way if needed,
 # but primarily rely on handlers for logic.
 COMMAND_HIERARCHY = {
-    "/add_files": {"/group": {"/add": {}, "/drop": {}, "/reset": {}, "/set": {}}, "/refresh": {}},
+    "/add_files": {
+        "/group": {"/add": {}, "/drop": {}, "/reset": {}, "/set": {}},
+        "/refresh": {},
+    },
     "/remove_files": {"/all": {}},
     # Added list/get for clarity
     "/conf": {"/drop": {}, "/export": {}, "/import": {}, "/get": {}},
     "/coding": {"/apply": {}, "/next": {}},
-    "/chat": {"/new": {}, "/save": {}, "/copy": {}, "/mcp": {}, "/rag": {}, "/review": {}, "/learn": {}, "/no_context": {}},
-    "/mcp": {"/add": {}, "/remove": {}, "/list": {}, "/list_running": {}, "/refresh": {}, "/info": {}},
-    "/lib": {"/add": {}, "/remove": {}, "/list": {}, "/set-proxy": {}, "/refresh": {}, "/get": {}},
-    "/models": {"/chat": {}, "/add": {}, "/add_model": {}, "/remove": {}, "/list": {}, "/check": {}, "/speed": {}, "/speed-test": {}, "/input_price": {}, "/output_price": {}, "/activate": {}},
-    "/auto": {"/new": {}, "/resume": {}, "/list": {},"/rename":{}, "/command": {}, "/async": {
-        "/model": {},
-        "/list": {},
-        "/task": {},
-        "/kill": {},
-        "/effect": {},   
-        "/name": {},
-        "/prefix": {},
-        "/libs": {},
-    }, "/queue": {
+    "/chat": {
+        "/new": {},
+        "/save": {},
+        "/copy": {},
+        "/mcp": {},
+        "/rag": {},
+        "/review": {},
+        "/learn": {},
+        "/no_context": {},
+    },
+    "/mcp": {
         "/add": {},
-        "/list": {},
         "/remove": {},
-        "/start": {},
-        "/stop": {},
-        "/stats": {},
-        "/clear": {},
-        "/status": {}
-    }
+        "/list": {},
+        "/list_running": {},
+        "/refresh": {},
+        "/info": {},
+    },
+    "/lib": {
+        "/add": {},
+        "/remove": {},
+        "/list": {},
+        "/set-proxy": {},
+        "/refresh": {},
+        "/get": {},
+    },
+    "/models": {
+        "/chat": {},
+        "/add_provider": {},
+        "/remove": {},
+        "/list": {},
+        "/check": {},
+        "/speed": {},
+        "/speed-test": {},
+        "/input_price": {},
+        "/output_price": {},
+    },
+    "/auto": {
+        "/new": {},
+        "/resume": {},
+        "/list": {},
+        "/rename": {},
+        "/command": {},
+        "/async": {
+            "/model": {},
+            "/list": {},
+            "/task": {},
+            "/kill": {},
+            "/effect": {},
+            "/name": {},
+            "/prefix": {},
+            "/libs": {},
+        },
+        "/queue": {
+            "/add": {},
+            "/list": {},
+            "/remove": {},
+            "/start": {},
+            "/stop": {},
+            "/stats": {},
+            "/clear": {},
+            "/status": {},
+        },
     },
     "/shell": {"/chat": {}},
     "/active_context": {"/list": {}, "/run": {}},
@@ -63,7 +107,16 @@ COMMAND_HIERARCHY = {
     "/clear": {},
     "/cls": {},
     "/debug": {},
-    "/rules": {"/list": {}, "/get": {}, "/remove": {}, "/analyze": {}, "/commit": {}, "/help": {}, "/init": {}},
+    "/rules": {
+        "/list": {},
+        "/get": {},
+        "/remove": {},
+        "/analyze": {},
+        "/commit": {},
+        "/help": {},
+        "/init": {},
+    },
+    "/workflow": {},
 }
 
 
@@ -72,21 +125,33 @@ class CommandCompleterV2(Completer):
     A more extensible command completer using a handler-based approach.
     """
 
-    def __init__(self, commands: List[str], memory_model: MemoryConfig, project_root: Optional[str] = None):
+    def __init__(
+        self,
+        commands: List[str],
+        memory_model: MemoryConfig,
+        project_root: Optional[str] = None,
+    ):
         self.base_commands = commands  # Top-level commands starting with /
         self.memory_model = memory_model
 
         # Initialize project_scanner
         from autocoder.common.project_scanner import ProjectScanner
+
         self.project_root = project_root or os.getcwd()
         self.scanner = ProjectScanner(
             project_root=self.project_root,
-            default_exclude_dirs=[".git", "node_modules",
-                                  "dist", "build", "__pycache__", ".auto-coder"]
+            default_exclude_dirs=[
+                ".git",
+                "node_modules",
+                "dist",
+                "build",
+                "__pycache__",
+                ".auto-coder",
+            ],
         )
 
         # Set extra exclude dirs if available
-        if hasattr(memory_model, 'get_memory_func'):
+        if hasattr(memory_model, "get_memory_func"):
             memory = memory_model.get_memory_func()
             extra_exclude_dirs = memory.get("exclude_dirs", [])
             self.scanner.update_extra_exclude_dirs(extra_exclude_dirs)
@@ -140,6 +205,7 @@ class CommandCompleterV2(Completer):
             "/summon": self._handle_text_with_symbols,
             "/design": self._handle_design,
             "/rules": self._handle_rules,
+            "/workflow": self._handle_workflow,
             # Add handlers for other commands if they need specific logic beyond @/@@
             # Default handler for plain text or commands not explicitly handled
             "default": self._handle_text_with_symbols,
@@ -147,8 +213,11 @@ class CommandCompleterV2(Completer):
 
     def _update_dynamic_data(self):
         """Load or update data that changes during runtime (groups, libs, current files)."""
-        self.current_file_names = self.memory_model.get_memory_func().get(
-            "current_files", {}).get("files", [])
+        self.current_file_names = (
+            self.memory_model.get_memory_func()
+            .get("current_files", {})
+            .get("files", [])
+        )
 
         # Generate relative paths with ./ prefix for current files
         self.current_file_rel_paths = []
@@ -158,10 +227,15 @@ class CommandCompleterV2(Completer):
                 rel_path = f"./{rel_path}"
             self.current_file_rel_paths.append(rel_path)
 
-        self.group_names = list(self.memory_model.get_memory_func().get(
-            "current_files", {}).get("groups", {}).keys())
+        self.group_names = list(
+            self.memory_model.get_memory_func()
+            .get("current_files", {})
+            .get("groups", {})
+            .keys()
+        )
         self.lib_names = list(
-            self.memory_model.get_memory_func().get("libs", {}).keys())
+            self.memory_model.get_memory_func().get("libs", {}).keys()
+        )
         # In a real scenario, might fetch model names from models_module
         try:
             llm_manager = LLMManager()
@@ -219,9 +293,11 @@ class CommandCompleterV2(Completer):
             dir_mtime = os.path.getmtime(self.command_manager.commands_dir)
 
             # 如果缓存过期或为空，重新加载
-            if dir_mtime > self.command_files_cache_timestamp or not self.command_files_cache:
-                result = self.command_manager.list_command_files(
-                    recursive=True)
+            if (
+                dir_mtime > self.command_files_cache_timestamp
+                or not self.command_files_cache
+            ):
+                result = self.command_manager.list_command_files(recursive=True)
                 if result.success:
                     self.command_files_cache = result.command_files
                     self.command_files_cache_timestamp = dir_mtime
@@ -233,7 +309,9 @@ class CommandCompleterV2(Completer):
 
     # --- Main Completion Logic ---
 
-    def get_completions(self, document: Document, complete_event: CompleteEvent) -> Iterable[Completion]:
+    def get_completions(
+        self, document: Document, complete_event: CompleteEvent
+    ) -> Iterable[Completion]:
         text = document.text_before_cursor
         word_before_cursor = document.get_word_before_cursor(WORD=True)
 
@@ -241,7 +319,9 @@ class CommandCompleterV2(Completer):
         self._update_dynamic_data()
 
         if not text.strip():  # Empty input
-            yield from self._handle_base_command(document, complete_event, word_before_cursor, text)
+            yield from self._handle_base_command(
+                document, complete_event, word_before_cursor, text
+            )
             return
 
         parts = text.split(maxsplit=1)
@@ -249,7 +329,9 @@ class CommandCompleterV2(Completer):
 
         # 1. Handle Base Command Completion (e.g., typing "/")
         if first_word.startswith("/") and len(parts) == 1 and not text.endswith(" "):
-            yield from self._handle_base_command(document, complete_event, word_before_cursor, text)
+            yield from self._handle_base_command(
+                document, complete_event, word_before_cursor, text
+            )
 
         # 2. Dispatch to Specific Command Handlers
         elif first_word in self.command_handlers:
@@ -257,12 +339,20 @@ class CommandCompleterV2(Completer):
             yield from handler(document, complete_event, word_before_cursor, text)
 
         # 3. Handle Special Prefixes within general text or unhandled commands
-        elif word_before_cursor.startswith("@") and not word_before_cursor.startswith("@@"):
-            yield from self._handle_at_completion(document, complete_event, word_before_cursor, text)
+        elif word_before_cursor.startswith("@") and not word_before_cursor.startswith(
+            "@@"
+        ):
+            yield from self._handle_at_completion(
+                document, complete_event, word_before_cursor, text
+            )
         elif word_before_cursor.startswith("@@"):
-            yield from self._handle_double_at_completion(document, complete_event, word_before_cursor, text)
+            yield from self._handle_double_at_completion(
+                document, complete_event, word_before_cursor, text
+            )
         elif word_before_cursor.startswith("<"):  # Potential tag completion
-            yield from self._handle_img_tag(document, complete_event, word_before_cursor, text)
+            yield from self._handle_img_tag(
+                document, complete_event, word_before_cursor, text
+            )
 
         # 4. Default Handler (for plain text or commands without specific handlers)
         else:
@@ -272,16 +362,20 @@ class CommandCompleterV2(Completer):
 
     # --- Handler Methods ---
 
-    def _handle_base_command(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_base_command(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completion for top-level commands starting with '/'."""
         command_prefix = text.lstrip()  # The word being typed
         for cmd in self.base_commands:
             if cmd.startswith(command_prefix):
                 yield Completion(cmd, start_position=-len(command_prefix))
 
-    def _handle_add_files(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_add_files(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completions for /add_files command."""
-        args_text = text[len("/add_files"):].lstrip()
+        args_text = text[len("/add_files") :].lstrip()
         parts = args_text.split()
         last_part = parts[-1] if parts and not text.endswith(" ") else ""
 
@@ -293,26 +387,37 @@ class CommandCompleterV2(Completer):
 
         # File/Group completion based on context
         if args_text.startswith("/group"):
-            group_args_text = args_text[len("/group"):].lstrip()
+            group_args_text = args_text[len("/group") :].lstrip()
             group_parts = group_args_text.split()
-            group_last_part = group_parts[-1] if group_parts and not text.endswith(
-                " ") else ""
+            group_last_part = (
+                group_parts[-1] if group_parts and not text.endswith(" ") else ""
+            )
 
             # Complete subcommands of /group
-            if not group_args_text or (len(group_parts) == 1 and not text.endswith(" ")):
+            if not group_args_text or (
+                len(group_parts) == 1 and not text.endswith(" ")
+            ):
                 for group_sub_cmd in COMMAND_HIERARCHY["/add_files"]["/group"]:
                     if group_sub_cmd.startswith(group_last_part):
-                        yield Completion(group_sub_cmd, start_position=-len(group_last_part))
+                        yield Completion(
+                            group_sub_cmd, start_position=-len(group_last_part)
+                        )
 
             # Complete group names for /drop or direct use
-            elif group_parts and group_parts[0] in ["/drop", "/set"] or len(group_parts) >= 1 and not group_parts[0].startswith("/"):
+            elif (
+                group_parts
+                and group_parts[0] in ["/drop", "/set"]
+                or len(group_parts) >= 1
+                and not group_parts[0].startswith("/")
+            ):
                 current_word_for_group = group_last_part
                 # Handle comma-separated group names
                 if "," in current_word_for_group:
-                    current_word_for_group = current_word_for_group.split(
-                        ",")[-1]
+                    current_word_for_group = current_word_for_group.split(",")[-1]
 
-                yield from self._complete_items(current_word_for_group, self.group_names)
+                yield from self._complete_items(
+                    current_word_for_group, self.group_names
+                )
 
         elif args_text.startswith("/refresh"):
             pass  # No further completion needed
@@ -321,7 +426,9 @@ class CommandCompleterV2(Completer):
         else:
             yield from self._complete_file_paths(word, text)
 
-    def _handle_remove_files(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_remove_files(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completions for /remove_files command."""
         # 'word' is document.get_word_before_cursor(WORD=True)
 
@@ -339,15 +446,19 @@ class CommandCompleterV2(Completer):
                 # Show full path when matching by basename
                 yield Completion(rel_path, start_position=-len(word))
 
-    def _handle_exclude_dirs(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_exclude_dirs(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completions for /exclude_dirs command."""
-        args_text = text[len("/exclude_dirs"):].lstrip()
+        args_text = text[len("/exclude_dirs") :].lstrip()
         current_word = args_text.split(",")[-1].strip()
         yield from self._complete_items(current_word, self.all_dir_names)
 
-    def _handle_exclude_files(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_exclude_files(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completions for /exclude_files command."""
-        args_text = text[len("/exclude_files"):].lstrip()
+        args_text = text[len("/exclude_files") :].lstrip()
         parts = args_text.split()
         last_part = parts[-1] if parts and not text.endswith(" ") else ""
 
@@ -358,7 +469,10 @@ class CommandCompleterV2(Completer):
 
         elif parts and parts[0] == "/drop":
             current_word = last_part
-            yield from self._complete_items(current_word, self.memory_model.get_memory_func().get("exclude_files", []))
+            yield from self._complete_items(
+                current_word,
+                self.memory_model.get_memory_func().get("exclude_files", []),
+            )
         else:
             # Suggest prefix for regex
             if not last_part:
@@ -366,13 +480,17 @@ class CommandCompleterV2(Completer):
             elif "regex://".startswith(last_part):
                 yield Completion("regex://", start_position=-len(last_part))
 
-    def _handle_conf(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_conf(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completions for /conf command."""
-        args_text = text[len("/conf"):].lstrip()
+        args_text = text[len("/conf") :].lstrip()
         parts = args_text.split()
         last_part = parts[-1] if parts and not text.endswith(" ") else ""
         # Complete subcommands like /drop, /export, /import, /list, /get
-        if not args_text or (len(parts) == 1 and not text.endswith(" ") and ":" not in text):
+        if not args_text or (
+            len(parts) == 1 and not text.endswith(" ") and ":" not in text
+        ):
             for sub_cmd in COMMAND_HIERARCHY["/conf"]:
                 if sub_cmd.startswith(last_part):
                     yield Completion(sub_cmd, start_position=-len(last_part))
@@ -395,8 +513,7 @@ class CommandCompleterV2(Completer):
         # Complete values after colon
         elif ":" in args_text:
             key_part = args_text.split(":", 1)[0].strip()
-            value_part = args_text.split(
-                ":", 1)[1].strip() if ":" in args_text else ""
+            value_part = args_text.split(":", 1)[1].strip() if ":" in args_text else ""
             yield from self._complete_config_values(key_part, value_part)
             # Example: Complete enum values or suggest file paths for path-like keys
             pass  # Placeholder for future value completions
@@ -428,9 +545,11 @@ class CommandCompleterV2(Completer):
         # Add more value completions based on key type or name here
         # e.g., enums, file paths, specific string formats
 
-    def _handle_lib(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_lib(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completions for /lib command."""
-        args_text = text[len("/lib"):].lstrip()
+        args_text = text[len("/lib") :].lstrip()
         parts = args_text.split()
         last_part = parts[-1] if parts and not text.endswith(" ") else ""
 
@@ -451,9 +570,11 @@ class CommandCompleterV2(Completer):
             if "https://".startswith(last_part):
                 yield Completion("https://", start_position=-len(last_part))
 
-    def _handle_mcp(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_mcp(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completions for /mcp command."""
-        args_text = text[len("/mcp"):].lstrip()
+        args_text = text[len("/mcp") :].lstrip()
         parts = args_text.split()
         last_part = parts[-1] if parts and not text.endswith(" ") else ""
 
@@ -464,9 +585,11 @@ class CommandCompleterV2(Completer):
                     yield Completion(sub_cmd, start_position=-len(last_part))
         # Potentially complete server names after /remove, /refresh, /add if available
 
-    def _handle_models(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_models(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completions for /models command."""
-        args_text = text[len("/models"):].lstrip()
+        args_text = text[len("/models") :].lstrip()
         parts = args_text.split()
         last_part = parts[-1] if parts and not text.endswith(" ") else ""
 
@@ -476,24 +599,54 @@ class CommandCompleterV2(Completer):
                 if sub_cmd.startswith(last_part):
                     yield Completion(sub_cmd, start_position=-len(last_part))
 
-        # Complete model names for add/remove/speed/input_price/output_price/activate/chat
-        elif parts and parts[0] in ["/add", "/remove", "/speed", "/input_price", "/output_price", "/activate", "/chat"]:
+            # 如果没有子命令匹配，提示可以直接输入 provider/model_name
+            if not last_part.startswith("/"):
+                yield from self._complete_items(last_part, self.model_names)
+
+        # Complete model names for /remove/speed/input_price/output_price/chat
+        elif parts and parts[0] in [
+            "/remove",
+            "/speed",
+            "/input_price",
+            "/output_price",
+            "/chat",
+        ]:
             yield from self._complete_items(last_part, self.model_names)
 
-        # Complete parameters for /add_model (e.g., name=, base_url=)
-        elif parts and parts[0] == "/add_model":
+        # Complete parameters for /add_provider (e.g., name=, base_url=)
+        elif parts and parts[0] == "/add_provider":
             # Suggest common keys if the last part is empty or partially typed
-            common_keys = ["name=", "model_type=", "model_name=",
-                           "base_url=", "api_key_path=", "description=", "is_reasoning="]
+            common_keys = [
+                "name=",
+                "model_type=",
+                "model_name=",
+                "provider=",
+                "base_url=",
+                "api_key_path=",
+                "description=",
+                "is_reasoning=",
+                "input_price=",
+                "output_price=",
+                "context_window=",
+                "max_output_tokens=",
+            ]
             yield from self._complete_items(last_part, common_keys)
 
         elif parts and parts[0] == "/speed-test":
             if "/long_context".startswith(last_part):
                 yield Completion("/long_context", start_position=-len(last_part))
 
-    def _handle_active_context(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+        # 如果第一个参数不是子命令，则是 provider/model_name 格式，补全模型名称
+        elif parts and not parts[0].startswith("/"):
+            # 用户正在输入 provider/model_name，补全第二个参数时不做提示
+            if len(parts) == 1 and not text.endswith(" "):
+                yield from self._complete_items(last_part, self.model_names)
+
+    def _handle_active_context(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completions for /active_context command."""
-        args_text = text[len("/active_context"):].lstrip()
+        args_text = text[len("/active_context") :].lstrip()
         parts = args_text.split()
         last_part = parts[-1] if parts and not text.endswith(" ") else ""
 
@@ -509,21 +662,26 @@ class CommandCompleterV2(Completer):
             action_dir = "actions"
             if os.path.isdir(action_dir):
                 try:
-                    action_files = [f for f in os.listdir(
-                        action_dir) if f.endswith(".yml")]
+                    action_files = [
+                        f for f in os.listdir(action_dir) if f.endswith(".yml")
+                    ]
                     yield from self._complete_items(last_part, action_files)
                 except OSError:
                     pass  # Ignore if cannot list dir
 
-    def _handle_mode(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_mode(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completions for /mode command."""
-        args_text = text[len("/mode"):].lstrip()
+        args_text = text[len("/mode") :].lstrip()
         modes = ["normal", "auto_detect", "voice_input", "shell"]
         yield from self._complete_items(args_text, modes)
 
-    def _handle_design(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_design(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completions for /design command."""
-        args_text = text[len("/design"):].lstrip()
+        args_text = text[len("/design") :].lstrip()
         parts = args_text.split()
         last_part = parts[-1] if parts and not text.endswith(" ") else ""
 
@@ -533,9 +691,11 @@ class CommandCompleterV2(Completer):
                 if sub_cmd.startswith(last_part):
                     yield Completion(sub_cmd, start_position=-len(last_part))
 
-    def _handle_auto(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_auto(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completions for /auto command."""
-        args_text = text[len("/auto"):].lstrip()
+        args_text = text[len("/auto") :].lstrip()
         parts = args_text.split()
         last_part = parts[-1] if parts and not text.endswith(" ") else ""
 
@@ -548,7 +708,7 @@ class CommandCompleterV2(Completer):
 
         # Handle /command subcommand
         if args_text.startswith("/command"):
-            command_args_text = args_text[len("/command"):].lstrip()
+            command_args_text = args_text[len("/command") :].lstrip()
             # Update command files cache
             self._update_command_files_cache()
 
@@ -560,11 +720,15 @@ class CommandCompleterV2(Completer):
         if word.startswith("@") and not word.startswith("@@"):
             yield from self._handle_at_completion(document, complete_event, word, text)
         elif word.startswith("@@"):
-            yield from self._handle_double_at_completion(document, complete_event, word, text)
+            yield from self._handle_double_at_completion(
+                document, complete_event, word, text
+            )
         elif word.startswith("<"):
             yield from self._handle_img_tag(document, complete_event, word, text)
 
-    def _handle_text_with_symbols(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_text_with_symbols(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles general text input, including @, @@, <img> tags and command-specific subcommands."""
         # Check for command-specific subcommands first
         parts = text.split(maxsplit=1)
@@ -572,8 +736,7 @@ class CommandCompleterV2(Completer):
         if command in COMMAND_HIERARCHY:
             args_text = parts[1] if len(parts) > 1 else ""
             sub_parts = args_text.split()
-            last_part = sub_parts[-1] if sub_parts and not text.endswith(
-                " ") else ""
+            last_part = sub_parts[-1] if sub_parts and not text.endswith(" ") else ""
 
             # Complete subcommands if applicable
             if not args_text or (len(sub_parts) == 1 and not text.endswith(" ")):
@@ -586,18 +749,65 @@ class CommandCompleterV2(Completer):
         if word.startswith("@") and not word.startswith("@@"):
             yield from self._handle_at_completion(document, complete_event, word, text)
         elif word.startswith("@@"):
-            yield from self._handle_double_at_completion(document, complete_event, word, text)
+            yield from self._handle_double_at_completion(
+                document, complete_event, word, text
+            )
         elif word.startswith("<"):  # Potential tag completion
             yield from self._handle_img_tag(document, complete_event, word, text)
 
-    def _handle_rules(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_workflow(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
+        """Handles completions for /workflow command."""
+        args_text = text[len("/workflow") :].lstrip()
+        parts = args_text.split()
+        last_part = parts[-1] if parts and not text.endswith(" ") else ""
+
+        # If no arguments or first argument, complete workflow names
+        if not args_text or (len(parts) == 1 and not text.endswith(" ")):
+            # List workflow files from .autocoderworkflow directory
+            workflow_dir = os.path.join(self.project_root, ".autocoderworkflow")
+            if os.path.isdir(workflow_dir):
+                try:
+                    for f in os.listdir(workflow_dir):
+                        if f.endswith(".yaml") or f.endswith(".yml"):
+                            workflow_name = os.path.splitext(f)[0]
+                            if workflow_name.startswith(last_part):
+                                yield Completion(
+                                    workflow_name,
+                                    start_position=-len(last_part),
+                                    display=f"{workflow_name} (workflow)",
+                                )
+                except OSError:
+                    pass  # Ignore errors listing directory
+
+        # If workflow name is specified, complete query= parameter
+        elif len(parts) >= 1 and not text.endswith(" "):
+            # Complete query= when typing "qu"
+            if "query=".startswith(last_part):
+                yield Completion("query=", start_position=-len(last_part))
+
+        # Support symbol completions within /workflow arguments
+        # Allow @ (file path) and @@ (symbols) just like in chat/coding
+        if word.startswith("@") and not word.startswith("@@"):
+            yield from self._handle_at_completion(document, complete_event, word, text)
+        elif word.startswith("@@"):
+            yield from self._handle_double_at_completion(
+                document, complete_event, word, text
+            )
+
+    def _handle_rules(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """处理 /rules 命令的补全，支持子命令和规则文件路径。同时支持 @ 和 @@ 符号。"""
-        args_text = text[len("/rules"):].lstrip()
+        args_text = text[len("/rules") :].lstrip()
         parts = args_text.split()
         last_part = parts[-1] if parts and not text.endswith(" ") else ""
 
         # 补全子命令
-        if not args_text or (len(parts) == 1 and not text.endswith(" ") and parts[0].startswith("/")):
+        if not args_text or (
+            len(parts) == 1 and not text.endswith(" ") and parts[0].startswith("/")
+        ):
             for sub_cmd in COMMAND_HIERARCHY["/rules"]:
                 if sub_cmd.startswith(last_part):
                     yield Completion(sub_cmd, start_position=-len(last_part))
@@ -625,26 +835,56 @@ class CommandCompleterV2(Completer):
         if word.startswith("@") and not word.startswith("@@"):
             yield from self._handle_at_completion(document, complete_event, word, text)
         elif word.startswith("@@"):
-            yield from self._handle_double_at_completion(document, complete_event, word, text)
+            yield from self._handle_double_at_completion(
+                document, complete_event, word, text
+            )
 
     # --- Symbol/Tag Handlers ---
 
-    def _handle_at_completion(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_at_completion(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completion for single '@' (file paths)."""
         name = word[1:]
         yield from self._complete_file_paths(name, text, is_symbol=True)
 
-    def _handle_double_at_completion(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_double_at_completion(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completion for double '@@' (symbols)."""
         name = word[2:]
         yield from self._complete_symbols(name)
 
-    def _handle_img_tag(self, document: Document, complete_event: CompleteEvent, word: str, text: str) -> Iterable[Completion]:
+    def _handle_img_tag(
+        self, document: Document, complete_event: CompleteEvent, word: str, text: str
+    ) -> Iterable[Completion]:
         """Handles completion for <img> tags and paths within them."""
         image_extensions = (
-            ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp",
-            ".svg", ".ico", ".heic", ".heif", ".raw", ".cr2", ".nef", ".arw",
-            ".dng", ".orf", ".rw2", ".pef", ".srw", ".eps", ".ai", ".psd", ".xcf",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".bmp",
+            ".tiff",
+            ".tif",
+            ".webp",
+            ".svg",
+            ".ico",
+            ".heic",
+            ".heif",
+            ".raw",
+            ".cr2",
+            ".nef",
+            ".arw",
+            ".dng",
+            ".orf",
+            ".rw2",
+            ".pef",
+            ".srw",
+            ".eps",
+            ".ai",
+            ".psd",
+            ".xcf",
         )
 
         # Basic tag completion
@@ -658,16 +898,22 @@ class CommandCompleterV2(Completer):
         last_open_img = text.rfind("<img>")
         last_close_img = text.rfind("</img>")
 
-        if last_open_img != -1 and (last_close_img == -1 or last_close_img < last_open_img):
-            path_prefix = text[last_open_img + len("<img>"):]
+        if last_open_img != -1 and (
+            last_close_img == -1 or last_close_img < last_open_img
+        ):
+            path_prefix = text[last_open_img + len("<img>") :]
             current_path_word = document.get_word_before_cursor(
-                WORD=True)  # Path part being typed
+                WORD=True
+            )  # Path part being typed
 
             # Only complete if cursor is within the tag content
             if document.cursor_position > last_open_img + len("<img>"):
 
-                search_dir = os.path.dirname(
-                    path_prefix) if os.path.dirname(path_prefix) else "."
+                search_dir = (
+                    os.path.dirname(path_prefix)
+                    if os.path.dirname(path_prefix)
+                    else "."
+                )
                 file_basename = os.path.basename(current_path_word)
 
                 try:
@@ -678,12 +924,22 @@ class CommandCompleterV2(Completer):
                             if item.startswith(file_basename):
                                 if os.path.isdir(full_path):
                                     relative_path = os.path.relpath(
-                                        full_path, ".")  # Use relative path
-                                    yield Completion(relative_path + os.sep, start_position=-len(current_path_word), display=item + "/")
+                                        full_path, "."
+                                    )  # Use relative path
+                                    yield Completion(
+                                        relative_path + os.sep,
+                                        start_position=-len(current_path_word),
+                                        display=item + "/",
+                                    )
                                 elif item.lower().endswith(image_extensions):
                                     relative_path = os.path.relpath(
-                                        full_path, ".")  # Use relative path
-                                    yield Completion(relative_path, start_position=-len(current_path_word), display=item)
+                                        full_path, "."
+                                    )  # Use relative path
+                                    yield Completion(
+                                        relative_path,
+                                        start_position=-len(current_path_word),
+                                        display=item,
+                                    )
                 except OSError:
                     pass  # Ignore errors listing directories
 
@@ -701,9 +957,11 @@ class CommandCompleterV2(Completer):
             if command_file.startswith(word):
                 display_name = command_file
                 # Add visual indicator for command files
-                if command_file.endswith('.md'):
+                if command_file.endswith(".md"):
                     display_name = f"{command_file} (command)"
-                yield Completion(command_file, start_position=start_pos, display=display_name)
+                yield Completion(
+                    command_file, start_position=start_pos, display=display_name
+                )
                 continue
 
         # If no exact prefix matches, try partial matches
@@ -713,9 +971,13 @@ class CommandCompleterV2(Completer):
                 basename = os.path.basename(command_file)
                 if word in basename and not command_file.startswith(word):
                     display_name = f"{command_file} (command)"
-                    yield Completion(command_file, start_position=start_pos, display=display_name)
+                    yield Completion(
+                        command_file, start_position=start_pos, display=display_name
+                    )
 
-    def _complete_items_with_in(self, word: str, items: Iterable[str]) -> Iterable[Completion]:
+    def _complete_items_with_in(
+        self, word: str, items: Iterable[str]
+    ) -> Iterable[Completion]:
         """Generic helper to complete a word from a list of items."""
         for item in items:
             if item and word in item:
@@ -729,14 +991,18 @@ class CommandCompleterV2(Completer):
             if item and item.startswith(word):
                 yield Completion(item, start_position=-len(word))
 
-    def _complete_config_keys(self, word: str, add_colon: bool = False) -> Iterable[Completion]:
+    def _complete_config_keys(
+        self, word: str, add_colon: bool = False
+    ) -> Iterable[Completion]:
         """Helper to complete configuration keys."""
         suffix = ":" if add_colon else ""
         for key in self.config_keys:
             if key.startswith(word):
                 yield Completion(key + suffix, start_position=-len(word))
 
-    def _complete_file_paths(self, name: str, text: str, is_symbol: bool = False) -> Iterable[Completion]:
+    def _complete_file_paths(
+        self, name: str, text: str, is_symbol: bool = False
+    ) -> Iterable[Completion]:
         """Helper to complete file paths (@ completion or general path)."""
         if name is None:
             name = ""
@@ -746,7 +1012,11 @@ class CommandCompleterV2(Completer):
         if is_symbol:
             for rel_path in self.current_file_rel_paths:
                 if name in rel_path or name in os.path.basename(rel_path):
-                    yield Completion(rel_path, start_position=start_pos, display=f"{rel_path} (active)")
+                    yield Completion(
+                        rel_path,
+                        start_position=start_pos,
+                        display=f"{rel_path} (active)",
+                    )
 
         # General file path completion (relative paths with dot)
         if name.startswith("."):
@@ -754,7 +1024,11 @@ class CommandCompleterV2(Completer):
             # Also complete directories starting with dot
             for rel_path in self.all_dir_rel_paths:
                 if rel_path.startswith(name):
-                    yield Completion(rel_path + os.sep, start_position=start_pos, display=f"{rel_path}/ (dir)")
+                    yield Completion(
+                        rel_path + os.sep,
+                        start_position=start_pos,
+                        display=f"{rel_path}/ (dir)",
+                    )
             return  # Don't mix with other completions if starting with .
 
         # Complete directory names first (higher priority)
@@ -764,10 +1038,18 @@ class CommandCompleterV2(Completer):
             # Match by basename or full path
             if name and (name in dir_basename or name in rel_path):
                 # Always complete with full relative path
-                yield Completion(rel_path + os.sep, start_position=start_pos, display=f"{rel_path}/ (dir)")
+                yield Completion(
+                    rel_path + os.sep,
+                    start_position=start_pos,
+                    display=f"{rel_path}/ (dir)",
+                )
             elif not name:
                 # Show all directories when no filter
-                yield Completion(rel_path + os.sep, start_position=start_pos, display=f"{rel_path}/ (dir)")
+                yield Completion(
+                    rel_path + os.sep,
+                    start_position=start_pos,
+                    display=f"{rel_path}/ (dir)",
+                )
 
         # Complete file names with full paths
         for rel_path in self.all_file_rel_paths:
@@ -777,7 +1059,9 @@ class CommandCompleterV2(Completer):
             if name and (name in file_basename or name in rel_path):
                 # Skip if already shown as active
                 if rel_path not in self.current_file_rel_paths:
-                    yield Completion(rel_path, start_position=start_pos, display=rel_path)
+                    yield Completion(
+                        rel_path, start_position=start_pos, display=rel_path
+                    )
 
     def _complete_symbols(self, name: str) -> Iterable[Completion]:
         """Helper to complete symbols (@@ completion)."""
@@ -789,9 +1073,15 @@ class CommandCompleterV2(Completer):
             if name in symbol.symbol_name:
                 file_name = symbol.file_name
                 display_name = self._get_display_path(file_name)
-                display_text = f"{symbol.symbol_name} ({display_name}/{symbol.symbol_type})"
-                completion_text = f"{symbol.symbol_name} ({display_name}/{symbol.symbol_type})"
-                yield Completion(completion_text, start_position=start_pos, display=display_text)
+                display_text = (
+                    f"{symbol.symbol_name} ({display_name}/{symbol.symbol_type})"
+                )
+                completion_text = (
+                    f"{symbol.symbol_name} ({display_name}/{symbol.symbol_type})"
+                )
+                yield Completion(
+                    completion_text, start_position=start_pos, display=display_text
+                )
 
     def _get_display_path(self, file_path: str, max_parts: int = 3) -> str:
         """Helper to create a display path. Now returns full relative path."""

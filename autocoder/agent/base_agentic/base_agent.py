@@ -24,10 +24,6 @@ from autocoder.utils.auto_project_type import ProjectTypeAnalyzer
 from autocoder.common.mcp_tools.server import get_mcp_server, McpServerInfoRequest
 from autocoder.common.file_monitor.monitor import FileMonitor
 from autocoder.common.rulefiles import get_required_and_index_rules, get_rules
-from autocoder.auto_coder_runner import load_tokenizer
-from autocoder.linters.shadow_linter import ShadowLinter
-from autocoder.compilers.shadow_compiler import ShadowCompiler
-from autocoder.shadows.shadow_manager import ShadowManager
 from autocoder.events.event_manager_singleton import get_event_manager
 from autocoder.events.event_types import Event, EventType, EventMetadata
 from autocoder.events import event_content as EventContentCreator
@@ -55,6 +51,18 @@ from autocoder.common.utils_code_auto_generate import stream_chat_with_continue
 from autocoder.common.save_formatted_log import save_formatted_log
 from . import agentic_lang
 from autocoder.common.autocoderargs_parser import AutoCoderArgsParser
+import importlib.resources as resources
+
+def load_tokenizer():
+    from autocoder.rag.variable_holder import VariableHolder
+    from tokenizers import Tokenizer
+
+    try:
+        tokenizer_path = str(resources.files("autocoder") / "data" / "tokenizer.json")
+        VariableHolder.TOKENIZER_PATH = tokenizer_path
+        VariableHolder.TOKENIZER_MODEL = Tokenizer.from_file(tokenizer_path)
+    except FileNotFoundError:
+        tokenizer_path = None
 
 class BaseAgent(ABC):
     """
