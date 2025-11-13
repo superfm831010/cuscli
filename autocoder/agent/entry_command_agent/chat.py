@@ -157,6 +157,9 @@ class ChatAgent:
         """
         检查响应是否为空（包括语义空响应）
 
+        注意：如果响应只包含 thinking 标签但有实际内容，会根据 keep_reasoning_content
+        参数判断是否视为空响应，并给出友好提示。
+
         Args:
             response: 助手响应内容
 
@@ -172,6 +175,29 @@ class ChatAgent:
 
         # 检查去除 thinking 标签后是否为空
         cleaned = response.replace("<thinking>", "").replace("</thinking>", "").strip()
+
+        # 如果去除 thinking 后为空，但原始响应不为空，说明有 thinking 内容
+        if not cleaned and response.strip():
+            # 如果配置不保留 reasoning，则视为空响应并给出提示
+            if not getattr(self.args, 'keep_reasoning_content', False):
+                logger.warning(
+                    f"Response contains only thinking content, but keep_reasoning_content is False. "
+                    f"Consider using --keep-reasoning-content to view the model's reasoning process."
+                )
+                # 给用户友好提示
+                self.console.print(Panel(
+                    "模型只返回了思考内容（thinking），但当前配置不显示思考过程。\n\n"
+                    "这通常发生在以下情况：\n"
+                    "  • 使用支持 extended thinking 的模型（如 Claude）\n"
+                    "  • 模型进行了推理但没有生成正式回答\n\n"
+                    "解决方案：\n"
+                    "  • 使用 --keep-reasoning-content 参数查看思考过程\n"
+                    "  • 或者尝试重新表述您的问题",
+                    title="💭 提示",
+                    border_style="cyan"
+                ))
+            return True
+
         if not cleaned:
             return True
 
