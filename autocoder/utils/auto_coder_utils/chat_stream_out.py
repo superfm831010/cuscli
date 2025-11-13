@@ -206,6 +206,7 @@ def stream_out(
 
     if console is None:
         console = Console(force_terminal=True, color_system="auto", height=None)
+    printer = Printer(console)
     
     keep_reasoning_content = True
     if args:
@@ -332,6 +333,17 @@ def stream_out(
                 and full_reasoning_response.strip()
             ):
                 assistant_response = f"<thinking>{full_reasoning_response.strip()}</thinking>"
+
+            if not assistant_response.strip():
+                finish_reason = ""
+                if last_meta:
+                    finish_reason = last_meta.finish_reason or ""
+                warning_message = printer.get_message_from_key_with_format(
+                    "empty_assistant_response_notice",
+                    model_name=model_name or "unknown",
+                    finish_reason=finish_reason or "unknown"
+                )
+                assistant_response = warning_message
 
             # 最终显示结果
             final_display_content = assistant_response

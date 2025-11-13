@@ -746,6 +746,13 @@ AUTO_CODER_MESSAGES = {
         "ar": "النموذج: {{ model_name }}، إجمالي الوقت: {{ elapsed_time }} ثانية، وقت أول رمز: {{ first_token_time }} ثانية، السرعة: {{ speed }} رمز/ثانية، رموز الإدخال: {{ input_tokens }}، رموز الإخراج: {{ output_tokens }}، تكلفة الإدخال: {{ input_cost }}، تكلفة الإخراج: {{ output_cost }}",
         "ru": "Модель: {{ model_name }}, Общее время: {{ elapsed_time }} секунд, Время первого токена: {{ first_token_time }} секунд, Скорость: {{ speed }} токенов/с, Входных токенов: {{ input_tokens }}, Выходных токенов: {{ output_tokens }}, Стоимость входа: {{ input_cost }}, Стоимость выхода: {{ output_cost }}",
     },
+    "empty_assistant_response_notice": {
+        "en": "⚠️ Model {{ model_name }} finished without returning any content (finish_reason: {{ finish_reason }}). Please retry, simplify the request, or enable --keep-reasoning-content to inspect the reasoning trace.",
+        "zh": "⚠️ 模型 {{ model_name }} 在未返回任何内容的情况下结束（finish_reason: {{ finish_reason }}）。请重试、精简提问，或通过 --keep-reasoning-content 查看模型的思考过程。",
+        "ja": "⚠️ モデル {{ model_name }} は内容を返さずに終了しました（finish_reason: {{ finish_reason }}）。再試行するか質問を簡潔にするか、--keep-reasoning-content を有効にして推論過程を確認してください。",
+        "ar": "⚠️ أنهى النموذج {{ model_name }} دون إرجاع أي محتوى (finish_reason: {{ finish_reason }}). يُرجى إعادة المحاولة أو تبسيط الطلب أو تمكين --keep-reasoning-content للاطلاع على مسار التفكير.",
+        "ru": "⚠️ Модель {{ model_name }} завершила работу без вывода (finish_reason: {{ finish_reason }}). Попробуйте ещё раз, упростите запрос или включите --keep-reasoning-content, чтобы увидеть ход рассуждений.",
+    },
     "quick_filter_stats": {
         "en": "{{ model_names }} Quick filter completed in {{ elapsed_time }} seconds, input tokens: {{ input_tokens }}, output tokens: {{ output_tokens }}, input cost: {{ input_cost }}, output cost: {{ output_cost }} speed: {{ speed }} tokens/s",
         "zh": "{{ model_names }} Quick Filter 完成耗时 {{ elapsed_time }} 秒，输入token数: {{ input_tokens }}, 输出token数: {{ output_tokens }}, 输入成本: {{ input_cost }}, 输出成本: {{ output_cost }} 速度: {{ speed }} tokens/秒",
