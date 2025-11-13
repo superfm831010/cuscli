@@ -128,12 +128,13 @@ class ChatAgent:
             if last_meta:
                 self._print_stats(last_meta, start_time, model_name)
 
-            # 兜底检查：确保响应不为空
-            if not assistant_response or not assistant_response.strip():
+            # 兜底检查：确保响应不为空（包括语义空响应）
+            if self._is_empty_response(assistant_response):
                 logger.warning(
-                    "Empty assistant response detected. "
-                    "This may indicate a problem with the LLM or streaming process. "
-                    "Skipping adding to conversation history."
+                    f"Empty assistant response detected. "
+                    f"Raw response: {repr(assistant_response[:200] if assistant_response else '')}. "
+                    f"This may indicate a problem with the LLM or streaming process. "
+                    f"Skipping adding to conversation history."
                 )
                 return
 
@@ -151,6 +152,30 @@ class ChatAgent:
             # 取消操作，不添加消息到历史
             logger.info("Chat operation cancelled by user, no message added to history")
             return
+
+    def _is_empty_response(self, response: str) -> bool:
+        """
+        检查响应是否为空（包括语义空响应）
+
+        Args:
+            response: 助手响应内容
+
+        Returns:
+            bool: 如果为空返回 True，否则返回 False
+        """
+        if not response or not response.strip():
+            return True
+
+        # 检查是否只包含空的 thinking 标签
+        if response.strip() == "<thinking></thinking>":
+            return True
+
+        # 检查去除 thinking 标签后是否为空
+        cleaned = response.replace("<thinking>", "").replace("</thinking>", "").strip()
+        if not cleaned:
+            return True
+
+        return False
 
     def _handle_new_session(self):
         """处理新会话逻辑"""
