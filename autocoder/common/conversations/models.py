@@ -30,10 +30,25 @@ class ConversationMessage:
         valid_roles = ["system", "user", "assistant"]
         if not self.role or self.role not in valid_roles:
             raise ValueError(f"无效的消息角色: {self.role}，有效角色: {valid_roles}")
-        
+
         # 验证内容
         if self.content is None or (isinstance(self.content, str) and len(self.content) == 0):
-            raise ValueError("消息内容不能为空")
+            import traceback
+            # 提供更详细的错误信息，包括调用栈
+            error_details = [
+                "消息内容不能为空",
+                f"消息角色: {self.role}",
+                f"消息ID: {self.message_id}",
+                f"内容类型: {type(self.content).__name__}",
+                f"内容值: {repr(self.content)}",
+                "调用栈:",
+            ]
+            # 获取调用栈的前10层
+            stack_lines = traceback.format_stack()[:-1]  # 排除当前行
+            for i, line in enumerate(stack_lines[-10:], 1):  # 只显示最近的10层
+                error_details.append(f"  [{i}] {line.strip()}")
+
+            raise ValueError("\n  ".join(error_details))
         
         # 验证时间戳
         if not isinstance(self.timestamp, (int, float)) or self.timestamp <= 0:

@@ -24,6 +24,7 @@ from autocoder.common.conversations.llm_stats_models import (
     LLMCallMetadata,
     create_llm_metadata_from_token_usage_event,
 )
+from autocoder.common.conversations.exceptions import EmptyMessageError
 from autocoder.common.pruner.agentic_conversation_pruner import (
     AgenticConversationPruner,
 )
@@ -2604,10 +2605,31 @@ class AgenticEdit:
                         contextual_event_factory=contextual_event_factory,
                     )
 
+                    # 预检查：确保消息内容不为空
+                    content_to_add = assistant_buffer + tool_xml
+                    if not content_to_add or (isinstance(content_to_add, str) and len(content_to_add.strip()) == 0):
+                        logger.error(
+                            f"检测到尝试添加空消息内容: "
+                            f"assistant_buffer='{assistant_buffer[:100] if assistant_buffer else None}', "
+                            f"tool_xml='{tool_xml[:100] if tool_xml else None}'"
+                        )
+                        raise EmptyMessageError(
+                            conversation_id=self.conversation_config.conversation_id,
+                            role="assistant",
+                            content_preview=f"assistant_buffer={repr(assistant_buffer[:50] if assistant_buffer else assistant_buffer)}, tool_xml={repr(tool_xml[:50] if tool_xml else tool_xml)}",
+                            call_location="agentic_edit.py:2608 (位置1: 添加带工具调用的助手消息)",
+                            additional_context={
+                                "assistant_buffer_length": len(assistant_buffer) if assistant_buffer else 0,
+                                "tool_xml_length": len(tool_xml) if tool_xml else 0,
+                                "tool_type": type(tool_obj).__name__ if tool_obj else "None",
+                                "has_llm_metadata": current_llm_metadata is not None,
+                            }
+                        )
+
                     message_id = self.conversation_manager.append_message(
                         conversation_id=self.conversation_config.conversation_id,
                         role="assistant",
-                        content=assistant_buffer + tool_xml,
+                        content=content_to_add,
                         metadata={},
                         llm_metadata=current_llm_metadata,
                     )
@@ -2786,6 +2808,25 @@ class AgenticEdit:
                     last_message = conversations[-1]
                     if last_message["role"] != "assistant":
                         logger.info("Adding new assistant message")
+
+                        # 预检查：确保消息内容不为空
+                        if not assistant_buffer or (isinstance(assistant_buffer, str) and len(assistant_buffer.strip()) == 0):
+                            logger.error(
+                                f"检测到尝试添加空消息内容: assistant_buffer='{assistant_buffer[:100] if assistant_buffer else None}'"
+                            )
+                            raise EmptyMessageError(
+                                conversation_id=self.conversation_config.conversation_id,
+                                role="assistant",
+                                content_preview=f"assistant_buffer={repr(assistant_buffer[:50] if assistant_buffer else assistant_buffer)}",
+                                call_location="agentic_edit.py:2811 (位置2: 添加无工具调用的助手消息)",
+                                additional_context={
+                                    "assistant_buffer_length": len(assistant_buffer) if assistant_buffer else 0,
+                                    "tool_executed": tool_executed,
+                                    "has_llm_metadata": current_llm_metadata is not None,
+                                    "last_message_role": last_message.get("role") if conversations else "None",
+                                }
+                            )
+
                         message_id = self.conversation_manager.append_message(
                             conversation_id=self.conversation_config.conversation_id,
                             role="assistant",
