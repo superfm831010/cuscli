@@ -218,6 +218,7 @@ def stream_out(
     lines_buffer = []  # 存储历史行
     current_line = ""  # 当前行
     assistant_response = ""
+    full_reasoning_response = ""
     last_meta = None
     panel_title = title if title is not None else f"Response[ {model_name} ]"  
     final_panel_title = final_title if final_title is not None else title
@@ -244,6 +245,9 @@ def stream_out(
                 
                 if first_token_time == 0.0:
                     first_token_time = time.time() - first_token_time_start
+
+                if reasoning_content:
+                    full_reasoning_response += reasoning_content
 
                 if keep_only_reasoning_content:
                     assistant_response += reasoning_content
@@ -321,6 +325,14 @@ def stream_out(
             if current_line:
                 lines_buffer.append(current_line)
             
+            if (
+                not keep_reasoning_content
+                and not keep_only_reasoning_content
+                and (not assistant_response or not assistant_response.strip())
+                and full_reasoning_response.strip()
+            ):
+                assistant_response = f"<thinking>{full_reasoning_response.strip()}</thinking>"
+
             # 最终显示结果
             final_display_content = assistant_response
             if display_func:
