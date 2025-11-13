@@ -259,7 +259,6 @@ class CodingHandler:
                 )
 
             # 保存和执行
-            print(yaml_config)
             self._save_and_execute_yaml(yaml_config, latest_yaml_file, query)
         else:
             print("Failed to create new YAML file.")
