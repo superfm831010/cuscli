@@ -24,6 +24,7 @@ from autocoder.utils.llms import get_llm_names
 from autocoder.run_context import get_run_context, RunMode
 from autocoder.common.action_yml_file_manager import ActionYmlFileManager
 from autocoder.common.conversations.get_conversation_manager import get_conversation_manager
+from autocoder.common.global_cancel import CancelRequestedException
 
 
 class ChatAgent:
@@ -103,38 +104,53 @@ class ChatAgent:
 
         # 输出响应
         model_name = ",".join(get_llm_names(chat_llm))
-        assistant_response, last_meta = stream_out(
-            v,
-            request_id=self.args.request_id,
-            console=self.console,
-            model_name=model_name,
-            args=self.args
-        )
+        try:
+            assistant_response, last_meta = stream_out(
+                v,
+                request_id=self.args.request_id,
+                console=self.console,
+                model_name=model_name,
+                args=self.args
+            )
 
-        self.result_manager.append(content=assistant_response, meta={
-            "action": "chat",
-            "input": {
-                "query": self.args.query
-            }
-        })
+            self.result_manager.append(content=assistant_response, meta={
+                "action": "chat",
+                "input": {
+                    "query": self.args.query
+                }
+            })
 
-        # 处理学习命令的特殊逻辑
-        if "learn" in commands_info and commit_file_name:
-            self._handle_learn_command(commit_file_name, assistant_response)
+            # 处理学习命令的特殊逻辑
+            if "learn" in commands_info and commit_file_name:
+                self._handle_learn_command(commit_file_name, assistant_response)
 
-        # 打印统计信息
-        if last_meta:
-            self._print_stats(last_meta, start_time, model_name)
+            # 打印统计信息
+            if last_meta:
+                self._print_stats(last_meta, start_time, model_name)
 
-        # 更新聊天历史 - 添加助手回复到当前会话
-        self.conversation_manager.append_message_to_current(
-            role="assistant",
-            content=assistant_response,
-            namespace=self.namespace
-        )
+            # 兜底检查：确保响应不为空
+            if not assistant_response or not assistant_response.strip():
+                logger.warning(
+                    "Empty assistant response detected. "
+                    "This may indicate a problem with the LLM or streaming process. "
+                    "Skipping adding to conversation history."
+                )
+                return
 
-        # 处理后续命令
-        self._handle_post_commands(commands_info, assistant_response)
+            # 更新聊天历史 - 添加助手回复到当前会话
+            self.conversation_manager.append_message_to_current(
+                role="assistant",
+                content=assistant_response,
+                namespace=self.namespace
+            )
+
+            # 处理后续命令
+            self._handle_post_commands(commands_info, assistant_response)
+
+        except CancelRequestedException:
+            # 取消操作，不添加消息到历史
+            logger.info("Chat operation cancelled by user, no message added to history")
+            return
 
     def _handle_new_session(self):
         """处理新会话逻辑"""
