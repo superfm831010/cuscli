@@ -6,6 +6,7 @@
 
 import json
 import os
+import hashlib
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -657,45 +658,75 @@ class ReportGenerator:
 
     def _safe_path(self, file_path: str) -> str:
         """
-        将文件路径转换为安全的文件名
+        将文件路径转换为安全的短文件名
 
-        将路径中的斜杠、反斜杠、点等特殊字符替换为下划线。
-        处理所有 Windows 非法字符，确保跨平台兼容性。
+        使用"文件名_扩展名_哈希"格式，避免路径过长。
+        哈希值基于完整路径计算，确保不同路径的同名文件不会冲突。
 
         Args:
             file_path: 原始文件路径
 
         Returns:
-            安全的文件名（最长 200 字符）
+            安全的短文件名（格式：filename_ext_hash6）
 
         Examples:
             >>> gen = ReportGenerator()
             >>> gen._safe_path("autocoder/checker/core.py")
-            'autocoder_checker_core_py'
-            >>> gen._safe_path("path\\to\\file.js")
-            'path_to_file_js'
-            >>> gen._safe_path("file:with*invalid?chars.txt")
-            'file_with_invalid_chars_txt'
+            'core_py_a1b2c3'
+            >>> gen._safe_path("autocoder/plugins/core.py")
+            'core_py_d4e5f6'  # 不同路径的同名文件，哈希不同
+            >>> gen._safe_path("docs/二次开发记录.md")
+            '二次开发记录_md_f7g8h9'
         """
-        # Windows 非法字符: < > : " / \ | ? *
-        # 统一替换为下划线
-        illegal_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
-        safe = file_path
-        for char in illegal_chars:
-            safe = safe.replace(char, '_')
+        # 规范化路径分隔符（统一使用正斜杠），确保跨平台哈希一致性
+        normalized_path = file_path.replace('\\', '/')
 
-        # 替换点号（扩展名分隔符）
-        safe = safe.replace('.', '_')
+        # 提取文件名（不含路径）
+        filename = os.path.basename(normalized_path)
 
-        # 去除开头的下划线
-        safe = safe.lstrip('_')
+        # 分离文件名和扩展名
+        name_parts = filename.rsplit('.', 1)
+        if len(name_parts) == 2:
+            base_name, extension = name_parts
+        else:
+            base_name = name_parts[0]
+            extension = ''
 
-        # 限制文件名长度（Windows 限制 255，留一些余量给扩展名）
-        if len(safe) > 200:
-            safe = safe[:200]
+        # 清理文件名中的特殊字符（保留中文、字母、数字、下划线、短横线）
+        def clean_name(s):
+            # Windows 非法字符: < > : " / \ | ? *
+            illegal_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
+            result = s
+            for char in illegal_chars:
+                result = result.replace(char, '_')
+            # 去除前后空格
+            result = result.strip()
+            # 如果为空，使用默认名称
+            if not result:
+                result = 'unnamed'
+            return result
 
-        # 如果处理后为空，返回一个默认名称
-        if not safe:
-            safe = "unnamed_file"
+        clean_base_name = clean_name(base_name)
+        clean_extension = clean_name(extension) if extension else ''
 
-        return safe
+        # 计算完整路径的哈希值（6位十六进制）
+        # 使用 MD5 算法，确保跨平台一致性
+        path_hash = hashlib.md5(normalized_path.encode('utf-8')).hexdigest()[:6]
+
+        # 组合文件名：文件名_扩展名_哈希
+        if clean_extension:
+            safe_filename = f"{clean_base_name}_{clean_extension}_{path_hash}"
+        else:
+            safe_filename = f"{clean_base_name}_{path_hash}"
+
+        # 限制总长度（避免超长文件名）
+        # Windows 文件名限制 255 字符，留余量给报告扩展名 (.json/.md)
+        if len(safe_filename) > 100:
+            # 如果太长，截断文件名部分（保留扩展名和哈希）
+            max_base_len = 100 - len(clean_extension) - len(path_hash) - 2  # 2个下划线
+            if clean_extension:
+                safe_filename = f"{clean_base_name[:max_base_len]}_{clean_extension}_{path_hash}"
+            else:
+                safe_filename = f"{clean_base_name[:max_base_len]}_{path_hash}"
+
+        return safe_filename
