@@ -13,17 +13,27 @@ import byzerllm
 def conf_help_en() -> str:
     """
     /conf command usage:
-      /conf [pattern]    - Show configurations. Optional wildcard pattern (e.g., *_model, api*).
+      /conf [pattern]    - Show configurations (merged view). Optional wildcard pattern (e.g., *_model, api*).
       /conf <key>:<value> - Set or update a configuration key (shortcut for /conf /set).
-      /conf /get <key>    - Get the value of a specific configuration key.
-      /conf /set <key>:<value> - Set or update a configuration key.
+      /conf /global <key>:<value> - Set or update a global configuration key (shortcut).
+      /conf /get <key>    - Get the value of a specific configuration key (merged view).
+      /conf /set <key>:<value> - Set or update a configuration key (project scope).
                            Value parsed (bool, int, float, None) or treated as string.
                            Use quotes ("value with spaces") for explicit strings.
-      /conf /drop <key> - Delete a configuration key.
-      /conf /delete <key> - Delete a configuration key.
+      /conf /drop <key> - Delete a configuration key (project scope).
+      /conf /delete <key> - Delete a configuration key (project scope).
       /conf /export <path> - Export current configuration to a file.
       /conf /import <path> - Import configuration from a file.
       /conf /help        - Show this help message.
+
+    Global configuration (stored in ~/.auto-coder):
+      /conf /global /list [pattern] - List global configurations.
+      /conf /global /get <key>      - Get a global configuration value.
+      /conf /global /set <key> <value> - Set a global configuration.
+      (Shorthand also supported: /conf /global <key>:<value>)
+      /conf /global /delete <key>   - Delete a global configuration.
+
+    Note: When reading configs, project values take precedence over global values.
     """
 
 
@@ -31,17 +41,27 @@ def conf_help_en() -> str:
 def conf_help_zh() -> str:
     """
     /conf 命令用法:
-      /conf [pattern]    - 显示配置。可选通配符模式 (例如: *_model, api*).
-      /conf <key>:<value> - 设置或更新配置项 (/conf /set 的快捷方式).
-      /conf /get <key>    - 获取指定配置项的值.
-      /conf /set <key>:<value> - 设置或更新配置项.
+      /conf [pattern]    - 显示配置（合并视图）。可选通配符模式 (例如: *_model, api*).
+      /conf <key>:<value> - 设置或更新配置项 (/conf /set 的快捷方式，项目级).
+      /conf /global <key>:<value> - 设置或更新全局配置项（简写形式）.
+      /conf /get <key>    - 获取指定配置项的值（合并视图）.
+      /conf /set <key>:<value> - 设置或更新配置项（项目级）.
                            值会被解析为 (bool, int, float, None) 或字符串.
                            使用引号 ("带空格的值") 表示明确的字符串.
-      /conf /drop <key> - 删除配置项.
-      /conf /delete <key> - 删除配置项.
+      /conf /drop <key> - 删除配置项（项目级）.
+      /conf /delete <key> - 删除配置项（项目级）.
       /conf /export <path> - 将当前配置导出到文件.
       /conf /import <path> - 从文件导入配置.
       /conf /help        - 显示此帮助信息.
+
+    全局配置（存储在 ~/.auto-coder）:
+      /conf /global /list [pattern] - 列出全局配置.
+      /conf /global /get <key>      - 获取全局配置值.
+      /conf /global /set <key> <value> - 设置全局配置.
+      （同样支持简写：/conf /global <key>:<value>）
+      /conf /global /delete <key>   - 删除全局配置.
+
+    注意：读取配置时，项目级配置优先于全局配置。
     """
 
 
@@ -106,18 +126,20 @@ def auto_help_en() -> str:
     /auto command usage:
       /auto [query]                - Execute AI agent task with natural language query
       /auto /help                  - Show this help message
-      /auto /async [query]         - Execute task asynchronously in background
+      /auto /async /name <task_name> [query]         - Execute task asynchronously in background (name is required)
       /auto /queue [query]         - Add task to execution queue
       /auto /new [query]           - Create new conversation and execute query
       /auto /resume [id]           - Resume specific conversation by ID
       /auto /list                  - List all conversations
       /auto /rename [id] [name]    - Rename conversation
+      /auto /export [id] [file_path] - Export conversation to markdown file
       /auto /command [command_file] [query] - Execute with specific command template
 
     Examples:
       /auto Add login functionality
-      /auto /async Refactor user module
+      /auto /async /name my_task Refactor user module
       /auto /new Implement payment feature
+      /auto /export conv-12345678 ./docs/conversation.md
       /auto /command deploy.md Deploy to production
     """
 
@@ -128,18 +150,20 @@ def auto_help_zh() -> str:
     /auto 命令用法:
       /auto [查询]                 - 使用自然语言执行 AI 智能体任务
       /auto /help                  - 显示此帮助信息
-      /auto /async [查询]          - 在后台异步执行任务
+      /auto /async /name <任务名> [查询]          - 在后台异步执行任务（必须提供 /name）
       /auto /queue [查询]          - 将任务添加到执行队列
       /auto /new [查询]            - 创建新对话并执行查询
       /auto /resume [id]           - 通过ID恢复特定对话
       /auto /list                  - 列出所有对话
       /auto /rename [id] [名称]    - 重命名对话
+      /auto /export [id] [文件路径] - 将对话导出为markdown文件
       /auto /command [命令文件] [查询] - 使用特定命令模板执行
 
     示例:
       /auto 添加登录功能
-      /auto /async 重构用户模块
+      /auto /async /name my_task 重构用户模块
       /auto /new 实现支付功能
+      /auto /export conv-12345678 ./docs/conversation.md
       /auto /command deploy.md 部署到生产环境
     """
 
@@ -150,18 +174,20 @@ def auto_help_ja() -> str:
     /auto コマンド使用法:
       /auto [クエリ]               - 自然言語でAIエージェントタスクを実行
       /auto /help                  - このヘルプメッセージを表示
-      /auto /async [クエリ]        - バックグラウンドで非同期にタスクを実行
+      /auto /async /name <タスク名> [クエリ]        - バックグラウンドで非同期にタスクを実行（/name 必須）
       /auto /queue [クエリ]        - タスクを実行キューに追加
       /auto /new [クエリ]          - 新しい会話を作成してクエリを実行
       /auto /resume [id]           - IDで特定の会話を再開
       /auto /list                  - すべての会話をリスト
       /auto /rename [id] [名前]    - 会話の名前を変更
+      /auto /export [id] [ファイルパス] - 会話をmarkdownファイルにエクスポート
       /auto /command [コマンドファイル] [クエリ] - 特定のコマンドテンプレートで実行
 
     例:
       /auto ログイン機能を追加
-      /auto /async ユーザーモジュールをリファクタリング
+      /auto /async /name my_task ユーザーモジュールをリファクタリング
       /auto /new 支払い機能を実装
+      /auto /export conv-12345678 ./docs/conversation.md
       /auto /command deploy.md 本番環境にデプロイ
     """
 
@@ -172,18 +198,20 @@ def auto_help_ar() -> str:
     استخدام أمر /auto:
       /auto [استعلام]              - تنفيذ مهمة وكيل AI باستخدام استعلام اللغة الطبيعية
       /auto /help                  - إظهار رسالة المساعدة هذه
-      /auto /async [استعلام]       - تنفيذ المهمة بشكل غير متزامن في الخلفية
+      /auto /async /name <اسم_المهمة> [استعلام]       - تنفيذ المهمة بشكل غير متزامن في الخلفية (name مطلوب)
       /auto /queue [استعلام]       - إضافة مهمة إلى قائمة التنفيذ
       /auto /new [استعلام]         - إنشاء محادثة جديدة وتنفيذ الاستعلام
       /auto /resume [id]           - استئناف محادثة محددة بواسطة المعرف
       /auto /list                  - قائمة بجميع المحادثات
       /auto /rename [id] [اسم]     - إعادة تسمية المحادثة
+      /auto /export [id] [مسار_الملف] - تصدير المحادثة إلى ملف markdown
       /auto /command [ملف_الأمر] [استعلام] - تنفيذ باستخدام قالب أمر محدد
 
     أمثلة:
       /auto إضافة وظيفة تسجيل الدخول
-      /auto /async إعادة هيكلة وحدة المستخدم
+      /auto /async /name my_task إعادة هيكلة وحدة المستخدم
       /auto /new تنفيذ ميزة الدفع
+      /auto /export conv-12345678 ./docs/conversation.md
       /auto /command deploy.md النشر في الإنتاج
     """
 
@@ -194,18 +222,20 @@ def auto_help_ru() -> str:
     Использование команды /auto:
       /auto [запрос]               - Выполнить задачу AI агента с запросом на естественном языке
       /auto /help                  - Показать это сообщение справки
-      /auto /async [запрос]        - Выполнить задачу асинхронно в фоне
+      /auto /async /name <имя_задачи> [запрос]        - Выполнить задачу асинхронно в фоне (требуется /name)
       /auto /queue [запрос]        - Добавить задачу в очередь выполнения
       /auto /new [запрос]          - Создать новый разговор и выполнить запрос
       /auto /resume [id]           - Возобновить конкретный разговор по ID
       /auto /list                  - Показать все разговоры
       /auto /rename [id] [имя]     - Переименовать разговор
+      /auto /export [id] [путь_к_файлу] - Экспортировать разговор в markdown файл
       /auto /command [файл_команды] [запрос] - Выполнить с конкретным шаблоном команды
 
     Примеры:
       /auto Добавить функцию входа
-      /auto /async Рефакторить модуль пользователя
+      /auto /async /name my_task Рефакторить модуль пользователя
       /auto /new Реализовать функцию оплаты
+      /auto /export conv-12345678 ./docs/conversation.md
       /auto /command deploy.md Развернуть в продакшен
     """
 
@@ -715,26 +745,36 @@ def workflow_help_ru() -> str:
 def async_help_en() -> str:
     """
     /auto /async command usage:
-      /auto /async [query]                - Execute task asynchronously in background
+      /auto /async /name <task_name> [query] - Execute task asynchronously in background (name is required)
       /auto /async /help                  - Show this help message
       /auto /async /list                  - List all async tasks
       /auto /async /task [task_id]        - Show details of a specific task
       /auto /async /kill <task_id>        - Kill a running task
       /auto /async /drop <task_id>        - Delete a task and all its related files
-      /auto /async /model <model_name> [query] - Use specific model for async task
-      /auto /async /loop <count> [query]  - Execute task multiple times
-      /auto /async /time <duration> [query] - Execute task for specified duration
-      /auto /async /name <worktree_name> [query] - Use specific worktree name
-      /auto /async /prefix <task_prefix> [query] - Add prefix to task name
-      /auto /async /libs <libraries> [query] - Include specific libraries
+
+    Usage (name required):
+      /auto /async /name <task_name> "<your query>"
+      /auto /async /name <task_name> /model <model_name> "<your query>"
+      /auto /async /name <task_name> /loop <count> "<your query>"
+      /auto /async /name <task_name> /time <duration> "<your query>"
+      /auto /async /name <task_name> /workflow <workflow_name> "<your query>"
+      /auto /async /name <task_name> /vars '{"k":"v"}' "<your query>"
+
+    Options:
+      /name <task_name>   Required. Unique identifier for this async task.
+      /model <model_name> Optional. Use a specific model.
+      /loop <count>        Optional. Execute task multiple times.
+      /time <duration>     Optional. Execute task for a specified duration (e.g., 5m, 1h).
+      /workflow <name>     Optional. Execute a workflow by name.
+      /vars <json>         Optional. JSON variables for the task.
 
     Examples:
-      /auto /async Implement user authentication
-      /auto /async /model gpt-4 Refactor user module
-      /auto /async /loop 3 Continuous improvement task
-      /auto /async /time 5m Background analysis task
-      /auto /async /name my-worktree Create new feature
-      /auto /async /drop task123 Remove completed task
+      /auto /async /name my_task "Implement user authentication"
+      /auto /async /name my_task /model gpt-4 "Refactor user module"
+      /auto /async /name my_task /loop 3 "Continuous improvement task"
+      /auto /async /name my_task /time 5m "Background analysis task"
+      /auto /async /name my_task /workflow deploy "Deploy to staging"
+      /auto /async /drop task123
     """
 
 
@@ -742,26 +782,36 @@ def async_help_en() -> str:
 def async_help_zh() -> str:
     """
     /auto /async 命令用法:
-      /auto /async [查询]                 - 在后台异步执行任务
+      /auto /async /name <任务名> [查询] - 在后台异步执行任务（/name 为必选）
       /auto /async /help                  - 显示此帮助信息
       /auto /async /list                  - 列出所有异步任务
       /auto /async /task [任务ID]        - 显示特定任务的详情
       /auto /async /kill <任务ID>        - 终止正在运行的任务
       /auto /async /drop <任务ID>        - 删除任务及其所有相关文件
-      /auto /async /model <模型名> [查询] - 使用指定模型执行异步任务
-      /auto /async /loop <次数> [查询]   - 多次执行任务
-      /auto /async /time <时长> [查询]   - 执行指定时长的任务
-      /auto /async /name <工作树名> [查询] - 使用指定的工作树名称
-      /auto /async /prefix <任务前缀> [查询] - 为任务添加前缀
-      /auto /async /libs <库列表> [查询] - 包含指定的库
+
+    用法（必须包含 /name）:
+      /auto /async /name <任务名> "你的需求"
+      /auto /async /name <任务名> /model <模型名> "你的需求"
+      /auto /async /name <任务名> /loop <次数> "你的需求"
+      /auto /async /name <任务名> /time <时长> "你的需求"
+      /auto /async /name <任务名> /workflow <工作流名> "你的需求"
+      /auto /async /name <任务名> /vars '{"k":"v"}' "你的需求"
+
+    参数:
+      /name <任务名>     必选。用于唯一标识该异步任务。
+      /model <模型名>    可选。指定使用的模型。
+      /loop <次数>       可选。多次执行任务。
+      /time <时长>       可选。指定执行时长（如 5m, 1h）。
+      /workflow <名称>   可选。按名称执行工作流。
+      /vars <json>       可选。任务 JSON 变量。
 
     示例:
-      /auto /async 实现用户认证功能
-      /auto /async /model gpt-4 重构用户模块
-      /auto /async /loop 3 持续改进任务
-      /auto /async /time 5m 后台分析任务
-      /auto /async /name my-worktree 创建新功能
-      /auto /async /drop task123 删除已完成的任务
+      /auto /async /name my_task "实现用户认证功能"
+      /auto /async /name my_task /model gpt-4 "重构用户模块"
+      /auto /async /name my_task /loop 3 "持续改进任务"
+      /auto /async /name my_task /time 5m "后台分析任务"
+      /auto /async /name my_task /workflow deploy "部署到预发环境"
+      /auto /async /drop task123
     """
 
 
@@ -769,26 +819,36 @@ def async_help_zh() -> str:
 def async_help_ja() -> str:
     """
     /auto /async コマンド使用法:
-      /auto /async [クエリ]               - バックグラウンドで非同期にタスクを実行
+      /auto /async /name <タスク名> [クエリ] - バックグラウンドで非同期にタスクを実行（/name は必須）
       /auto /async /help                  - このヘルプメッセージを表示
       /auto /async /list                  - すべての非同期タスクをリスト
       /auto /async /task [タスクID]      - 特定のタスクの詳細を表示
       /auto /async /kill <タスクID>      - 実行中のタスクを終了
       /auto /async /drop <タスクID>      - タスクとすべての関連ファイルを削除
-      /auto /async /model <モデル名> [クエリ] - 特定のモデルで非同期タスクを実行
-      /auto /async /loop <回数> [クエリ]  - タスクを複数回実行
-      /auto /async /time <時間> [クエリ]  - 指定した時間タスクを実行
-      /auto /async /name <ワークツリー名> [クエリ] - 特定のワークツリー名を使用
-      /auto /async /prefix <タスク接頭辞> [クエリ] - タスク名に接頭辞を追加
-      /auto /async /libs <ライブラリ> [クエリ] - 特定のライブラリを含める
+
+    使用法（/name は必須）:
+      /auto /async /name <タスク名> "クエリ"
+      /auto /async /name <タスク名> /model <モデル名> "クエリ"
+      /auto /async /name <タスク名> /loop <回数> "クエリ"
+      /auto /async /name <タスク名> /time <時間> "クエリ"
+      /auto /async /name <タスク名> /workflow <ワークフロー名> "クエリ"
+      /auto /async /name <タスク名> /vars '{"k":"v"}' "クエリ"
+
+    オプション:
+      /name <タスク名>   必須。非同期タスクの一意の識別子。
+      /model <モデル名>  任意。特定のモデルを使用。
+      /loop <回数>       任意。タスクを複数回実行。
+      /time <時間>       任意。指定した時間実行（例: 5m, 1h）。
+      /workflow <名前>   任意。ワークフロー名で実行。
+      /vars <json>       任意。タスクの JSON 変数。
 
     例:
-      /auto /async ユーザー認証を実装
-      /auto /async /model gpt-4 ユーザーモジュールをリファクタリング
-      /auto /async /loop 3 継続的改善タスク
-      /auto /async /time 5m バックグラウンド分析タスク
-      /auto /async /name my-worktree 新機能を作成
-      /auto /async /drop task123 完了したタスクを削除
+      /auto /async /name my_task "ユーザー認証を実装"
+      /auto /async /name my_task /model gpt-4 "ユーザーモジュールをリファクタリング"
+      /auto /async /name my_task /loop 3 "継続的改善タスク"
+      /auto /async /name my_task /time 5m "バックグラウンド分析タスク"
+      /auto /async /name my_task /workflow deploy "ステージングにデプロイ"
+      /auto /async /drop task123
     """
 
 
@@ -796,26 +856,36 @@ def async_help_ja() -> str:
 def async_help_ar() -> str:
     """
     استخدام أمر /auto /async:
-      /auto /async [استعلام]             - تنفيذ المهمة بشكل غير متزامن في الخلفية
+      /auto /async /name <اسم_المهمة> [استعلام] - تنفيذ المهمة بشكل غير متزامن في الخلفية (name مطلوب)
       /auto /async /help                  - إظهار رسالة المساعدة هذه
       /auto /async /list                  - قائمة بجميع المهام غير المتزامنة
       /auto /async /task [معرف_المهمة]  - إظهار تفاصيل مهمة محددة
       /auto /async /kill <معرف_المهمة>  - إنهاء مهمة قيد التشغيل
       /auto /async /drop <معرف_المهمة>  - حذف المهمة وجميع الملفات ذات الصلة
-      /auto /async /model <اسم_النموذج> [استعلام] - استخدام نموذج محدد للمهمة غير المتزامنة
-      /auto /async /loop <عدد> [استعلام] - تنفيذ المهمة عدة مرات
-      /auto /async /time <المدة> [استعلام] - تنفيذ المهمة لمدة محددة
-      /auto /async /name <اسم_شجرة_العمل> [استعلام] - استخدام اسم شجرة عمل محدد
-      /auto /async /prefix <بادئة_المهمة> [استعلام] - إضافة بادئة لاسم المهمة
-      /auto /async /libs <المكتبات> [استعلام] - تضمين مكتبات محددة
+
+    الاستخدام (name مطلوب):
+      /auto /async /name <اسم_المهمة> "استعلامك"
+      /auto /async /name <اسم_المهمة> /model <اسم_النموذج> "استعلامك"
+      /auto /async /name <اسم_المهمة> /loop <عدد> "استعلامك"
+      /auto /async /name <اسم_المهمة> /time <المدة> "استعلامك"
+      /auto /async /name <اسم_المهمة> /workflow <اسم_workflow> "استعلامك"
+      /auto /async /name <اسم_المهمة> /vars '{"k":"v"}' "استعلامك"
+
+    الخيارات:
+      /name <اسم_المهمة>   مطلوب. معرّف فريد للمهمة غير المتزامنة.
+      /model <اسم_النموذج> اختياري. استخدام نموذج محدد.
+      /loop <عدد>           اختياري. تنفيذ المهمة عدة مرات.
+      /time <المدة>          اختياري. تنفيذ لمدة محددة (مثال: 5m, 1h).
+      /workflow <الاسم>     اختياري. تنفيذ workflow بالاسم.
+      /vars <json>          اختياري. متغيرات JSON للمهمة.
 
     أمثلة:
-      /auto /async تنفيذ مصادقة المستخدم
-      /auto /async /model gpt-4 إعادة هيكلة وحدة المستخدم
-      /auto /async /loop 3 مهمة تحسين مستمرة
-      /auto /async /time 5m مهمة تحليل في الخلفية
-      /auto /async /name my-worktree إنشاء ميزة جديدة
-      /auto /async /drop task123 إزالة المهمة المكتملة
+      /auto /async /name my_task "تنفيذ مصادقة المستخدم"
+      /auto /async /name my_task /model gpt-4 "إعادة هيكلة وحدة المستخدم"
+      /auto /async /name my_task /loop 3 "مهمة تحسين مستمرة"
+      /auto /async /name my_task /time 5m "مهمة تحليل في الخلفية"
+      /auto /async /name my_task /workflow deploy "النشر إلى بيئة staging"
+      /auto /async /drop task123
     """
 
 
@@ -823,26 +893,36 @@ def async_help_ar() -> str:
 def async_help_ru() -> str:
     """
     Использование команды /auto /async:
-      /auto /async [запрос]               - Выполнить задачу асинхронно в фоне
+      /auto /async /name <имя_задачи> [запрос] - Выполнить задачу асинхронно в фоне (требуется параметр /name)
       /auto /async /help                  - Показать это сообщение справки
       /auto /async /list                  - Показать все асинхронные задачи
       /auto /async /task [идентификатор] - Показать детали конкретной задачи
       /auto /async /kill <идентификатор> - Завершить выполняющуюся задачу
       /auto /async /drop <идентификатор> - Удалить задачу и все связанные с ней файлы
-      /auto /async /model <имя_модели> [запрос] - Использовать конкретную модель для асинхронной задачи
-      /auto /async /loop <количество> [запрос] - Выполнить задачу несколько раз
-      /auto /async /time <продолжительность> [запрос] - Выполнить задачу на указанное время
-      /auto /async /name <имя_рабочего_дерева> [запрос] - Использовать конкретное имя рабочего дерева
-      /auto /async /prefix <префикс_задачи> [запрос] - Добавить префикс к имени задачи
-      /auto /async /libs <библиотеки> [запрос] - Включить конкретные библиотеки
+
+    Использование (требуется /name):
+      /auto /async /name <имя_задачи> "<запрос>"
+      /auto /async /name <имя_задачи> /model <имя_модели> "<запрос>"
+      /auto /async /name <имя_задачи> /loop <количество> "<запрос>"
+      /auto /async /name <имя_задачи> /time <продолжительность> "<запрос>"
+      /auto /async /name <имя_задачи> /workflow <имя_workflow> "<запрос>"
+      /auto /async /name <имя_задачи> /vars '{"k":"v"}' "<запрос>"
+
+    Параметры:
+      /name <имя_задачи>   Обязательно. Уникальный идентификатор асинхронной задачи.
+      /model <имя_модели>  Необязательно. Использовать конкретную модель.
+      /loop <количество>   Необязательно. Выполнить несколько раз.
+      /time <продолжительность> Необязательно. Выполнять указанное время (напр., 5m, 1h).
+      /workflow <имя>     Необязательно. Выполнить workflow по имени.
+      /vars <json>         Необязательно. JSON-переменные задачи.
 
     Примеры:
-      /auto /async Реализовать аутентификацию пользователя
-      /auto /async /model gpt-4 Рефакторинг модуля пользователя
-      /auto /async /loop 3 Задача непрерывного улучшения
-      /auto /async /time 5m Задача фонового анализа
-      /auto /async /name my-worktree Создать новую функцию
-      /auto /async /drop task123 Удалить завершенную задачу
+      /auto /async /name my_task "Реализовать аутентификацию пользователя"
+      /auto /async /name my_task /model gpt-4 "Рефакторинг модуля пользователя"
+      /auto /async /name my_task /loop 3 "Задача непрерывного улучшения"
+      /auto /async /name my_task /time 5m "Задача фонового анализа"
+      /auto /async /name my_task /workflow deploy "Деплой на staging"
+      /auto /async /drop task123
     """
 
 

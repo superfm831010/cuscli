@@ -1151,6 +1151,49 @@ TOOL_DISPLAY_MESSAGES = {
         "ar": "غير معروف",
         "ru": "неизвестный",
     },
+    # WebSearchTool and WebCrawlTool text
+    "tool_text.sources": {
+        "en": "Sources:",
+        "zh": "搜索源：",
+        "ja": "ソース：",
+        "ar": "المصادر:",
+        "ru": "Источники:",
+    },
+    "tool_text.location": {
+        "en": "Location:",
+        "zh": "位置：",
+        "ja": "場所：",
+        "ar": "الموقع:",
+        "ru": "Местоположение:",
+    },
+    "tool_text.limit": {
+        "en": "Limit:",
+        "zh": "数量限制：",
+        "ja": "制限：",
+        "ar": "الحد:",
+        "ru": "Лимит:",
+    },
+    "tool_text.max_depth": {
+        "en": "Max Depth:",
+        "zh": "最大深度：",
+        "ja": "最大深度：",
+        "ar": "العمق الأقصى:",
+        "ru": "Макс. глубина:",
+    },
+    "tool_text.include_paths": {
+        "en": "Include Paths:",
+        "zh": "包含路径：",
+        "ja": "含むパス：",
+        "ar": "تضمين المسارات:",
+        "ru": "Включить пути:",
+    },
+    "tool_text.exclude_paths": {
+        "en": "Exclude Paths:",
+        "zh": "排除路径：",
+        "ja": "除外パス：",
+        "ar": "استبعاد المسارات:",
+        "ru": "Исключить пути:",
+    },
     # LoadExtraDocumentTool
     "tool_display.load_extra_document": {
         "en": "[bold magenta]{{ name }}[/]",
@@ -1187,6 +1230,94 @@ TOOL_DISPLAY_MESSAGES = {
         "ja": ("[bold green]{{ name }}[/]\n" "{{ vars_text }}"),
         "ar": ("[bold green]{{ name }}[/]\n" "{{ vars_text }}"),
         "ru": ("[bold green]{{ name }}[/]\n" "{{ vars_text }}"),
+    },
+    # WebSearchTool
+    "tool_display.web_search": {
+        "en": (
+            "[dim]Query:[/dim] [bold cyan]{{ query }}[/]"
+            "{{ sources_text }}{{ location_text }}{{ limit_text }}"
+        ),
+        "zh": (
+            "[dim]查询：[/dim] [bold cyan]{{ query }}[/]"
+            "{{ sources_text }}{{ location_text }}{{ limit_text }}"
+        ),
+        "ja": (
+            "[dim]クエリ：[/dim] [bold cyan]{{ query }}[/]"
+            "{{ sources_text }}{{ location_text }}{{ limit_text }}"
+        ),
+        "ar": (
+            "[dim]الاستعلام:[/dim] [bold cyan]{{ query }}[/]"
+            "{{ sources_text }}{{ location_text }}{{ limit_text }}"
+        ),
+        "ru": (
+            "[dim]Запрос:[/dim] [bold cyan]{{ query }}[/]"
+            "{{ sources_text }}{{ location_text }}{{ limit_text }}"
+        ),
+    },
+    "tool_title.web_search": {
+        "en": "AutoCoder wants to search the web",
+        "zh": "AutoCoder 想要搜索网页",
+        "ja": "AutoCoder がウェブを検索したいです",
+        "ar": "AutoCoder يريد البحث في الويب",
+        "ru": "AutoCoder хочет выполнить поиск в интернете",
+    },
+    "tool_result.web_search.success": {
+        "en": "Web search completed successfully",
+        "zh": "网页搜索完成",
+        "ja": "ウェブ検索が正常に完了しました",
+        "ar": "تم البحث في الويب بنجاح",
+        "ru": "Поиск в интернете успешно завершен",
+    },
+    "tool_result.web_search.failure": {
+        "en": "Web search failed",
+        "zh": "网页搜索失败",
+        "ja": "ウェブ検索に失敗しました",
+        "ar": "فشل البحث في الويب",
+        "ru": "Поиск в интернете не удался",
+    },
+    # WebCrawlTool
+    "tool_display.web_crawl": {
+        "en": (
+            "[dim]URL:[/dim] [bold cyan]{{ url }}[/]"
+            "{{ limit_text }}{{ depth_text }}{{ options_text }}"
+        ),
+        "zh": (
+            "[dim]URL：[/dim] [bold cyan]{{ url }}[/]"
+            "{{ limit_text }}{{ depth_text }}{{ options_text }}"
+        ),
+        "ja": (
+            "[dim]URL：[/dim] [bold cyan]{{ url }}[/]"
+            "{{ limit_text }}{{ depth_text }}{{ options_text }}"
+        ),
+        "ar": (
+            "[dim]URL:[/dim] [bold cyan]{{ url }}[/]"
+            "{{ limit_text }}{{ depth_text }}{{ options_text }}"
+        ),
+        "ru": (
+            "[dim]URL:[/dim] [bold cyan]{{ url }}[/]"
+            "{{ limit_text }}{{ depth_text }}{{ options_text }}"
+        ),
+    },
+    "tool_title.web_crawl": {
+        "en": "AutoCoder wants to crawl a webpage",
+        "zh": "AutoCoder 想要爬取网页",
+        "ja": "AutoCoder がウェブページをクロールしたいです",
+        "ar": "AutoCoder يريد زحف صفحة ويب",
+        "ru": "AutoCoder хочет сканировать веб-страницу",
+    },
+    "tool_result.web_crawl.success": {
+        "en": "Web crawl completed successfully",
+        "zh": "网页爬取完成",
+        "ja": "ウェブクロールが正常に完了しました",
+        "ar": "تم زحف الويب بنجاح",
+        "ru": "Сканирование веб-страницы успешно завершено",
+    },
+    "tool_result.web_crawl.failure": {
+        "en": "Web crawl failed",
+        "zh": "网页爬取失败",
+        "ja": "ウェブクロールに失敗しました",
+        "ar": "فشل زحف الويب",
+        "ru": "Сканирование веб-страницы не удалось",
     },
     "tool_title.execute_workflow": {
         "en": "AutoCoder wants to execute workflow",

@@ -16,7 +16,7 @@ from ..priority_directory_finder import (
     PriorityDirectoryFinder,
     FinderConfig,
     SearchStrategy,
-    ValidationMode
+    ValidationMode,
 )
 
 
@@ -60,14 +60,14 @@ class ToolsManager:
         config.add_directory(
             str(current_dir / ".autocodertools"),
             priority=1,
-            validation_mode=ValidationMode.HAS_FILES
+            validation_mode=ValidationMode.HAS_FILES,
         )
 
         # 2. .auto-coder/.autocodertools
         config.add_directory(
             str(current_dir / ".auto-coder" / ".autocodertools"),
             priority=2,
-            validation_mode=ValidationMode.HAS_FILES
+            validation_mode=ValidationMode.HAS_FILES,
         )
 
         # 3. ~/.auto-coder/.autocodertools
@@ -75,14 +75,14 @@ class ToolsManager:
         config.add_directory(
             str(home_dir / ".auto-coder" / ".autocodertools"),
             priority=3,
-            validation_mode=ValidationMode.HAS_FILES
+            validation_mode=ValidationMode.HAS_FILES,
         )
 
         # 4. ~/.auto-coder/.autocodertools/repos/<项目名> (最低优先级)
         config.add_directory(
             str(home_dir / ".auto-coder" / ".autocodertools" / "repos" / project_name),
             priority=4,
-            validation_mode=ValidationMode.HAS_FILES
+            validation_mode=ValidationMode.HAS_FILES,
         )
 
         finder = PriorityDirectoryFinder(config)
@@ -94,7 +94,6 @@ class ToolsManager:
         else:
             logger.warning("未找到任何工具目录")
             return []
-
 
     def load_tools(self, force_reload: bool = False) -> ToolsLoadResult:
         """
@@ -142,15 +141,15 @@ class ToolsManager:
         unique_tools = self._deduplicate_tools(all_tools)
 
         result = ToolsLoadResult(
-            success=True,
-            tools=unique_tools,
-            failed_count=failed_count
+            success=True, tools=unique_tools, failed_count=failed_count
         )
         self._result_cache = result
 
         return result
 
-    def _create_tool_command(self, file_path: str, source_dir: str) -> Optional[ToolCommand]:
+    def _create_tool_command(
+        self, file_path: str, source_dir: str
+    ) -> Optional[ToolCommand]:
         """
         创建工具命令对象
 
@@ -175,7 +174,7 @@ class ToolsManager:
             help_text=help_text,
             is_executable=is_executable,
             file_extension=path.suffix,
-            source_directory=source_dir
+            source_directory=source_dir,
         )
 
     def _deduplicate_tools(self, tools: List[ToolCommand]) -> List[ToolCommand]:
@@ -206,15 +205,16 @@ class ToolsManager:
             else:
                 # 选择优先级最高的工具
                 best_tool = min(
-                    tool_list,
-                    key=lambda t: dir_priority.get(t.source_directory, 999)
+                    tool_list, key=lambda t: dir_priority.get(t.source_directory, 999)
                 )
                 unique_tools.append(best_tool)
 
                 # 记录被覆盖的工具
                 for tool in tool_list:
                     if tool != best_tool:
-                        logger.debug(f"工具 {name} 在 {tool.source_directory} 被 {best_tool.source_directory} 中的版本覆盖")
+                        logger.debug(
+                            f"工具 {name} 在 {tool.source_directory} 被 {best_tool.source_directory} 中的版本覆盖"
+                        )
 
         return unique_tools
 
@@ -252,7 +252,7 @@ class ToolsManager:
     @byzerllm.prompt()
     def get_tools_prompt(self) -> str:
         """
-        # Available External Tool Commands
+        # Available External(or Custom) Tool Commands
 
         Project Name: {{ project_name }}
         Current Project Path: {{ project_path }}
@@ -295,7 +295,10 @@ class ToolsManager:
         3. **Global user**: `~/.auto-coder/.autocodertools/`
         4. **Project-specific global**: `~/.auto-coder/.autocodertools/repos/{{ project_name }}/` (lowest priority)
 
-        > **Note**: Tools with identical names in higher priority directories will override those in lower priority directories.
+        **Note**:
+        - Tools with identical names in higher priority directories will override those in lower priority directories.
+        - The source code of the tools is in the directory `{{ autocoder_home }}/.auto-coder/tool_repos/`.
+        - To inspect tools or tool_repos content, use `execute_command` tool (e.g., `ls`) since the `.auto-coder` directory is excluded from `search_files` results.
 
         ### Supported File Types
         - **Executable binaries** (compiled tools, **recommended**)
@@ -359,18 +362,20 @@ class ToolsManager:
                 "tools_info": [],
                 "failed_count": 0,
                 "tools_directories": self.tools_dirs,
-                "error_message": result.error_message or "未找到任何工具"
-            } # type: ignore[return]
+                "error_message": result.error_message or "未找到任何工具",
+            }  # type: ignore[return]
 
         tools_info = []
         for tool in result.tools:
-            tools_info.append({
-                "name": tool.name,
-                "help_text": tool.help_text,
-                "is_executable": tool.is_executable,
-                "file_extension": tool.file_extension,
-                "source_directory": tool.source_directory
-            })
+            tools_info.append(
+                {
+                    "name": tool.name,
+                    "help_text": tool.help_text,
+                    "is_executable": tool.is_executable,
+                    "file_extension": tool.file_extension,
+                    "source_directory": tool.source_directory,
+                }
+            )
 
         project_name = get_project_name()
 
@@ -381,5 +386,5 @@ class ToolsManager:
             "tools_count": len(result.tools),
             "tools_info": tools_info,
             "failed_count": result.failed_count,
-            "tools_directories": self.tools_dirs
-        } # type: ignore[return]
+            "tools_directories": self.tools_dirs,
+        }  # type: ignore[return]

@@ -9,6 +9,7 @@ from loguru import logger
 
 class RAGConfig(BaseModel):
     """RAG 配置项模型"""
+
     name: str
     server_name: str  # 实际的服务器地址，如 http://127.0.0.1:8107/v1
     api_key: Optional[str] = None
@@ -18,16 +19,23 @@ class RAGConfig(BaseModel):
 class RAGManager:
     """RAG 管理器，用于读取和管理 RAG 服务器配置"""
 
+    # 默认的内置 RAG 配置名称
+    CONVERSATION = "conversation"
+    CODEBASE = "codebase"
+
     def __init__(self, args: AutoCoderArgs):
         self.args = args
         self.configs: List[RAGConfig] = []
         self._load_configs()
+        self._add_default_rags()
 
     def _load_configs(self):
         """加载 RAG 配置，优先从项目配置，然后从全局配置"""
         # 优先读取项目级别配置
         base_path = Path(self.args.source_dir) if self.args.source_dir else Path.cwd()
-        project_config_path = base_path / ".auto-coder" / "auto-coder.web" / "rags" / "rags.json"
+        project_config_path = (
+            base_path / ".auto-coder" / "auto-coder.web" / "rags" / "rags.json"
+        )
 
         if project_config_path.exists():
             logger.info(f"正在加载项目级别 RAG 配置: {project_config_path}")
@@ -45,7 +53,7 @@ class RAGManager:
     def _load_project_config(self, config_path: str):
         """加载项目级别的 RAG 配置"""
         try:
-            with open(config_path, 'r', encoding='utf-8') as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 config_data = json.load(f)
 
             if "data" in config_data and isinstance(config_data["data"], list):
@@ -55,14 +63,20 @@ class RAGManager:
                             name=item.get("name", ""),
                             server_name=item.get("base_url", ""),
                             api_key=item.get("api_key"),
-                            description=item.get("description")
+                            description=item.get("description"),
                         )
                         self.configs.append(rag_config)
-                        logger.info(f"已加载 RAG 配置: {rag_config.name} -> {rag_config.server_name}")
+                        logger.info(
+                            f"已加载 RAG 配置: {rag_config.name} -> {rag_config.server_name}"
+                        )
                     except Exception as e:
-                        logger.error(f"解析项目级别 RAG 配置项时出错: {e}, 配置项: {item}")
+                        logger.error(
+                            f"解析项目级别 RAG 配置项时出错: {e}, 配置项: {item}"
+                        )
             else:
-                logger.error(f"项目级别 RAG 配置格式错误，缺少 'data' 字段或 'data' 不是列表")
+                logger.error(
+                    f"项目级别 RAG 配置格式错误，缺少 'data' 字段或 'data' 不是列表"
+                )
 
         except json.JSONDecodeError as e:
             logger.error(f"项目级别 RAG 配置文件 JSON 格式错误: {e}")
@@ -72,7 +86,7 @@ class RAGManager:
     def _load_global_config(self, config_path: str):
         """加载全局级别的 RAG 配置"""
         try:
-            with open(config_path, 'r', encoding='utf-8') as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 config_data = json.load(f)
 
             if "data" in config_data and isinstance(config_data["data"], list):
@@ -82,14 +96,18 @@ class RAGManager:
                             name=item.get("name", ""),
                             server_name=item.get("base_url", ""),
                             api_key=item.get("api_key"),
-                            description=item.get("description")
+                            description=item.get("description"),
                         )
                         self.configs.append(rag_config)
-                        logger.info(f"已加载 RAG 配置: {rag_config.name} -> {rag_config.server_name}")
+                        logger.info(
+                            f"已加载 RAG 配置: {rag_config.name} -> {rag_config.server_name}"
+                        )
                     except Exception as e:
                         logger.error(f"解析全局 RAG 配置项时出错: {e}, 配置项: {item}")
             else:
-                logger.error(f"全局 RAG 配置格式错误，缺少 'data' 字段或 'data' 不是列表")
+                logger.error(
+                    f"全局 RAG 配置格式错误，缺少 'data' 字段或 'data' 不是列表"
+                )
 
         except json.JSONDecodeError as e:
             logger.error(f"全局 RAG 配置文件 JSON 格式错误: {e}")
@@ -136,3 +154,32 @@ class RAGManager:
     def has_configs(self) -> bool:
         """检查是否有可用的配置"""
         return len(self.configs) > 0
+
+    def _add_default_rags(self):
+        """添加默认的 RAG 配置"""
+        # 添加会话知识库
+        conversation_rag = RAGConfig(
+            name=self.CONVERSATION,
+            server_name="builtin://conversation",
+            description="Knowledge base of project's historical conversations. Use _conversation_ knowledge base when you need to recall what was discussed before.",
+        )
+        self.configs.append(conversation_rag)
+        logger.info(f"已添加默认 RAG 配置: {self.CONVERSATION}")
+
+        # 只有配置了 codebase_rag_suffixs 才添加代码知识库
+        if self.args.codebase_rag_suffixs:
+            code_rag = RAGConfig(
+                name=self.CODEBASE,
+                server_name="builtin://codebase",
+                description="Knowledge base of current project's source code. Use _codebase_ knowledge base when you want to query project code-related content.",
+            )
+            self.configs.append(code_rag)
+            logger.info(
+                f"已添加默认 RAG 配置: {self.CODEBASE} (文件后缀: {self.args.codebase_rag_suffixs})"
+            )
+        else:
+            logger.info(f"未配置 codebase_rag_suffixs，跳过 {self.CODEBASE} RAG 的注册")
+
+    def is_builtin_rag(self, name: str) -> bool:
+        """检查是否为内置 RAG"""
+        return name in [self.CONVERSATION, self.CODEBASE]

@@ -725,6 +725,13 @@ Available subcommands:
         "ar": "تم إضافة/تحديث النموذج '{{name}}' بنجاح.",
         "ru": "Модель '{{name}}' успешно добавлена/обновлена.",
     },
+    "models_auto_set_model": {
+        "en": "Auto-configured model to '{{name}}' (no model was previously set).",
+        "zh": "已自动设置当前模型为 '{{name}}'（之前未设置模型）。",
+        "ja": "モデルを '{{name}}' に自動設定しました（以前はモデルが設定されていませんでした）。",
+        "ar": "تم تكوين النموذج تلقائيًا إلى '{{name}}' (لم يتم تعيين نموذج مسبقًا).",
+        "ru": "Модель автоматически настроена на '{{name}}' (ранее модель не была установлена).",
+    },
     "models_add_failed": {
         "en": "Failed to add model '{{name}}'. Model not found in defaults.",
         "zh": "添加模型 '{{name}}' 失败。在默认模型中未找到该模型。",
@@ -1053,6 +1060,13 @@ Available subcommands:
         "ja": "このスクリプトを実行しますか？",
         "ar": "هل تريد تنفيذ هذا السكريبت؟",
         "ru": "Хотите выполнить этот скрипт?",
+    },
+    "official_doc": {
+        "en": "Official Documentation: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI",
+        "zh": "官方文档: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI",
+        "ja": "公式ドキュメント: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI",
+        "ar": "الوثائق الرسمية: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI",
+        "ru": "Официальная документация: https://uelng8wukz.feishu.cn/wiki/NhPNwSRcWimKFIkQINIckloBncI",
     },
     "plugins_desc": {
         "en": "Manage plugins",
@@ -1437,6 +1451,13 @@ Rules file usage:
         "ja": "単一のシェルコマンドを実行",
         "ar": "تنفيذ أمر shell واحد",
         "ru": "Выполнить одну команду shell",
+    },
+    "workflow_shortcut_desc": {
+        "en": "Execute a workflow (shortcut for /workflow)",
+        "zh": "执行工作流 (/workflow 的快捷方式)",
+        "ja": "ワークフローを実行 (/workflow のショートカット)",
+        "ar": "تنفيذ سير العمل (اختصار لـ /workflow)",
+        "ru": "Выполнить workflow (ярлык для /workflow)",
     },
     "plugin_commands_title": {
         "en": "Plugin Commands:",

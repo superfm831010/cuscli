@@ -21,7 +21,7 @@ maintainability and separation of concerns:
 
 # Import core classes and functions
 from .models import CoreMemory
-from .main_manager import MemoryManager, get_memory_manager
+from .main_manager import MemoryManager, get_memory_manager, get_global_memory_manager
 from .compatibility import (
     save_memory,
     save_memory_with_new_memory,
@@ -45,6 +45,7 @@ __all__ = [
     'MemoryManager',
     'CoreMemory', 
     'get_memory_manager',
+    'get_global_memory_manager',
     'save_memory',
     'save_memory_with_new_memory',
     'load_memory',

@@ -6,6 +6,7 @@ import os
 import time
 from typing import List, Dict, Any, Optional, Union
 
+
 class SourceCode(pydantic.BaseModel):
     module_name: str
     source_code: str
@@ -13,13 +14,20 @@ class SourceCode(pydantic.BaseModel):
     tokens: int = -1
     metadata: Dict[str, Any] = {}
 
-class SourceCodeList():
+
+class SourceCodeList:
     def __init__(self, sources: List[SourceCode]):
         self.sources = sources
 
     def to_str(self):
-        return "\n".join([f"##File: {source.module_name}\n{source.source_code}\n" for source in self.sources])
-    
+        return "\n".join(
+            [
+                f"##File: {source.module_name}\n{source.source_code}\n"
+                for source in self.sources
+            ]
+        )
+
+
 class TranslateReadme(pydantic.BaseModel):
     filename: str = pydantic.Field(..., description="需要翻译的文件路径")
     content: str = pydantic.Field(..., description="翻译后的内容")
@@ -164,7 +172,7 @@ def detect_env() -> EnvInfo:
 
     conda_env = os.environ.get("CONDA_DEFAULT_ENV")
     virtualenv = os.environ.get("VIRTUAL_ENV")
-    
+
     # Get default shell
     if os_name == "win32":
         default_shell = os.environ.get("COMSPEC", "cmd.exe")
@@ -173,7 +181,7 @@ def detect_env() -> EnvInfo:
 
     # Get home directory
     home_dir = os.path.expanduser("~")
-    
+
     # Get current working directory
     cwd = os.getcwd()
 
@@ -244,7 +252,7 @@ class AutoCoderArgs(pydantic.BaseModel):
     execute: Optional[bool] = None
     package_name: str = ""
     script_path: str = ""
-        
+
     model: str = ""
     chat_model: str = ""
     model_max_length: int = 2000
@@ -262,13 +270,14 @@ class AutoCoderArgs(pydantic.BaseModel):
     voice2text_model: str = ""
     text2voice_model: str = ""
     commit_model: str = ""
-    
+    model_file: Optional[str] = None
+
     skip_build_index: bool = False
     skip_filter_index: bool = False
 
     index_model: str = ""
     index_filter_model: str = ""
-    index_filter_model_max_input_length: int = 50*1024
+    index_filter_model_max_input_length: int = 50 * 1024
     index_model_max_length: int = 0
     index_model_max_input_length: int = 0
     index_model_anti_quota_limit: int = 0
@@ -277,39 +286,41 @@ class AutoCoderArgs(pydantic.BaseModel):
     enable_agentic_edit: bool = True
     enable_agentic_auto_approve: bool = False
     enable_agentic_dangerous_command_check: bool = False
+    enable_agentic_reasoning_content: bool = True
     agentic_max_rounds: int = 10000
-    agentic_mode:str = "act" #plan|act
+    agentic_mode: str = "act"  # plan|act
     agentic_connection_retries: int = 10
     agentic_filter_retries: int = 3
-    
 
     index_filter_level: int = 0
     index_filter_enable_relevance_verification: bool = True
     index_filter_workers: int = 1
     index_filter_file_num: int = 10
     index_build_workers: int = 1
-    
+
     designer_model: str = ""
     file: Optional[str] = None
     ray_address: str = ""
-    anti_quota_limit: int = 1    
+    anti_quota_limit: int = 1
     print_request: bool = False
     py_packages: str = ""
-    
+
     search: Union[str, List[str]] = ""
     search_engine: str = ""
     search_engine_token: str = ""
-        
+
     rag_url: str = ""
     rag_token: str = ""
     rag_type: str = "storage"
     rag_storage_type: str = "duckdb"  # 向量化存储类型 byzer-storage | duckdb
-    rag_params_max_tokens: int = 500000 
+    rag_params_max_tokens: int = 500000
     rag_doc_filter_relevance: int = 2
     rag_context_window_limit: int = 120000
     rag_duckdb_vector_dim: int = 1024  # DuckDB 向量化存储的维度
     rag_duckdb_query_similarity: float = 0.1  # DuckDB 向量化检索 相似度 阈值
-    rag_duckdb_query_top_k: int = 10000  # DuckDB 向量化检索 返回 TopK个结果(且大于相似度)
+    rag_duckdb_query_top_k: int = (
+        10000  # DuckDB 向量化检索 返回 TopK个结果(且大于相似度)
+    )
     rag_index_build_workers: int = 10
     rag_emb_dim: int = 1024
     rag_emb_text_size: int = 1024
@@ -319,7 +330,6 @@ class AutoCoderArgs(pydantic.BaseModel):
 
     include_rules: bool = True
 
-    
     # 回答用户问题时，使用哪种对话历史策略
     # single_round: 单轮对话
     # multi_round: 多轮对话
@@ -328,6 +338,7 @@ class AutoCoderArgs(pydantic.BaseModel):
     verify_file_relevance_score: int = 6
     enable_rag_search: Union[bool, str] = False
     enable_rag_context: Union[bool, str] = False
+    codebase_rag_suffixs: Optional[str] = None
     collection: Optional[str] = None
     collections: Optional[str] = None
 
@@ -338,9 +349,9 @@ class AutoCoderArgs(pydantic.BaseModel):
     image_file: str = ""
     image_mode: str = "direct"
     image_max_iter: int = 1
-    
+
     urls: Union[str, List[str]] = ""
-    urls_use_model: bool = False    
+    urls_use_model: bool = False
     command: Optional[str] = None
     doc_command: Optional[str] = None
     required_exts: Optional[str] = None
@@ -353,7 +364,7 @@ class AutoCoderArgs(pydantic.BaseModel):
     rag_build_name: Optional[str] = None
     disable_auto_window: bool = False
     filter_batch_size: int = 5
-    disable_segment_reorder: bool = False    
+    disable_segment_reorder: bool = False
     tokenizer_path: Optional[str] = None
     skip_confirm: bool = False
     silence: bool = False
@@ -367,7 +378,7 @@ class AutoCoderArgs(pydantic.BaseModel):
     context: Optional[str] = None
     editblock_similarity: float = 0.9
     include_project_structure: bool = False
-    new_session: bool = False    
+    new_session: bool = False
 
     prompt_review: Optional[str] = None
 
@@ -386,13 +397,13 @@ class AutoCoderArgs(pydantic.BaseModel):
     data_cells_max_num: int = 2000
     generate_times_same_model: int = 1
     rank_times_same_model: int = 1
-    
+
     # block:给定每个文件修改的代码块 file: 给定每个文件修改前后内容
     rank_strategy: str = "file"
 
     action: Union[List[str], Dict[str, Any]] = []
     cancel_token: Optional[str] = None
-    enable_global_memory: bool = False  
+    enable_global_memory: bool = False
     product_mode: str = "lite"
 
     keep_reasoning_content: bool = False
@@ -407,22 +418,21 @@ class AutoCoderArgs(pydantic.BaseModel):
 
     context_prune_strategy: str = "extract"
     context_prune: bool = True
-    context_prune_safe_zone_tokens: Union[str, int, float] = 40*1024
+    context_prune_safe_zone_tokens: Union[str, int, float] = 40 * 1024
     context_prune_sliding_window_size: int = 1000
     context_prune_sliding_window_overlap: int = 100
 
     # Range-based conversation pruning settings
-    enable_range_pruning: bool = False           # 是否启用区间裁剪
-    range_preserve_pairs: bool = True            # 是否保证user/assistant成对裁剪
-    range_storage_dir: Optional[str] = None      # 存储目录，None使用默认目录
-    range_backup_enabled: bool = True            # 是否启用备份
-    range_max_backup_files: int = 10             # 最大备份文件数
+    enable_range_pruning: bool = False  # 是否启用区间裁剪
+    range_preserve_pairs: bool = True  # 是否保证user/assistant成对裁剪
+    range_storage_dir: Optional[str] = None  # 存储目录，None使用默认目录
+    range_backup_enabled: bool = True  # 是否启用备份
+    range_max_backup_files: int = 10  # 最大备份文件数
 
     auto_command_max_iterations: int = 10
 
-    
     use_shell_commands: bool = True
-    
+
     skip_commit: bool = True
 
     enable_beta: bool = False
@@ -453,7 +463,7 @@ class AutoCoderArgs(pydantic.BaseModel):
     auto_fix_merge_max_attempts: int = 5
 
     enable_auto_select_rules: bool = True
-    
+
     ignore_clean_shadows: bool = False
 
     firecrawl_api_key: Optional[str] = None
@@ -464,6 +474,11 @@ class AutoCoderArgs(pydantic.BaseModel):
     # Default to 30 minutes
     call_subagent_timeout: float = 30 * 60
 
+    # RAG cache build workers, 0 means use half of cpu count
+    rag_cache_build_workers: int = 0
+    
+    # RAG run mode: True for one-time run command, False for serve daemon mode
+    rag_run_once: bool = False
+
     class Config:
         protected_namespaces = ()
-

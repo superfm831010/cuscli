@@ -1,11 +1,12 @@
-
 import os
+import platform
+import shutil
 import threading
 import time
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional, Callable, TYPE_CHECKING
+from typing import Optional, Callable, TYPE_CHECKING, Dict
 
 # 仅用于类型提示，避免循环导入
 if TYPE_CHECKING:
@@ -13,12 +14,43 @@ if TYPE_CHECKING:
 from loguru import logger as global_logger
 
 
+def _get_command_path(command: str) -> str:
+    """获取命令的完整路径，确保 Windows 兼容性"""
+    if os.path.isabs(command):
+        return command
+    full_path = shutil.which(command)
+    if full_path:
+        return full_path
+    if platform.system() == "Windows":
+        full_path = shutil.which(f"{command}.exe")
+        if full_path:
+            return full_path
+    return command
+
+
+def _build_env() -> Dict[str, str]:
+    """构建子进程环境变量，在 Windows 上自动配置 UTF-8"""
+    env = os.environ.copy()
+    if platform.system() == "Windows":
+        env.update(
+            {
+                "PYTHONIOENCODING": "utf-8",
+                "LANG": "zh_CN.UTF-8",
+                "LC_ALL": "zh_CN.UTF-8",
+            }
+        )
+    return env
+
+
 class QueueExecutor:
     """队列执行器 - 负责在 worktree 中执行队列中的任务"""
 
-    def __init__(self, queue_manager: Optional['QueueManager'] = None,
-                 max_concurrent_tasks: int = 1,
-                 execution_callback: Optional[Callable] = None):
+    def __init__(
+        self,
+        queue_manager: Optional["QueueManager"] = None,
+        max_concurrent_tasks: int = 1,
+        execution_callback: Optional[Callable] = None,
+    ):
         """
         初始化队列执行器
 
@@ -29,6 +61,7 @@ class QueueExecutor:
         """
         # 延迟导入以避免循环依赖
         from autocoder.common.agent_query_queue.queue_manager import QueueManager
+
         self.queue_manager = queue_manager or QueueManager()
         self.max_concurrent_tasks = max_concurrent_tasks
         self.execution_callback = execution_callback
@@ -50,8 +83,7 @@ class QueueExecutor:
 
         async_agent_dir = Path.home() / ".auto-coder" / "queue_agent"
         self.worktree_manager = WorktreeManager(
-            base_work_dir=str(async_agent_dir),
-            original_project_path=os.getcwd()
+            base_work_dir=str(async_agent_dir), original_project_path=os.getcwd()
         )
 
     def _get_project_name(self) -> str:
@@ -66,7 +98,7 @@ class QueueExecutor:
                 ["git", "remote", "get-url", "origin"],
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
             )
             if result.returncode == 0:
                 url = result.stdout.strip()
@@ -81,7 +113,9 @@ class QueueExecutor:
             pass
 
         # 清理项目名，只保留字母数字和下划线
-        project_name = "".join(c if c.isalnum() or c == "_" else "_" for c in project_name)
+        project_name = "".join(
+            c if c.isalnum() or c == "_" else "_" for c in project_name
+        )
         return project_name or "project"
 
     def start(self) -> None:
@@ -137,11 +171,7 @@ class QueueExecutor:
 
     def _start_task_execution(self, task) -> None:
         """启动任务执行"""
-        thread = threading.Thread(
-            target=self._execute_task,
-            args=(task,),
-            daemon=True
-        )
+        thread = threading.Thread(target=self._execute_task, args=(task,), daemon=True)
         self._current_tasks[task.task_id] = thread
         thread.start()
         global_logger.info(f"Started execution of task {task.task_id}")
@@ -159,9 +189,12 @@ class QueueExecutor:
         try:
             # 更新任务状态为运行中，并设置 worktree_name
             from autocoder.common.agent_query_queue.queue_manager import QueueTaskStatus
+
             self.queue_manager.update_task_status(task_id, QueueTaskStatus.RUNNING)
 
-            global_logger.info(f"Executing task {task_id} in worktree {task_worktree_name}")
+            global_logger.info(
+                f"Executing task {task_id} in worktree {task_worktree_name}"
+            )
 
             # 调用执行回调（如果有）
             if self.execution_callback:
@@ -174,32 +207,52 @@ class QueueExecutor:
             worktree_info = self._ensure_worktree(task_worktree_name)
 
             # 创建临时文件保存用户需求
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp_file:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".txt", delete=False, encoding="utf-8"
+            ) as tmp_file:
                 tmp_file.write(user_query)
                 tmp_file_path = tmp_file.name
 
             try:
-                # 构建执行命令
-                cmd = f"cat {tmp_file_path} | auto-coder.run --model {model} --verbose --continue"
+                # 构建执行命令（跨平台兼容，不使用 cat | 管道）
+                cmd_args = [
+                    _get_command_path("auto-coder.run"),
+                    "--model",
+                    model,
+                    "--verbose",
+                    "--continue",
+                ]
+
+                # 读取临时文件内容
+                with open(tmp_file_path, "r", encoding="utf-8") as f:
+                    input_content = f.read()
 
                 # 在 worktree 中执行命令
                 result = subprocess.run(
-                    cmd,
-                    shell=True,
+                    cmd_args,
+                    input=input_content,
                     cwd=worktree_info.path,
                     capture_output=True,
                     text=True,
-                    timeout=1800  # 30分钟超时
+                    encoding="utf-8",
+                    errors="replace",
+                    env=_build_env(),
+                    timeout=1800,  # 30分钟超时
                 )
 
                 if result.returncode == 0:
                     # 执行成功
-                    output = result.stdout.strip() if result.stdout else "Task executed successfully"
-                    from autocoder.common.agent_query_queue.queue_manager import QueueTaskStatus
+                    output = (
+                        result.stdout.strip()
+                        if result.stdout
+                        else "Task executed successfully"
+                    )
+                    from autocoder.common.agent_query_queue.queue_manager import (
+                        QueueTaskStatus,
+                    )
+
                     self.queue_manager.update_task_status(
-                        task_id,
-                        QueueTaskStatus.COMPLETED,
-                        result=output
+                        task_id, QueueTaskStatus.COMPLETED, result=output
                     )
                     global_logger.info(f"Task {task_id} completed successfully")
 
@@ -212,12 +265,17 @@ class QueueExecutor:
 
                 else:
                     # 执行失败
-                    error_msg = result.stderr.strip() if result.stderr else f"Command failed with return code {result.returncode}"
-                    from autocoder.common.agent_query_queue.queue_manager import QueueTaskStatus
+                    error_msg = (
+                        result.stderr.strip()
+                        if result.stderr
+                        else f"Command failed with return code {result.returncode}"
+                    )
+                    from autocoder.common.agent_query_queue.queue_manager import (
+                        QueueTaskStatus,
+                    )
+
                     self.queue_manager.update_task_status(
-                        task_id,
-                        QueueTaskStatus.FAILED,
-                        error_message=error_msg
+                        task_id, QueueTaskStatus.FAILED, error_message=error_msg
                     )
                     global_logger.error(f"Task {task_id} failed: {error_msg}")
 
@@ -239,10 +297,9 @@ class QueueExecutor:
             # 超时
             error_msg = "Task execution timed out (30 minutes)"
             from autocoder.common.agent_query_queue.queue_manager import QueueTaskStatus
+
             self.queue_manager.update_task_status(
-                task_id,
-                QueueTaskStatus.FAILED,
-                error_message=error_msg
+                task_id, QueueTaskStatus.FAILED, error_message=error_msg
             )
             global_logger.error(f"Task {task_id} timed out")
 
@@ -257,10 +314,9 @@ class QueueExecutor:
             # 其他异常
             error_msg = f"Unexpected error: {str(e)}"
             from autocoder.common.agent_query_queue.queue_manager import QueueTaskStatus
+
             self.queue_manager.update_task_status(
-                task_id,
-                QueueTaskStatus.FAILED,
-                error_message=error_msg
+                task_id, QueueTaskStatus.FAILED, error_message=error_msg
             )
             global_logger.error(f"Task {task_id} failed with exception: {e}")
 
@@ -284,9 +340,7 @@ class QueueExecutor:
         # 创建新的 worktree
         global_logger.info(f"Creating new worktree: {name_to_use}")
         return self.worktree_manager.create_worktree(
-            name=name_to_use,
-            user_query="Queue job worktree",
-            model="auto"
+            name=name_to_use, user_query="Queue job worktree", model="auto"
         )
 
     def get_running_tasks_count(self) -> int:

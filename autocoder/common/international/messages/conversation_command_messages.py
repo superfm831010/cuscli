@@ -77,6 +77,27 @@ CONVERSATION_COMMAND_MESSAGES = {
         "ar": "الحالة",
         "ru": "Статус"
     },
+    "conversation_table_time": {
+        "en": "Time",
+        "zh": "会话时间",
+        "ja": "会話時間",
+        "ar": "وقت المحادثة",
+        "ru": "Время"
+    },
+    "conversation_table_created_at": {
+        "en": "Created At",
+        "zh": "创建时间",
+        "ja": "作成日時",
+        "ar": "وقت الإنشاء",
+        "ru": "Создано"
+    },
+    "conversation_table_updated_at": {
+        "en": "Updated At",
+        "zh": "更新时间",
+        "ja": "更新日時",
+        "ar": "وقت التحديث",
+        "ru": "Обновлено"
+    },
     "conversation_status_current": {
         "en": "✓",
         "zh": "✓",
