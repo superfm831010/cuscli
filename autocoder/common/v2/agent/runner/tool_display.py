@@ -38,6 +38,8 @@ from autocoder.common.v2.agent.agentic_edit_types import (
     RunNamedSubagentsTool,
     LoadExtraDocumentTool,
     ExecuteWorkflowTool,
+    WebSearchTool,
+    WebCrawlTool,
 )
 
 
@@ -277,6 +279,63 @@ def get_tool_display_message(tool: BaseTool) -> str:
 
             return get_message_with_format(
                 "tool_display.execute_workflow", name=tool.name, vars_text=vars_text
+            )
+
+        elif isinstance(tool, WebSearchTool):
+            sources_text = ""
+            if tool.sources:
+                sources_label = get_message("tool_text.sources")
+                sources_text = f"\n[dim]{sources_label}[/dim] [yellow]{tool.sources}[/]"
+
+            location_text = ""
+            if tool.location:
+                location_label = get_message("tool_text.location")
+                location_text = (
+                    f"\n[dim]{location_label}[/dim] [green]{tool.location}[/]"
+                )
+
+            limit_text = ""
+            if tool.limit:
+                limit_label = get_message("tool_text.limit")
+                limit_text = f"\n[dim]{limit_label}[/dim] {tool.limit}"
+
+            return get_message_with_format(
+                "tool_display.web_search",
+                query=tool.query,
+                sources_text=sources_text,
+                location_text=location_text,
+                limit_text=limit_text,
+            )
+
+        elif isinstance(tool, WebCrawlTool):
+            limit_text = ""
+            if tool.limit:
+                limit_label = get_message("tool_text.limit")
+                limit_text = f"\n[dim]{limit_label}[/dim] {tool.limit}"
+
+            depth_text = ""
+            if tool.max_depth:
+                depth_label = get_message("tool_text.max_depth")
+                depth_text = f"\n[dim]{depth_label}[/dim] {tool.max_depth}"
+
+            options_text = ""
+            if tool.include_paths:
+                include_label = get_message("tool_text.include_paths")
+                options_text += (
+                    f"\n[dim]{include_label}[/dim] [green]{tool.include_paths}[/]"
+                )
+            if tool.exclude_paths:
+                exclude_label = get_message("tool_text.exclude_paths")
+                options_text += (
+                    f"\n[dim]{exclude_label}[/dim] [red]{tool.exclude_paths}[/]"
+                )
+
+            return get_message_with_format(
+                "tool_display.web_crawl",
+                url=tool.url,
+                limit_text=limit_text,
+                depth_text=depth_text,
+                options_text=options_text,
             )
 
         else:
@@ -529,6 +588,8 @@ def get_tool_title(tool: BaseTool) -> str:
         RunNamedSubagentsTool: "tool_title.run_named_subagents",
         LoadExtraDocumentTool: "tool_title.load_extra_document",
         ExecuteWorkflowTool: "tool_title.execute_workflow",
+        WebSearchTool: "tool_title.web_search",
+        WebCrawlTool: "tool_title.web_crawl",
     }
 
     message_key = tool_type_to_key.get(tool_type)

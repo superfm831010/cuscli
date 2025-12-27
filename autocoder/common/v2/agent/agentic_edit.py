@@ -24,12 +24,14 @@ from autocoder.common.conversations.llm_stats_models import (
     LLMCallMetadata,
     create_llm_metadata_from_token_usage_event,
 )
-from autocoder.common.conversations.exceptions import EmptyMessageError
 from autocoder.common.pruner.agentic_conversation_pruner import (
     AgenticConversationPruner,
 )
 
-from autocoder.common.save_formatted_log import save_formatted_log
+from autocoder.common.save_formatted_log import (
+    save_formatted_log,
+    save_stream_formatted_log,
+)
 from autocoder.common.v2.agent.agentic_edit_types import FileChangeEntry
 from autocoder.utils.llms import get_single_llm
 
@@ -60,6 +62,7 @@ from autocoder.common.v2.agent.agentic_edit_types import (
     # Event Types
     LLMOutputEvent,
     LLMThinkingEvent,
+    LLMReasoningEvent,
     ToolCallEvent,
     RetryEvent,
     ToolResultEvent,
@@ -84,6 +87,7 @@ from autocoder.common.v2.agent.agentic_callbacks import (
     AgenticCallbackPoint,
     AgenticContext,
 )
+from datetime import datetime, timezone
 
 
 class AgenticEdit:
@@ -146,19 +150,29 @@ class AgenticEdit:
 
         # 初始化 RAG 管理器并获取服务器信息
         self.rag_server_info = ""
+        self.rag_server_names: List[str] = []
+        self.codebase_rag_available: bool = False
         try:
             self.rag_manager = RAGManager(args)
             if self.rag_manager.has_configs():
                 self.rag_server_info = self.rag_manager.get_config_info()
+                self.rag_server_names = self.rag_manager.get_server_names()
+                self.codebase_rag_available = (
+                    "builtin://codebase" in self.rag_server_names
+                )
                 logger.info(
-                    f"RAG manager initialized with {len(self.rag_manager.get_all_configs())} configurations"
+                    f"RAG manager initialized with {len(self.rag_manager.get_all_configs())} configurations, codebase_rag_available: {self.codebase_rag_available}"
                 )
             else:
                 self.rag_server_info = "No available RAG server configurations found"
+                self.rag_server_names = []
+                self.codebase_rag_available = False
                 logger.info("No RAG configurations found")
         except Exception as e:
             logger.error(f"Error initializing RAG manager: {str(e)}")
             self.rag_manager = None
+            self.rag_server_names = []
+            self.codebase_rag_available = False
 
         # 对话管理器
         self.conversation_config = conversation_config
@@ -181,6 +195,85 @@ class AgenticEdit:
         # 初始化工具调用器，集成插件系统
         self.tool_caller = ToolCaller(agent=self, args=self.args, enable_plugins=True)
         logger.info("Tool caller initialized with plugin system")
+
+        # 注册默认的对话流式日志回调
+        self._register_default_stream_log_callback()
+
+    def _register_default_stream_log_callback(self):
+        """注册默认的对话流式日志回调"""
+
+        def _default_conversation_stream_logger(
+            ctx: AgenticContext, payload: Optional[Dict[str, Any]]
+        ) -> None:
+            """默认回调：将对话消息追加到流式日志"""
+            if payload is None:
+                return
+            try:
+                save_stream_formatted_log(self.args.source_dir, payload)
+            except Exception as e:
+                logger.warning(f"流式日志回调执行失败: {e}")
+
+        self.callbacks.register(
+            AgenticCallbackPoint.CONVERSATION_MESSAGE_APPENDED,
+            _default_conversation_stream_logger,
+        )
+        logger.debug("已注册默认的对话流式日志回调")
+
+    def _append_and_emit_message(
+        self,
+        conversations: List[Dict[str, str]],
+        agentic_context: AgenticContext,
+        role: str,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        llm_metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        统一的消息追加方法：写入数据库、更新内存对话、触发回调
+
+        Args:
+            conversations: 局部对话列表，会被直接修改（append）
+            agentic_context: Agentic 上下文
+            role: 消息角色（user/assistant）
+            content: 消息内容
+            metadata: 可选的元数据
+            llm_metadata: 可选的 LLM 元数据
+
+        Returns:
+            str: 消息 ID
+        """
+        # 步骤 1：落库
+        message_id = self.conversation_manager.append_message(
+            conversation_id=self.conversation_config.conversation_id,
+            role=role,
+            content=content,
+            metadata=metadata or {},
+            llm_metadata=llm_metadata,
+        )
+
+        # 步骤 2：更新传入的 conversations 列表（与原有行为一致）
+        content_with_hint = append_hint_to_text(
+            content, f"message_id: {message_id[0:8]}"
+        )
+        conversations.append({"role": role, "content": content_with_hint})
+
+        # 步骤 3：触发回调
+        payload = {
+            "conversation_id": self.conversation_config.conversation_id,
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "role": role,
+            "content": content,
+            "message_id": message_id,
+            "metadata": metadata or {},
+            "llm_metadata": llm_metadata or {},
+        }
+        self.callbacks.execute_callbacks(
+            AgenticCallbackPoint.CONVERSATION_MESSAGE_APPENDED,
+            agentic_context,
+            payload=payload,
+        )
+
+        return message_id
 
     def _get_parsed_safe_zone_tokens(self) -> int:
         """
@@ -386,21 +479,36 @@ class AgenticEdit:
          </ac_mod_write>
 
          ## read_file
-         Description: Request to read the contents of a file at the specified path. Use this when you need to examine the contents of an existing file you do not know the contents of, for example to analyze code, review text files, or extract information from configuration files. Automatically extracts raw text from PDF and DOCX files. May not be suitable for other types of binary files, as it returns the raw content as a string.
-
-         **IMPORTANT AC Module Check**: Before reading any file, first check if the file is located within an AC Module directory (a directory containing a .ac.mod.md file). If it is, you MUST read the module's .ac.mod.md file first using the ac_mod_read tool to understand the module's purpose, structure, and dependencies before deciding whether to read the specific file. This ensures you understand the full context and can determine if the file reading is necessary.
-
+         Description: Read file contents. Supports PDF, DOCX, PPTX and text files.
          Parameters:
-         - path: (required) The path of the file to read (relative to the current working directory {{ current_project }})
-         - start_line: (optional) Starting line number (1-based) to read from. If specified, only reads from this line onwards.
-         - end_line: (optional) Ending line number (1-based, inclusive) to read until. If specified, only reads up to this line.
-         - query: (optional) Try your best to describe what you want from the file. This will help the tool extract the most relevant content to reduce the number of tokens used.
+         - path: (required) File path. For multiple files, use comma-separated list: "a.py, b.py"
+         - start_line: (optional) Starting line number (1-based). For multiple files, use comma-separated list matching paths: "1, 50"
+         - end_line: (optional) Ending line number (1-based, -1 for end). For multiple files, use comma-separated list: "100, 150"
+         - query: (optional) Describe what you need to extract. For multiple files, use comma-separated list: "init function, handler"
+
          Usage:
          <read_file>
          <path>File path here</path>
-         <start_line>1</start_line>
-         <end_line>100</end_line>
-         <query>Query here</query>
+         </read_file>
+
+         If first attempt shows "Cannot read entire file", retry with line range:
+         <read_file>
+         <path>file.py</path>
+         <start_line>100</start_line>
+         <end_line>200</end_line>
+         </read_file>
+
+         Or retry with query to extract relevant content:
+         <read_file>
+         <path>file.py</path>
+         <query>authentication logic</query>
+         </read_file>
+
+         Multiple files with matching parameters:
+         <read_file>
+         <path>a.py, b.py</path>
+         <start_line>1, 50</start_line>
+         <end_line>100, 150</end_line>
          </read_file>
 
          ## write_to_file
@@ -461,9 +569,10 @@ class AgenticEdit:
 
          **Important Rules:**
          - No extra '=======' after REPLACE
-         - Max 1 newline before SEARCH or after REPLACE
+         - NO newlines between >>>>>>> REPLACE and the closing ``` (they must be on adjacent lines)
+         - The line immediately after ``` must be ##File: (no language identifier like ```python, just plain ```)
          - Use </diff> not </div> to close XML tags
-         - Use ``` to open and close the code block with file name when in multiple files mode
+         - Each file block must be wrapped in its own ``` pair
 
 
          Usage:
@@ -642,7 +751,7 @@ class AgenticEdit:
          </session_stop>
 
          ## conversation_message_ids_write
-         Description: Request to write conversation message IDs configuration for pruning. This tool allows you to manage which message IDs should be DELETED during conversation pruning. Message IDs are specified as comma-separated 8-character hexadecimal strings like "9226b3a4,204e1cd8". The action parameter determines how to handle the IDs: create (replace existing), append (add to existing), or delete (remove from existing).
+         Description: Request to write conversation message IDs configuration for pruning. This tool allows you to manage which message IDs should be DELETED during conversation pruning. Message IDs are specified as comma-separated 8-character hexadecimal strings like "9226b3a4,204e1cd8". The action parameter determines how to handle the IDs: create (replace existing), append (add to existing), or delete (remove from existing). *** Only when you are reminded to clean up the conversation then you can use this tool to clean up the conversation. ***
          Parameters:
          - message_ids: (required) Message IDs specification string for messages to DELETE. Format: "9226b3a4,204e1cd8,1f3a5b7c" (comma-separated 8-character hex strings)
          - action: (required) Action to perform: "create" (replace existing configuration), "append" (add to existing), or "delete" (remove from existing)
@@ -742,7 +851,7 @@ class AgenticEdit:
          </run_named_subagents>
 
          ## web_search
-         Description: Request to search the web using multiple API providers (Firecrawl, Metaso, BochaAI) with concurrent processing. When multiple API keys are configured, the tool will use all available providers concurrently to improve search coverage and reliability. Results are automatically merged, deduplicated, and sorted by relevance.
+         Description: Search the web and return a list of URLs with titles and descriptions. This is the first step in web research - use it to discover relevant pages and identify which URLs to explore further. The results provide an overview of available resources without the full page content. See the WEB RESEARCH section for detailed workflow guidance.
          Parameters:
          - query: (required) The search query
          - limit: (optional) Number of search results to return. Default is 5.
@@ -760,7 +869,7 @@ class AgenticEdit:
          </web_search>
 
          ## web_crawl
-         Description: Advanced web crawling tool supporting multiple API providers (Firecrawl, Metaso) with intelligent concurrent processing. Features automatic failover, quality comparison, and comprehensive content extraction.
+         Description: Extract full text content from a specific URL. Use this after web_search to get the complete page content for URLs you've identified as relevant. While web_search returns brief descriptions, web_crawl retrieves the entire page content in markdown format, enabling deep analysis of documentation, articles, or any web page. See the WEB RESEARCH section for detailed workflow guidance.
          Parameters:
          - url: (required) The starting URL to crawl
          - limit: (optional) Maximum number of pages to crawl. Default is 10. Use 1 for single-page scraping.
@@ -1258,123 +1367,293 @@ class AgenticEdit:
          - Essential for understanding context before code modification
          - Helps identify dependencies and potential side effects
 
-         # Internet/Remote Information Gathering
+         ====
 
-         ## Purpose
+        WEB RESEARCH
 
-         - Supplement local codebase knowledge with up-to-date internet information
-         - Gather documentation, examples, and best practices from external sources
-         - Access comprehensive content from documentation sites, blogs, and repositories
-         - Fill knowledge gaps when local context is insufficient
+        ## Overview
 
-         ## When to Use
+        When you need to gather information from the internet, use the `web_search` and `web_crawl` tools in an **iterative multi-round workflow**. This approach requires you to search multiple times, explore various URLs, and continuously refine your understanding until you have gathered sufficient, high-quality information.
 
-         - When encountering coding problems that persist after multiple attempts, use web search to gather suggestions and try new approaches
-         - When encountering unfamiliar technologies, libraries, or frameworks
-         - Need to verify current best practices or API changes
-         - Looking for implementation examples or troubleshooting guides
-         - Researching solutions to specific technical problems
-         - Validating assumptions about external dependencies or tools
+        ## CRITICAL: Iterative Search Strategy
 
+        **DO NOT stop after a single search.** Web research is an iterative process that typically requires 3-10 rounds of searching and crawling:
 
-         ## Two-Stage Internet Search Strategy
+        1. **Round 1: Initial Broad Search**
+           - Start with a general search query
+           - Review initial results and identify knowledge gaps
+           - Crawl 1-2 most promising URLs
 
-         ### Stage 1: web_search - Link Discovery (Optional if you know the URL already)
+        2. **Rounds 2-5: Targeted Deep Dives**
+           - Refine search queries based on what you learned
+           - Try different keyword combinations and phrasings
+           - Explore official documentation, GitHub repos, and Stack Overflow
+           - Crawl additional URLs to fill knowledge gaps
 
-         <web_search>
-         <query>Python FastAPI async database connection pooling best practices 2024</query>
-         <limit>8</limit>
-         <sources>web</sources>
-         <tbs>y</tbs>
-         </web_search>
+        3. **Rounds 6-10: Verification and Edge Cases**
+           - Search for alternative solutions or approaches
+           - Look for known issues, caveats, or limitations
+           - Cross-validate information across multiple sources
+           - Ensure you have complete understanding before concluding
 
-         **Purpose:** Discover relevant URLs and get overview of available resources
-         - Find official documentation, tutorials, and examples
-         - Identify authoritative sources and recent discussions
-         - Get search result summaries to assess content quality
-         - Locate specific documentation pages or GitHub repositories
+        **Stop Criteria - Only conclude research when:**
+        - You have found authoritative, consistent information from 2+ sources
+        - You understand the solution well enough to implement it confidently
+        - You have verified there are no major caveats or known issues
+        - Your knowledge gaps have been addressed
 
-         ### Stage 2: web_crawl - Content Extraction
+        ## Multi-Stage Web Research Workflow
 
-         <web_crawl>
-         <url>https://fastapi.tiangolo.com/advanced/async-sql-databases/</url>
-         <limit>5</limit>
-         <scrape_options>{"formats": ["markdown", "links"], "only_main_content": true, "remove_base64_images": true}</scrape_options>
-         <include_paths>/advanced,/tutorial</include_paths>
-         <max_depth>2</max_depth>
-         </web_crawl>
+        Each round follows this pattern:
 
-         **Purpose:** Extract complete, structured content from identified sources
-         - Get comprehensive documentation content in markdown format
-         - Extract code examples and implementation details
-         - Collect related links for further exploration
-         - Obtain clean, main content without navigation clutter
+        1. **Stage 1: Discovery with web_search**
+           - Search the web to find relevant URLs, titles, and descriptions
+           - Review results to identify the most promising sources
+           - web_search returns metadata (URLs, titles, snippets) but NOT full page content
+           - Use varied search queries (synonyms, different phrasings, specific error messages)
 
-         ## Handling Non-Web Content
+        2. **Stage 2: Extraction with web_crawl**
+           - Use web_crawl on specific URLs identified in Stage 1
+           - Extract complete page content in markdown format
+           - Get full documentation, code examples, and detailed information
+           - Read multiple pages, not just one
 
-         **For PDF, Word, Excel, and other document formats:**
+        3. **Stage 3: Evaluate and Iterate**
+           - Assess whether the information is sufficient and reliable
+           - Identify remaining questions or uncertainties
+           - Plan next search query if needed
+           - Repeat until satisfied
 
-         <execute_command>
-         <command>curl -L -o /tmp/document.pdf "https://example.com/technical-spec.pdf"</command>
-         <requires_approval>false</requires_approval>
-         </execute_command>
+        ## When to Use Web Research
 
-         <read_file>
-         <path>/tmp/document.pdf</path>
-         </read_file>
+        - When encountering coding problems that persist after multiple attempts
+        - When encountering unfamiliar technologies, libraries, or frameworks
+        - Need to verify current best practices or API changes
+        - Looking for implementation examples or troubleshooting guides
+        - Researching solutions to specific technical problems
+        - Validating assumptions about external dependencies or tools
 
-         - Download documents to temporary files using curl
-         - Use read_file to extract text content from downloaded files
-         - Especially useful for technical specifications, whitepapers, and official documentation
-         - If this way is not working, you can use web_crawl to crawl the document.
+        ## Content Verification Strategy
 
-         ## Content Verification Strategy
+        **Internet content requires careful validation through multiple sources:**
 
-         ### Critical Accuracy Considerations
+        1. **Source Authority Assessment:**
+           - Prioritize official documentation over blog posts
+           - Check publication dates and update recency
+           - Verify author credentials and source reputation
+           - Cross-reference multiple authoritative sources
 
-         **Internet content requires careful validation:**
+        2. **Cross-Validation Approaches (REQUIRED):**
+           - **Always compare information across 2+ sources**
+           - Check official repositories and changelogs
+           - Verify against local codebase patterns
+           - Test recommendations in isolated environments
+           - Search for conflicting opinions or known issues
 
-         1. **Source Authority Assessment:**
-            - Prioritize official documentation over blog posts
-            - Check publication dates and update recency
-            - Verify author credentials and source reputation
-            - Cross-reference multiple authoritative sources
+        3. **Quality Indicators:**
+           - Official documentation sites
+           - Well-maintained GitHub repositories with recent commits
+           - Stack Overflow/Reddit/Hacker News answers with high scores and recent activity
+           - Technical blogs from recognized experts or companies
+           - Outdated tutorials or deprecated examples (verify currency)
+           - Unverified forums or discussion boards
+           - Suspicious or low-quality sources
 
-         2. **Cross-Validation Approaches:**
-            - Compare information across multiple sources
-            - Check official repositories and changelogs
-            - Verify against local codebase patterns
-            - Test recommendations in isolated environments
+        ## Example Research Session
 
-         3. **Practical Verification:**
-            ```bash
-            # Test code examples from internet sources
-            python -c "import example_code; example_code.test_function()"
+        ```
+        Round 1: web_search("how to use library X for task Y")
+                 → web_crawl(official_docs_url)
+                 → Learned basics, but unclear on error handling
 
-            # Verify API endpoints and responses
-            curl -X GET "https://api.example.com/v1/test" | jq
+        Round 2: web_search("library X error handling best practices")
+                 → web_crawl(github_issues_url)
+                 → Found common pitfalls
 
-            # Check package versions and compatibility
-            pip show package_name | grep Version
-            ```
+        Round 3: web_search("library X vs alternatives for task Y")
+                 → web_crawl(comparison_article_url)
+                 → Confirmed X is the right choice
 
-         4. **Quality Indicators:**
-            - Official documentation sites
-            - Well-maintained GitHub repositories with recent commits
-            - Stack Overflow answers with high scores and recent activity
-            - Technical blogs from recognized experts or companies
-            - Outdated tutorials or deprecated examples
-            - Unverified forums or discussion boards
-            - Suspicious or low-quality sources
+        Round 4: web_search("library X version compatibility issues")
+                 → web_crawl(changelog_url)
+                 → Verified version requirements
+
+        → NOW ready to implement with confidence
+        ```
+
+         ====
+
+         SKILL: Persistent Learning from Conversations
+
+         ## Overview
+
+         Skills are a way to persist knowledge learned from conversations. When users want you to learn something from the current interaction, you can save that knowledge as a Skill - essentially creating a permanent "instruction manual" that teaches you how to complete specific tasks in the future.
+
+         ## When to Create Skills
+
+         Create a Skill when:
+         - The user explicitly asks you to "learn this", "remember this", "save this as a skill", or similar
+         - You've discovered a project-specific pattern, convention, or workflow that should be remembered
+         - The user teaches you how to do something specific to their project
+         - You need to persist domain knowledge that will be useful for future interactions
+
+         ## How to Create a Skill
+
+         **Step 1: Learn the Skill Specification**
+
+         Use the load_extra_document tool to get the complete Skill specification:
+
+         <load_extra_document>
+         <name>skill</name>
+         </load_extra_document>
+
+         **Step 2: Create the Skill Directory and SKILL.md File**
+
+         Skills are stored in one of two locations:
+
+         1. **Project-level Skills** (default): `.autocoderskills/` in the current project
+         2. **Global Skills**: `~/.auto-coder/.autocoderskills/` (when user says "save as global skill")
+
+         Each skill is a folder containing a `SKILL.md` file with:
+         - YAML header with `name` and `description`
+         - Detailed instructions, examples, and guidelines
+
+         **Step 3: Follow Skill Writing Best Practices**
+
+         When creating a Skill, ensure it includes:
+         - Clear tables for comparison (e.g., right vs wrong approaches)
+         - Copy-paste ready code examples
+         - Quick reference tables for common commands
+         - Key points summary (Guidelines section)
+
+         ## Example Skill Creation Workflow
+
+         ```
+         User: "I want you to learn how we handle database migrations in this project. Always use alembic with the specific naming convention we discussed."
+
+         Assistant:
+         1. Load skill specification: load_extra_document(name="skill")
+         2. Create skill directory: .autocoderskills/database-migrations/
+         3. Write SKILL.md with:
+            - Header: name: database-migrations, description: Database migration patterns using alembic
+            - Detailed instructions on naming conventions
+            - Example migration commands
+            - Common pitfalls to avoid
+            - Quick reference table
+         ```
+
+         ## When to Read Skills
+
+         Read existing skills before starting tasks to leverage learned knowledge:
+         - At the beginning of a new conversation or task
+         - When working on areas where skills might exist (e.g., database, API, testing)
+         - When the user asks you to "use what you learned" or "apply the skill"
+
+         ## Skill Index (README.md)
+
+         Each `.autocoderskills/` directory contains a `README.md` file that serves as an index of all available skills.
+
+         **README.md Format:**
+         ```markdown
+         # Agent Skills
+
+         | Skill | Description |
+         |-------|-------------|
+         | [database-migrations](./database-migrations/) | Database migration patterns using alembic |
+         | [api-conventions](./api-conventions/) | REST API naming and structure conventions |
+         | [testing-patterns](./testing-patterns/) | Unit and integration testing best practices |
+         ```
+         **Important**: When creating a new skill, always update the README.md to include the new skill entry.
+
+         ====
+
+         RAGs: CodeBase Search & Conversations Memory
+
+         ## Overview
+
+         You have access to built-in RAG (Retrieval Augmented Generation) knowledge bases that provide powerful semantic search capabilities for the current project. These knowledge bases are listed in the RAG_SERVER_LIST section and can be accessed using the `use_rag_tool` tool.
+
+        {% if codebase_rag_available %}
+        There are two built-in knowledge bases:
+        - **codebase**: Knowledge base of current project's source code
+        - **conversation**: Knowledge base of project's historical conversations
+        {% else %}
+        There is one built-in knowledge base:
+        - **conversation**: Knowledge base of project's historical conversations
+        {% endif %}
+
+         {% if codebase_rag_available %}
+         ## CodeBase Knowledge Base (codebase)
+
+         The codebase knowledge base allows you to perform semantic search across the entire project source code. This is **faster and more comprehensive** than using search tools like `search_files` or `grep`.
+
+         ### When to Use
+
+         - When you need to understand how a specific feature is implemented across the codebase
+         - When you want to find all locations related to a particular functionality
+         - When you need to understand the system architecture or design patterns used
+         - When searching for implementation details that span multiple files
+         - As a complement to traditional search tools for comprehensive code exploration
+
+         ### Advantages Over Traditional Search
+
+         - **Semantic Understanding**: Finds conceptually related code, not just text matches
+         - **Comprehensive Results**: Returns relevant context from across the entire codebase
+         - **Faster Discovery**: Quickly identifies relevant files and implementations
+         - **Better Context**: Provides more meaningful results for complex queries
+
+         ### Multi-Round Query Strategy
+
+         Like web research, codebase queries should follow an **iterative multi-round approach**:
+
+         1. **Round 1: Broad Discovery**
+            - Start with a general query about the functionality
+            - Example: "How is user authentication implemented?"
+            - Review results to identify key files and patterns
+
+         2. **Round 2-3: Targeted Deep Dives**
+            - Refine queries based on initial findings
+            - Example: "Where is the JWT token validation logic?"
+            - Example: "How does the session management work?"
+
+         3. **Round 4+: Specific Details**
+            - Query for specific implementation details
+            - Example: "Where are authentication errors handled?"
+            - Cross-reference with `read_file` for complete understanding
+
+         {% else %}
+         ## CodeBase Knowledge Base (codebase)
+
+         CodeBase Knowledge Base is currently unavailable because no builtin://codebase RAG server is configured.
+         To enable it, configure codebase_rag_suffixs in AutoCoderArgs or via project/global RAG settings to let the system register the builtin://codebase server.
+         {% endif %}
+
+         ## Conversation Knowledge Base (conversation)
+
+         The conversation knowledge base stores historical conversations from the user's interactions with auto-coder. This serves as a **memory system** that helps you understand user preferences and previous modifications.
+
+         ### When to Use
+
+         - When you need to recall previous discussions about a specific feature
+         - When you want to understand the user's coding preferences and style
+         - When you need context about why certain design decisions were made
+         - When the user references something that was discussed before
+         - When you want to provide more personalized and contextual assistance
+
+         ### Benefits
+
+         - **User Preferences**: Understand coding style, naming conventions, preferred patterns
+         - **Historical Context**: Recall why certain changes were made previously
+         - **Continuity**: Provide consistent assistance across multiple sessions
+         - **Personalization**: Make you behave more like a human collaborator who remembers past interactions
 
          ## Best Practices
 
-         - **Start Broad, Then Focus:** Use web_search to discover, web_crawl/curl/read_file to deep-dive
-         - **Multiple Source Validation:** Never rely on single internet source for critical decisions
-         - **Recency Awareness:** Prioritize recent content, especially for rapidly evolving technologies
-         - **Practical Testing:** Always test internet-sourced code examples before implementation
-         - **Local Documentation First:** Check local codebase and existing documentation before external search
-         - **Context Integration:** Adapt internet information to match local project patterns and requirements
+         1. **Combine Both Knowledge Bases**: Use codebase for implementation details and conversation for context/preferences
+         2. **Multi-Round Queries**: Don't stop after one query; iterate to build complete understanding
+         3. **Complement with Other Tools**: Use RAG results to guide your use of `read_file` and `search_files`
+         4. **Query Before Implementation**: Check both knowledge bases before making significant changes
+         5. **Memory-Aware Responses**: When the conversation knowledge base reveals user preferences, incorporate them into your work
 
          ====
 
@@ -1995,7 +2274,7 @@ class AgenticEdit:
 
          # Default workflow for editing codebase
 
-         1. `AC Module Discovery` → check if the codebase is using AC Modules and get an overview of available AC Modules
+         1. `Skills/AC Module Discovery` → check if the codebase is using Skills and AC Modules and get an overview of available Skills and AC Modules
          2. `Git` → use git related commands to view current uncommitted files and git log to review commit history for more context
          3. `list_files`(without recursively) → understand structure (if the codebase does not use AC Modules)
          4. `search_files/shell_command(grep)` → find specific patterns/symbols
@@ -2024,7 +2303,7 @@ class AgenticEdit:
 
          CAPABILITIES
 
-         - **SEARCH AND UNDERSTAND FIRST**: Your primary strength lies in systematically exploring and understanding codebases before making changes. Use search_file, execute_command (grep) and ac_mod_list/ac_mod_read/ac_mod_write tools to map project structure, identify patterns, and understand dependencies. This exploration-first approach is crucial for reliable code modifications.
+         - **Read Skills, SEARCH AND UNDERSTAND FIRST**: Your primary strength lies in systematically exploring and understanding codebases before making changes. Read Skills and Use search_file, execute_command (grep) and ac_mod_list/ac_mod_read/ac_mod_write tools to map project structure, identify patterns, and understand dependencies. This exploration-first approach is crucial for reliable code modifications.
          - **USE TODO FILE TOOLS**: When the requirements are complex, or it's a refactoring task, you should use todo_read/todo_write tools to track the steps of the task.
          - **VERIFY AFTER EDIT**: After making changes, use search_files or grep commands to verify no stale references remain and that new code integrates properly with existing patterns, write some tests/scripts to verify the changes.
          - You have access to tools that let you execute CLI commands on the user's computer, list files, view source code definitions, regex search, read and edit files, and ask follow-up questions. These tools help you effectively accomplish a wide range of tasks, such as writing code, making edits or improvements to existing files, understanding the current state of a project, performing system operations, and much more.
@@ -2039,7 +2318,7 @@ class AgenticEdit:
          RULES
 
          - Your current working directory is: {{current_project}}
-         - **MANDATORY SEARCH BEFORE EDIT**: Before editing any file, you MUST first SEARCHING FILES to understand its context, dependencies, and usage patterns.
+         - **MANDATORY READ SKILLS AND SEARCH FILES BEFORE EDIT**: Before editing any file, you MUST first READ SKILLS to understand the skills available and how to use them, SEARCHING FILES to understand its context, dependencies, and usage patterns.
          - When a directory is a AC MODULE, you should always read the .ac.mod.md file to understand the module's purpose, dependencies, and usage patterns.
          - **USE TODO FILE TOOLS**: When the requirements are complex, or it's a refactoring task, you should use todo_read/todo_write tools to track the steps of the task.
          - **VERIFY THROUGH SEARCH**: After making changes, use SEARCHING FILES to verify no stale references remain and that new code integrates properly with existing patterns.
@@ -2130,6 +2409,8 @@ class AgenticEdit:
             "files": "",
             "mcp_server_info": self.mcp_server_info,
             "rag_server_info": self.rag_server_info,
+            "codebase_rag_available": getattr(self, "codebase_rag_available", False),
+            "rag_server_names": ", ".join(getattr(self, "rag_server_names", [])),
             "enable_active_context_in_generate": self.args.enable_active_context_in_generate,
             "file_paths_str": "",
             "agentic_auto_approve": self.args.enable_agentic_auto_approve,
@@ -2184,6 +2465,7 @@ class AgenticEdit:
         Union[
             LLMOutputEvent,
             LLMThinkingEvent,
+            LLMReasoningEvent,
             ToolCallEvent,
             ToolResultEvent,
             CompletionEvent,
@@ -2379,10 +2661,10 @@ class AgenticEdit:
             logger.info("Removing last user message before adding new user input")
             conversations.pop()
 
-        conversations.append({"role": "user", "content": request.user_input})
-
-        self.conversation_manager.append_message(
-            conversation_id=self.conversation_config.conversation_id,
+        # 使用统一方法追加用户消息
+        self._append_and_emit_message(
+            conversations=conversations,
+            agentic_context=agentic_context,
             role="user",
             content=request.user_input,
             metadata={},
@@ -2509,7 +2791,11 @@ class AgenticEdit:
                         yield event
                     continue
 
-                if isinstance(event, (LLMOutputEvent, LLMThinkingEvent)):
+                if isinstance(event, LLMReasoningEvent):
+                    # Yield reasoning event for display, but don't add to assistant_buffer
+                    yield event
+
+                elif isinstance(event, (LLMOutputEvent, LLMThinkingEvent)):
                     assistant_buffer += event.text
                     yield event  # Yield text/thinking immediately for display
 
@@ -2564,20 +2850,12 @@ class AgenticEdit:
                                         )
 
                                 summary_text = "\n".join(lines)
-                                message_id = self.conversation_manager.append_message(
-                                    conversation_id=conv_id,
+                                self._append_and_emit_message(
+                                    conversations=conversations,
+                                    agentic_context=agentic_context,
                                     role="user",
                                     content=summary_text,
                                     metadata={},
-                                )
-                                conversations.append(
-                                    {
-                                        "role": "user",
-                                        "content": append_hint_to_text(
-                                            summary_text,
-                                            f"message_id: {message_id[0:8]}",
-                                        ),
-                                    }
                                 )
                                 # After injecting summary, finish current LLM cycle and let next round consume it
                                 break
@@ -2605,31 +2883,11 @@ class AgenticEdit:
                         contextual_event_factory=contextual_event_factory,
                     )
 
-                    # 预检查：确保消息内容不为空
-                    content_to_add = assistant_buffer + tool_xml
-                    if not content_to_add or (isinstance(content_to_add, str) and len(content_to_add.strip()) == 0):
-                        logger.error(
-                            f"检测到尝试添加空消息内容: "
-                            f"assistant_buffer='{assistant_buffer[:100] if assistant_buffer else None}', "
-                            f"tool_xml='{tool_xml[:100] if tool_xml else None}'"
-                        )
-                        raise EmptyMessageError(
-                            conversation_id=self.conversation_config.conversation_id,
-                            role="assistant",
-                            content_preview=f"assistant_buffer={repr(assistant_buffer[:50] if assistant_buffer else assistant_buffer)}, tool_xml={repr(tool_xml[:50] if tool_xml else tool_xml)}",
-                            call_location="agentic_edit.py:2608 (位置1: 添加带工具调用的助手消息)",
-                            additional_context={
-                                "assistant_buffer_length": len(assistant_buffer) if assistant_buffer else 0,
-                                "tool_xml_length": len(tool_xml) if tool_xml else 0,
-                                "tool_type": type(tool_obj).__name__ if tool_obj else "None",
-                                "has_llm_metadata": current_llm_metadata is not None,
-                            }
-                        )
-
-                    message_id = self.conversation_manager.append_message(
-                        conversation_id=self.conversation_config.conversation_id,
+                    message_id = self._append_and_emit_message(
+                        conversations=conversations,
+                        agentic_context=agentic_context,
                         role="assistant",
-                        content=content_to_add,
+                        content=assistant_buffer + tool_xml,
                         metadata={},
                         llm_metadata=current_llm_metadata,
                     )
@@ -2637,16 +2895,6 @@ class AgenticEdit:
                     # 缓存message_id，等待TokenUsageEvent到达后回写llm_metadata
                     if current_llm_metadata is None:
                         pending_assistant_message_id = message_id
-                    # 记录当前对话的token数量
-                    conversations.append(
-                        {
-                            "role": "assistant",
-                            "content": append_hint_to_text(
-                                assistant_buffer + tool_xml,
-                                f"message_id: {message_id[0:8]}",
-                            ),
-                        }
-                    )
 
                     assistant_buffer = ""  # Reset buffer after tool call
 
@@ -2744,20 +2992,12 @@ class AgenticEdit:
                         contextual_event_factory=contextual_event_factory,
                     )
 
-                    message_id = self.conversation_manager.append_message(
-                        conversation_id=self.conversation_config.conversation_id,
+                    self._append_and_emit_message(
+                        conversations=conversations,
+                        agentic_context=agentic_context,
                         role="user",
                         content=tool_executed_xml,
                         metadata={},
-                    )
-                    # 添加工具结果到对话历史
-                    conversations.append(
-                        {
-                            "role": "user",  # Simulating the user providing the tool result
-                            "content": append_hint_to_text(
-                                tool_executed_xml, f"message_id: {message_id[0:8]}"
-                            ),
-                        }
                     )
 
                     # 一次交互只能有一次工具，剩下的其实就没有用了，但是如果不让流式处理完，我们就无法获取服务端
@@ -2808,39 +3048,13 @@ class AgenticEdit:
                     last_message = conversations[-1]
                     if last_message["role"] != "assistant":
                         logger.info("Adding new assistant message")
-
-                        # 预检查：确保消息内容不为空
-                        if not assistant_buffer or (isinstance(assistant_buffer, str) and len(assistant_buffer.strip()) == 0):
-                            logger.error(
-                                f"检测到尝试添加空消息内容: assistant_buffer='{assistant_buffer[:100] if assistant_buffer else None}'"
-                            )
-                            raise EmptyMessageError(
-                                conversation_id=self.conversation_config.conversation_id,
-                                role="assistant",
-                                content_preview=f"assistant_buffer={repr(assistant_buffer[:50] if assistant_buffer else assistant_buffer)}",
-                                call_location="agentic_edit.py:2811 (位置2: 添加无工具调用的助手消息)",
-                                additional_context={
-                                    "assistant_buffer_length": len(assistant_buffer) if assistant_buffer else 0,
-                                    "tool_executed": tool_executed,
-                                    "has_llm_metadata": current_llm_metadata is not None,
-                                    "last_message_role": last_message.get("role") if conversations else "None",
-                                }
-                            )
-
-                        message_id = self.conversation_manager.append_message(
-                            conversation_id=self.conversation_config.conversation_id,
+                        self._append_and_emit_message(
+                            conversations=conversations,
+                            agentic_context=agentic_context,
                             role="assistant",
                             content=assistant_buffer,
                             metadata={},
                             llm_metadata=current_llm_metadata,
-                        )
-                        conversations.append(
-                            {
-                                "role": "assistant",
-                                "content": append_hint_to_text(
-                                    assistant_buffer, f"message_id: {message_id[0:8]}"
-                                ),
-                            }
                         )
 
                     elif last_message["role"] == "assistant":
@@ -2850,15 +3064,9 @@ class AgenticEdit:
                 # 添加系统提示，要求LLM必须使用工具或明确结束，而不是直接退出
                 logger.info("Adding system reminder to use tools or attempt completion")
 
-                conversations.append(
-                    {
-                        "role": "user",
-                        "content": "NOTE: You must use an appropriate tool (such as read_file, write_to_file, execute_command, etc.) or explicitly complete the task (using attempt_completion). Do not provide text responses without taking concrete actions. Please select a suitable tool to continue based on the user's task.",
-                    }
-                )
-
-                self.conversation_manager.append_message(
-                    conversation_id=self.conversation_config.conversation_id,
+                self._append_and_emit_message(
+                    conversations=conversations,
+                    agentic_context=agentic_context,
                     role="user",
                     content="NOTE: You must use an appropriate tool (such as read_file, write_to_file, execute_command, etc.) or explicitly complete the task (using attempt_completion). Do not provide text responses without taking concrete actions. Please select a suitable tool to continue based on the user's task.",
                     metadata={},
@@ -2884,7 +3092,15 @@ class AgenticEdit:
         generator: Generator[Tuple[str, Any], None, None],
         agentic_context: AgenticContext,
     ) -> Generator[
-        Union[LLMOutputEvent, LLMThinkingEvent, ToolCallEvent, ErrorEvent], None, None
+        Union[
+            LLMOutputEvent,
+            LLMThinkingEvent,
+            LLMReasoningEvent,
+            ToolCallEvent,
+            ErrorEvent,
+        ],
+        None,
+        None,
     ]:
         """
         Streamingly parses the LLM response generator, distinguishing between
@@ -2966,14 +3182,35 @@ class AgenticEdit:
                 return None
 
         last_metadata = None
+        reasoning_finished = (
+            False  # Track if content has started (reasoning must come before content)
+        )
+        in_reasoning = False  # Track if we are inside reasoning output
 
         try:
             for content_chunk, metadata in generator:
                 global_cancel.check_and_raise(token=self.cancel_token)
+
+                # Handle reasoning_content from metadata (before content starts)
+                if not reasoning_finished and metadata is not None:
+                    reasoning_content = getattr(metadata, "reasoning_content", None)
+                    if reasoning_content:
+                        # Add <inner_thinking> tag at the start of reasoning
+                        if not in_reasoning:
+                            yield LLMReasoningEvent(text="<inner_thinking>")
+                            in_reasoning = True
+                        yield LLMReasoningEvent(text=reasoning_content)
+
                 if not content_chunk:
                     last_metadata = metadata
                     continue
 
+                # Once content appears, reasoning phase is finished
+                # Close the inner_thinking tag if we were in reasoning mode
+                if in_reasoning and not reasoning_finished:
+                    yield LLMReasoningEvent(text="</inner_thinking>\n")
+                    in_reasoning = False
+                reasoning_finished = True
                 last_metadata = metadata
                 buffer += content_chunk
 

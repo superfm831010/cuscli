@@ -12,7 +12,9 @@ from autocoder.common.v2.agent.agentic_edit_types import (
 from autocoder.common import AutoCoderArgs
 import typing
 
-from autocoder.workflow_agents.exceptions import (
+if typing.TYPE_CHECKING:
+    from autocoder.common.v2.agent.agentic_edit import AgenticEdit
+    from autocoder.workflow_agents.exceptions import (
         WorkflowValidationError,
         WorkflowFileNotFoundError,
         WorkflowParseError,
@@ -20,9 +22,6 @@ from autocoder.workflow_agents.exceptions import (
         WorkflowAgentNotFoundError,
         WorkflowTemplateError,
     )
-
-if typing.TYPE_CHECKING:
-    from autocoder.common.v2.agent.agentic_edit import AgenticEdit
 
 
 def _generate_error_feedback(error: Exception, workflow_name: str) -> str:
@@ -35,7 +34,16 @@ def _generate_error_feedback(error: Exception, workflow_name: str) -> str:
 
     Returns:
         英文反馈指导文本
-    """    
+    """
+    # 运行时导入以避免循环依赖
+    from autocoder.workflow_agents.exceptions import (
+        WorkflowValidationError,
+        WorkflowFileNotFoundError,
+        WorkflowParseError,
+        WorkflowDependencyError,
+        WorkflowAgentNotFoundError,
+        WorkflowTemplateError,
+    )
 
     error_type = type(error).__name__
 

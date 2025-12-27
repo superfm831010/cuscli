@@ -1,334 +1,340 @@
 import os
-from typing import Dict, Any, Optional, List, Tuple
-from autocoder.common import AutoCoderArgs,SourceCode
+from typing import Optional, List, Tuple, Union
+from autocoder.common import AutoCoderArgs, SourceCode
 from autocoder.common.autocoderargs_parser import AutoCoderArgsParser
-from autocoder.common.v2.agent.agentic_edit_tools.base_tool_resolver import BaseToolResolver
+from autocoder.common.v2.agent.agentic_edit_tools.base_tool_resolver import (
+    BaseToolResolver,
+)
 from autocoder.common.v2.agent.agentic_edit_types import ReadFileTool, ToolResult
 from autocoder.common.pruner.context_pruner import PruneContext
-from autocoder.common import SourceCode
 from autocoder.common.tokens import count_string_tokens as count_tokens
+from autocoder.common.wrap_llm_hint.utils import add_hint_to_text
 from loguru import logger
 import typing
-import json
 from autocoder.rag.loaders import (
     extract_text_from_pdf,
     extract_text_from_docx,
-    extract_text_from_ppt
+    extract_text_from_ppt,
+    extract_text_from_excel,
 )
-from autocoder.common.llms.manager import LLMManager
-from autocoder.common.wrap_llm_hint.utils import add_hint_to_text
 
 if typing.TYPE_CHECKING:
     from autocoder.common.v2.agent.agentic_edit import AgenticEdit
 
 
 class ReadFileToolResolver(BaseToolResolver):
-    def __init__(self, agent: Optional['AgenticEdit'], tool: ReadFileTool, args: AutoCoderArgs):
-        super().__init__(agent, tool, args)
-        self.tool: ReadFileTool = tool  # For type hinting
-        
-        # Initialize AutoCoderArgs parser for flexible parameter parsing
-        self.args_parser = AutoCoderArgsParser()
-        
-        # 解析 context_prune_safe_zone_tokens 参数
-        parsed_safe_zone_tokens = self._get_parsed_safe_zone_tokens()
-        
-        self.context_pruner = PruneContext(
-            max_tokens=parsed_safe_zone_tokens,
-            args=self.args,
-            llm=self.agent.context_prune_llm
-        ) if self.agent and self.agent.context_prune_llm else None
+    """简化的文件读取工具解析器"""
 
-        # LLM manager for model context window queries
-        self.llm_manager = LLMManager()
+    def __init__(
+        self, agent: Optional["AgenticEdit"], tool: ReadFileTool, args: AutoCoderArgs
+    ):
+        super().__init__(agent, tool, args)
+        self.tool: ReadFileTool = tool
+
+        self.args_parser = AutoCoderArgsParser()
+        self.safe_zone_tokens = self._get_parsed_safe_zone_tokens()
+
+        # 初始化 context_pruner 用于 query 抽取
+        self.context_pruner = (
+            PruneContext(
+                max_tokens=self.safe_zone_tokens,
+                args=self.args,
+                llm=self.agent.context_prune_llm,
+            )
+            if self.agent and self.agent.context_prune_llm
+            else None
+        )
 
     def _get_parsed_safe_zone_tokens(self) -> int:
-        """
-        解析 context_prune_safe_zone_tokens 参数，支持多种格式
-        
-        Returns:
-            解析后的 token 数量
-        """
+        """解析 safe_zone_tokens 参数"""
         return self.args_parser.parse_context_prune_safe_zone_tokens(
-            self.args.context_prune_safe_zone_tokens,
-            self.args.code_model
+            self.args.context_prune_safe_zone_tokens, self.args.code_model
         )
 
-    def _extract_lines_by_range(self, content: str, start_line: Optional[int], end_line: Optional[int]) -> str:
-        """根据行号范围提取文件内容
-        
-        参数说明:
-        - start_line: 起始行号。正数表示从第N行开始(1-based)，负数表示从倒数第N行开始
-        - end_line: 结束行号。正数表示到第N行结束(1-based)，-1表示到文件末尾
-        """
+    def _extract_lines_by_range(
+        self, content: str, start_line: Optional[int], end_line: Optional[int]
+    ) -> str:
+        """根据行号范围提取内容（1-based，支持负数索引）"""
         if start_line is None and end_line is None:
             return content
-        
-        lines = content.split('\n')
-        total_lines = len(lines)
-        
-        # 处理行号参数（转换为0-based索引）
-        start_idx = 0
-        end_idx = total_lines
-        
-        if start_line is not None:
-            if start_line < 0:
-                # 负数表示从倒数第N行开始
-                start_idx = max(0, total_lines + start_line)
-            else:
-                # 正数表示从第N行开始(1-based)
-                start_idx = max(0, start_line - 1)
-        
-        if end_line is not None:
-            if end_line == -1:
-                # -1 表示到文件末尾
-                end_idx = total_lines
-            elif end_line < -1:
-                # 其他负数表示到倒数第N行结束
-                end_idx = max(0, total_lines + end_line + 1)
-            else:
-                # 正数表示到第N行结束(1-based)
-                end_idx = min(total_lines, end_line)
-        
-        # 验证行号范围
-        if start_line is not None and start_line > 0 and start_idx >= total_lines:
-            return f"Error: start_line {start_line} exceeds total lines {total_lines}"
-        
-        if start_line is not None and start_line < 0 and abs(start_line) > total_lines:
-            return f"Error: start_line {start_line} (倒数第{abs(start_line)}行) exceeds total lines {total_lines}"
-        
-        if start_idx >= end_idx and not (end_line == -1 and start_idx == total_lines):
-            if start_line is not None and start_line < 0:
-                start_desc = f"倒数第{abs(start_line)}行"
-            else:
-                start_desc = f"第{start_line}行"
-            
-            if end_line == -1:
-                end_desc = "文件末尾"
-            elif end_line is not None and end_line < -1:
-                end_desc = f"倒数第{abs(end_line)}行"
-            else:
-                end_desc = f"第{end_line}行"
-            
-            return f"Error: start_line ({start_desc}) should be before end_line ({end_desc})"
-        
-        # 提取指定行范围
-        extracted_lines = lines[start_idx:end_idx]
-        return '\n'.join(extracted_lines)
 
-    def _extract_content_by_query(self, content: str, query: str, file_path: str) -> str:
-        """根据查询描述提取最相关的内容"""
+        lines = content.split("\n")
+        total_lines = len(lines)
+
+        # 处理起始行
+        if start_line is None:
+            start_idx = 0
+        elif start_line < 0:
+            start_idx = max(0, total_lines + start_line)
+        else:
+            start_idx = max(0, start_line - 1)
+
+        # 处理结束行
+        if end_line is None or end_line == -1:
+            end_idx = total_lines
+        elif end_line < -1:
+            end_idx = max(0, total_lines + end_line + 1)
+        else:
+            end_idx = min(total_lines, end_line)
+
+        # 验证范围
+        if start_idx >= total_lines:
+            return f"Error: start_line {start_line} exceeds total lines {total_lines}"
+        if start_idx >= end_idx:
+            return f"Error: invalid line range (start={start_line}, end={end_line})"
+
+        return "\n".join(lines[start_idx:end_idx])
+
+    def _extract_content_by_query(
+        self, content: str, query: str, file_path: str
+    ) -> str:
+        """根据 query 从内容中抽取相关部分"""
         if not query or not self.context_pruner:
             return content
-        
-        # 使用 context_pruner 的查询功能提取相关内容
+
         try:
-            # 创建一个包含查询的伪对话
-            query_conversation = {
-                "role": "user",
-                "content": query
-            }
-            
             source_code = SourceCode(
-                module_name=file_path,
-                source_code=content,
-                tokens=count_tokens(content)
+                module_name=file_path, source_code=content, tokens=count_tokens(content)
             )
-            
-            # 使用 context_pruner 根据查询提取相关内容
             pruned_sources = self.context_pruner.handle_overflow(
                 file_sources=[source_code],
-                conversations=[query_conversation],
-                strategy=self.args.context_prune_strategy
+                conversations=[{"role": "user", "content": query}],
+                strategy=self.args.context_prune_strategy,
             )
-            
-            if pruned_sources:
-                return pruned_sources[0].source_code
-            else:
-                return content
-                
+            return pruned_sources[0].source_code if pruned_sources else content
         except Exception as e:
-            logger.warning(f"Error extracting content by query '{query}': {str(e)}")
+            logger.warning(f"Query extraction failed for '{query}': {e}")
             return content
 
-    def _prune_file_content(self, content: str, file_path: str) -> str:
-        """对文件内容进行剪枝处理"""
-        if not self.context_pruner:
-            return content
+    def _read_raw_content(self, file_path: str) -> str:
+        """读取原始文件内容"""
+        ext = os.path.splitext(file_path)[1].lower()
 
-        # 计算 token 数量
-        tokens = count_tokens(content)
-        parsed_safe_zone_tokens = self._get_parsed_safe_zone_tokens()
-        if tokens <= parsed_safe_zone_tokens:
-            return content
-
-        # 创建 SourceCode 对象
-        source_code = SourceCode(
-            module_name=file_path,
-            source_code=content,
-            tokens=tokens
-        )
-
-        # 使用 context_pruner 进行剪枝
-        pruned_sources = self.context_pruner.handle_overflow(
-            file_sources=[source_code],
-            conversations=self.agent.current_conversations if self.agent else [],
-            strategy=self.args.context_prune_strategy
-        )
-
-        if not pruned_sources:
-            return content
-
-        return pruned_sources[0].source_code
-
-    def _get_model_context_window(self) -> int:
-        """获取当前代码模型的上下文窗口大小，默认 128000"""
-        try:
-            model_name = self.args.code_model or self.args.model
-            model = self.llm_manager.get_model(model_name)
-            if model and model.context_window:
-                return int(model.context_window)
-        except Exception as e:
-            logger.warning(f"Failed to get model context window: {e}")
-        return 128000
-
-    def _get_pruned_conversations(self) -> List[Dict[str, Any]]:
-        """获取已按 agent 逻辑剪枝后的对话，用于计算 token 开销"""
-        try:
-            if not self.agent:
-                return []
-            conversations = self.agent.current_conversations or []
-            # 复用 Agentic 对话修剪器，保持与主循环一致
-            agentic_pruner = self.agent.agentic_pruner
-            if agentic_pruner and conversations:
-                from copy import deepcopy
-                return agentic_pruner.prune_conversations(deepcopy(conversations))
-            return conversations
-        except Exception as e:
-            logger.warning(f"Failed to get pruned conversations: {e}")
-            return []
-
-    def _prune_file_to_fit_context_window(self, content: str, file_path: str) -> Tuple[bool, str]:
-        """
-        如果 对话token + 文件token 可能超出模型上下文窗口，不在此处裁剪文件，
-        而是返回带有提示信息的结果，提示大模型应先对会话进行删减后再读取文件。
-        """
-        if not self.agent:
-            return False, content
-
-        try:
-            model_window = self._get_model_context_window()
-            pruned_convs = self._get_pruned_conversations()
-            conv_tokens = count_tokens(json.dumps(pruned_convs, ensure_ascii=False))
-            file_tokens = count_tokens(content)
-
-            if conv_tokens + file_tokens <= model_window:
-                return False, content
-
-            # 构造提示信息，指导大模型优先裁剪会话（如使用 conversation_message_ids_write），然后再调用 read_file
-            hint = (
-                "The combined size of current conversation and requested file likely exceeds the model context window. "
-                "Please prune the conversation first (e.g., delete unnecessary tool_result messages using conversation_message_ids_write), "
-                "then call read_file again. "
-                f"Details: conversation_tokens={conv_tokens}, file_tokens={file_tokens}, window={model_window}, file={file_path}"
+        if ext == ".pdf":
+            return extract_text_from_pdf(file_path)
+        elif ext == ".docx":
+            return extract_text_from_docx(file_path)
+        elif ext in (".pptx", ".ppt"):
+            slides = extract_text_from_ppt(file_path)
+            return "\n\n".join(f"--- Slide {idx} ---\n{text}" for idx, text in slides)
+        elif ext in (".xlsx", ".xls"):
+            sheets = extract_text_from_excel(file_path)
+            return "\n\n".join(
+                f"--- Sheet: {sheet_name.split('#')[-1]} ---\n{content}"
+                for sheet_name, content in sheets
             )
-
-            logger.info(
-                f"Conversation + file tokens exceed window ({conv_tokens}+{file_tokens}>{model_window}). Returning hint instead of file content.")
-
-            # 返回包含提示的包装文本，前置文件前500字符作为上下文
-            prefix = content[:500] if content else ""
-            return True, add_hint_to_text(prefix, hint)
-        except Exception as e:
-            logger.warning(f"Failed to calculate context window overflow: {e}")
-            return False, content
-
-    def _read_file_content(self, file_path_to_read: str) -> str:
-        content = ""
-        ext = os.path.splitext(file_path_to_read)[1].lower()
-
-        if ext == '.pdf':
-            logger.info(f"Extracting text from PDF: {file_path_to_read}")
-            content = extract_text_from_pdf(file_path_to_read)
-        elif ext == '.docx':
-            logger.info(f"Extracting text from DOCX: {file_path_to_read}")
-            content = extract_text_from_docx(file_path_to_read)
-        elif ext in ('.pptx', '.ppt'):
-            logger.info(f"Extracting text from PPT/PPTX: {file_path_to_read}")
-            slide_texts = []
-            for slide_identifier, slide_text_content in extract_text_from_ppt(file_path_to_read):
-                slide_texts.append(f"--- Slide {slide_identifier} ---\n{slide_text_content}")
-            content = "\n\n".join(slide_texts) if slide_texts else ""
         else:
-            logger.info(f"Reading plain text file: {file_path_to_read}")
-            with open(file_path_to_read, 'r', encoding='utf-8', errors='replace') as f:
-                content = f.read()
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                return f.read()
 
-        # 处理新参数
-        # 1. 先根据行号范围提取内容
-        if self.tool.start_line is not None or self.tool.end_line is not None:
-            content = self._extract_lines_by_range(content, self.tool.start_line, self.tool.end_line)
-            
-        # 2. 如果有查询，根据查询提取相关内容
-        if self.tool.query:
-            content = self._extract_content_by_query(content, self.tool.query, file_path_to_read)
-        
-        # 3. 检查当前对话 + 文件是否超出模型窗口，若需要提示会话剪枝则直接返回带提示内容
-        should_prune, maybe_hinted_content = self._prune_file_to_fit_context_window(content, file_path_to_read)
-        if should_prune:
-            return maybe_hinted_content
+    def _read_file_content(
+        self,
+        file_path: str,
+        start_line: Optional[int],
+        end_line: Optional[int],
+        query: Optional[str],
+    ) -> Tuple[str, bool]:
+        """
+        读取文件内容
 
-        # 4. 最后进行常规的剪枝处理（基于 safe_zone_tokens 的兜底）
-        return self._prune_file_content(maybe_hinted_content, file_path_to_read)
+        Returns:
+            Tuple[content, is_truncated]: 内容和是否被截断的标记
+        """
+        content = self._read_raw_content(file_path)
 
-    def read_file_normal(self, file_path: str) -> ToolResult:
-        """Read file directly without using shadow manager"""
+        # 1. 如果指定了行号范围，按范围提取
+        if start_line is not None or end_line is not None:
+            return self._extract_lines_by_range(content, start_line, end_line), False
+
+        # 2. 如果有 query，根据 query 抽取
+        if query:
+            return self._extract_content_by_query(content, query, file_path), False
+
+        # 3. 检查是否超过 safe_zone_tokens
+        file_tokens = count_tokens(content)
+        if file_tokens > self.safe_zone_tokens:
+            total_lines = len(content.split("\n"))
+            preview = content[: self.safe_zone_tokens]
+            hint = (
+                f"Cannot read entire file ({file_tokens} tokens, {total_lines} lines). "
+                f"Only first {self.safe_zone_tokens} characters shown. "
+                f"Use start_line/end_line for specific range, "
+                f"or query to extract relevant content."
+            )
+            return add_hint_to_text(preview, hint), True
+
+        return content, False
+
+    def _parse_single_int(
+        self, value: Optional[Union[str, int]], field_name: str
+    ) -> Optional[int]:
+        """解析单个整数参数"""
+        if value is None:
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            v = value.strip()
+            if not v:
+                return None
+            if "," in v:
+                raise ValueError(
+                    f"Parameter format error: '{field_name}' contains comma but only one file path is specified. "
+                    f"For single file: use a single value like {field_name}='10'. "
+                    f"For multiple files: specify multiple paths like path='a.py, b.py' with {field_name}='10, 20'."
+                )
+            return int(v)
+        raise ValueError(f"Invalid type for '{field_name}': {type(value)}")
+
+    def _split_values(self, raw: Optional[Union[str, int]]) -> List[Optional[str]]:
+        """将参数拆分为列表"""
+        if raw is None:
+            return []
+        if isinstance(raw, int):
+            return [str(raw)]
+        if isinstance(raw, str):
+            parts = [p.strip() for p in raw.split(",")]
+            return [p if p else None for p in parts]
+        return []
+
+    def _parse_int_list(
+        self, items: List[Optional[str]], field_name: str
+    ) -> Tuple[bool, Optional[List[Optional[int]]], Optional[str]]:
+        """解析整数列表"""
+        if not items:
+            return True, None, None
+        parsed = []
+        for raw in items:
+            if raw is None or raw == "":
+                parsed.append(None)
+            else:
+                try:
+                    parsed.append(int(raw))
+                except ValueError:
+                    return False, None, f"'{field_name}' must be integers. Got: {raw}"
+        return True, parsed, None
+
+    def read_single_file(self, file_path: str) -> ToolResult:
+        """读取单个文件"""
+        if not os.path.exists(file_path):
+            return ToolResult(success=False, message=f"File not found: {file_path}")
+        if not os.path.isfile(file_path):
+            return ToolResult(success=False, message=f"Not a file: {file_path}")
+
         try:
-            if not os.path.exists(file_path):
-                return ToolResult(success=False, message=f"Error: File not found at path: {file_path}")
-            if not os.path.isfile(file_path):
-                return ToolResult(success=False, message=f"Error: Path is not a file: {file_path}")
+            start_line = self._parse_single_int(self.tool.start_line, "start_line")
+            end_line = self._parse_single_int(self.tool.end_line, "end_line")
+        except ValueError as e:
+            return ToolResult(success=False, message=str(e))
 
-            content = self._read_file_content(file_path)
-            
-            # 构建详细的成功消息
-            message_parts = [f"{file_path}"]
-            if self.tool.start_line is not None or self.tool.end_line is not None:
-                # 构建起始行描述
-                if self.tool.start_line is not None:
-                    if self.tool.start_line < 0:
-                        start = f"-{abs(self.tool.start_line)}"  # 负数行号显示为 -N
-                    else:
-                        start = str(self.tool.start_line)
-                else:
-                    start = "1"
-                
-                # 构建结束行描述
-                if self.tool.end_line == -1:
-                    end = "end"
-                elif self.tool.end_line is not None:
-                    if self.tool.end_line < -1:
-                        end = str(self.tool.end_line)  # 其他负数行号直接显示
-                    else:
-                        end = str(self.tool.end_line)
-                else:
-                    end = "end"
-                
-                message_parts.append(f"lines {start}-{end}")
+        try:
+            content, is_truncated = self._read_file_content(
+                file_path, start_line, end_line, self.tool.query
+            )
+
+            # 构建消息
+            msg_parts = [file_path]
+            if start_line or end_line:
+                msg_parts.append(f"lines {start_line or 1}-{end_line or 'end'}")
             if self.tool.query:
-                message_parts.append(f"filtered by query: '{self.tool.query}'")
-            
-            message = " ".join(message_parts)
-            
-            logger.info(f"Successfully processed file: {message}")
-            return ToolResult(success=True, message=message, content=content)
+                msg_parts.append(f"query: '{self.tool.query}'")
+            if is_truncated:
+                msg_parts.append("(truncated)")
 
+            return ToolResult(
+                success=True, message=" ".join(msg_parts), content=content
+            )
         except Exception as e:
-            logger.warning(f"Error processing file '{file_path}': {str(e)}")
-            logger.exception(e)
-            return ToolResult(success=False, message=f"An error occurred while processing the file '{file_path}': {str(e)}")
+            logger.exception(f"Error reading file '{file_path}'")
+            return ToolResult(
+                success=False, message=f"Error reading '{file_path}': {e}"
+            )
 
     def resolve(self) -> ToolResult:
-        """Resolve the read file tool by calling the appropriate implementation"""
-        file_path = self.tool.path                        
-        return self.read_file_normal(file_path)
+        """解析读取文件请求，支持多文件"""
+        raw_path = self.tool.path or ""
+        paths = [p.strip() for p in raw_path.split(",") if p.strip()]
+
+        if not paths:
+            return ToolResult(success=False, message="'path' is required")
+
+        # 单文件模式
+        if len(paths) == 1:
+            # 检查单文件模式下是否误用了逗号分隔的参数
+            for field, value in [
+                ("start_line", self.tool.start_line),
+                ("end_line", self.tool.end_line),
+            ]:
+                if isinstance(value, str) and value and "," in value:
+                    return ToolResult(
+                        success=False,
+                        message=(
+                            f"Parameter format error: '{field}' has comma-separated values but only one file path is specified. "
+                            f"For single file: use a single value like {field}='10'. "
+                            f"For multiple files: specify multiple paths like path='a.py, b.py' with {field}='10, 20'."
+                        ),
+                    )
+            return self.read_single_file(paths[0])
+
+        # 多文件模式
+        start_items = self._split_values(self.tool.start_line)
+        end_items = self._split_values(self.tool.end_line)
+        query_items = self._split_values(self.tool.query)
+
+        # 验证参数数量
+        for name, items in [
+            ("start_line", start_items),
+            ("end_line", end_items),
+            ("query", query_items),
+        ]:
+            if items and len(items) != len(paths):
+                return ToolResult(
+                    success=False,
+                    message=(
+                        f"Parameter mismatch: '{name}' has {len(items)} value(s) but you specified {len(paths)} file path(s). "
+                        f"When reading multiple files with '{name}', you must provide comma-separated values matching the number of paths. "
+                        f"Example: path='a.py, b.py' with {name}='value1, value2'. "
+                        f"Alternatively, omit '{name}' to read all files without this filter."
+                    ),
+                )
+
+        # 解析整数列表
+        ok, start_lines, err = self._parse_int_list(start_items, "start_line")
+        if not ok:
+            return ToolResult(success=False, message=err or "Invalid start_line")
+        ok, end_lines, err = self._parse_int_list(end_items, "end_line")
+        if not ok:
+            return ToolResult(success=False, message=err or "Invalid end_line")
+
+        # 读取每个文件
+        results = []
+        failures = []
+        for i, path in enumerate(paths):
+            if not os.path.exists(path):
+                failures.append(f"[{i+1}] not found: {path}")
+                continue
+            if not os.path.isfile(path):
+                failures.append(f"[{i+1}] not a file: {path}")
+                continue
+
+            try:
+                s = start_lines[i] if start_lines else None
+                e = end_lines[i] if end_lines else None
+                q = query_items[i] if query_items else None
+                content, _ = self._read_file_content(path, s, e, q)
+                results.append(f"---- File: {path} ----\n{content}")
+            except Exception as ex:
+                logger.exception(ex)
+                failures.append(f"[{i+1}] error: {path}: {ex}")
+
+        if not results:
+            return ToolResult(
+                success=False,
+                message="Failed to read all files. " + "; ".join(failures),
+            )
+
+        summary = f"{len(results)}/{len(paths)} files read"
+        if failures:
+            summary += f" | failures: {'; '.join(failures)}"
+
+        return ToolResult(success=True, message=summary, content="\n\n".join(results))

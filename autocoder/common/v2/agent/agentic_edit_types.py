@@ -49,8 +49,10 @@ class ExecuteCommandTool(BaseTool):
 
 class ReadFileTool(BaseTool):
     path: str
-    start_line: Optional[int] = None
-    end_line: Optional[int] = None
+    # 支持多文件逗号分割时，start_line/end_line 同样以逗号分割并与 path 数量匹配
+    # 单文件场景可传单个整数或其字符串形式
+    start_line: Optional[str] = None
+    end_line: Optional[str] = None
     query: Optional[str] = None
 
 
@@ -326,6 +328,12 @@ class LLMOutputEvent(BaseModel):
 
 class LLMThinkingEvent(BaseModel):
     """Represents text within <thinking> tags from the LLM."""
+
+    text: str
+
+
+class LLMReasoningEvent(BaseModel):
+    """Represents reasoning content from the LLM metadata (e.g., from deepseek models)."""
 
     text: str
 
