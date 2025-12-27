@@ -215,12 +215,17 @@ class ModelsHandler:
         args = query.strip().split(" ")
         if len(args) != 2:
             llm_manager = self._get_llm_manager()
-            models_list = "\n".join([m.name for m in llm_manager.get_default_models()])
+            # 列出当前已配置的模型作为示例
+            current_models = llm_manager.get_all_models()
+            if current_models:
+                models_list = "\n".join([m.name for m in current_models.values()])
+            else:
+                models_list = "（暂无已配置的模型）"
             self.printer.print_in_terminal("models_add_usage", style="red", models=models_list)
-            
+
             result_manager = ResultManager()
             result_manager.add_result(
-                content=self.printer.get_message_from_key_with_format("models_add_usage", models=models_list), 
+                content=self.printer.get_message_from_key_with_format("models_add_usage", models=models_list),
                 meta={"action": "models", "input": {"query": f"add {query}"}}
             )
             return None

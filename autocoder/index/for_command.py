@@ -3,6 +3,7 @@ from autocoder.index.types import TargetFile
 from autocoder.suffixproject import SuffixProject
 from autocoder.tsproject import TSProject
 from autocoder.pyproject import PyProject
+from autocoder.default_project import DefaultProject
 import tabulate
 import textwrap
 from autocoder.common.printer import Printer
@@ -36,11 +37,16 @@ def index_command(args, llm):
     source_dir = os.path.abspath(args.source_dir)
     args.source_dir = source_dir
     printer = Printer()
-    printer.print_in_terminal("begin_index_source_code", style="bold green", source_dir=source_dir)
+    printer.print_in_terminal(
+        "begin_index_source_code", style="bold green", source_dir=source_dir
+    )
+
     if args.project_type == "ts":
         pp = TSProject(args=args, llm=llm)
     elif args.project_type == "py":
         pp = PyProject(args=args, llm=llm)
+    elif not args.project_type or args.project_type == "*":
+        pp = DefaultProject(args=args, llm=llm, file_filter=None)
     else:
         pp = SuffixProject(args=args, llm=llm, file_filter=None)
     pp.run()
@@ -54,6 +60,8 @@ def index_query_command(args, llm):
         pp = TSProject(args=args, llm=llm)
     elif args.project_type == "py":
         pp = PyProject(args=args, llm=llm)
+    elif not args.project_type or args.project_type == "*":
+        pp = DefaultProject(args=args, llm=llm, file_filter=None)
     else:
         pp = SuffixProject(args=args, llm=llm, file_filter=None)
     pp.run()

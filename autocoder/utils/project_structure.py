@@ -14,6 +14,7 @@ from autocoder.tsproject import TSProject
 from autocoder.suffixproject import SuffixProject
 from autocoder.common import AutoCoderArgs
 
+
 @dataclass
 class AnalysisConfig:
     exclude_dirs: List[str] = None
@@ -23,6 +24,7 @@ class AnalysisConfig:
     show_hidden: bool = False
     parallel_processing: bool = True
 
+
 class ExtentionResult(BaseModel):
     code: List[str] = []
     config: List[str] = []
@@ -30,11 +32,17 @@ class ExtentionResult(BaseModel):
     document: List[str] = []
     other: List[str] = []
 
+
 class EnhancedFileAnalyzer:
     DEFAULT_EXCLUDE_DIRS = [".git", "node_modules", "__pycache__", "venv"]
     DEFAULT_EXCLUDE_EXTS = [".log", ".tmp", ".bak", ".swp"]
 
-    def __init__(self, args: AutoCoderArgs, llm: Union[byzerllm.ByzerLLM, byzerllm.SimpleByzerLLM], config: AnalysisConfig = None,):
+    def __init__(
+        self,
+        args: AutoCoderArgs,
+        llm: Union[byzerllm.ByzerLLM, byzerllm.SimpleByzerLLM],
+        config: AnalysisConfig = None,
+    ):
         self.directory = os.path.abspath(args.source_dir)
         self.config = config or self.default_config()
         self.llm = llm
@@ -45,8 +53,8 @@ class EnhancedFileAnalyzer:
     def default_config(cls) -> AnalysisConfig:
         return AnalysisConfig(
             exclude_dirs=cls.DEFAULT_EXCLUDE_DIRS,
-            exclude_file_patterns=[re.compile(r'~$')],  # 默认排除临时文件
-            exclude_extensions=cls.DEFAULT_EXCLUDE_EXTS
+            exclude_file_patterns=[re.compile(r"~$")],  # 默认排除临时文件
+            exclude_extensions=cls.DEFAULT_EXCLUDE_EXTS,
         )
 
     def analyze(self) -> Dict[str, Any]:
@@ -54,7 +62,7 @@ class EnhancedFileAnalyzer:
         return {
             "structure": self.get_tree_structure(),
             "extensions": self.analyze_extensions(),
-            "stats": self.get_directory_stats()
+            "stats": self.get_directory_stats(),
         }
 
     def get_tree_structure(self) -> Dict:
@@ -73,11 +81,13 @@ class EnhancedFileAnalyzer:
             current = tree
             for part in relative_path.split(os.sep):
                 current = current.setdefault(part, {})
-            current.update({f: None for f in files if not self.file_filter.should_ignore(f, False)})
+            current.update(
+                {f: None for f in files if not self.file_filter.should_ignore(f, False)}
+            )
         return tree
 
     def _parallel_tree_build(self) -> Dict:
-        """并行构建目录树"""        
+        """并行构建目录树"""
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import threading
 
@@ -90,13 +100,17 @@ class EnhancedFileAnalyzer:
             current = local_tree
             for part in relative_path.split(os.sep):
                 current = current.setdefault(part, {})
-            current.update({f: None for f in files if not self.file_filter.should_ignore(f, False)})
+            current.update(
+                {f: None for f in files if not self.file_filter.should_ignore(f, False)}
+            )
             return local_tree
 
         with ThreadPoolExecutor() as executor:
             futures = []
             for root, dirs, files in os.walk(self.directory):
-                dirs[:] = [d for d in dirs if not self.file_filter.should_ignore(d, True)]
+                dirs[:] = [
+                    d for d in dirs if not self.file_filter.should_ignore(d, True)
+                ]
                 futures.append(executor.submit(process_directory, root, dirs, files))
 
             for future in as_completed(futures):
@@ -121,6 +135,7 @@ class EnhancedFileAnalyzer:
     def analyze_extensions(self) -> Dict:
         """增强版后缀分析"""
         from collections import defaultdict
+
         extensions = self._collect_extensions()
         if self.llm:
             return self._llm_enhanced_analysis.with_llm(self.llm).run(extensions)
@@ -142,7 +157,7 @@ class EnhancedFileAnalyzer:
     @byzerllm.prompt()
     def _llm_enhanced_analysis(self, extensions: List[str]) -> Dict:
         """LLM增强分析"""
-        '''
+        """
         请根据以下文件后缀列表，按照以下规则进行分类：
 
         1. 代码文件：包含可编译代码、有语法结构的文件
@@ -162,87 +177,105 @@ class EnhancedFileAnalyzer:
             "document": ["后缀7", "后缀8"],
             "other": ["后缀9", "后缀10"]
         }
-        '''
-        return {
-            "extensions": extensions
-        }
+        """
+        return {"extensions": extensions}
 
     def _basic_analysis(self, extensions: Set[str]) -> Dict:
         """基于规则的基础分析"""
         CODE_EXTS = {
             # 通用脚本语言
-            '.py',  # Python
-            '.js', '.jsx', '.ts', '.tsx',  # JavaScript/TypeScript
-            '.rb', '.erb',  # Ruby
-            '.php',  # PHP
-            '.pl', '.pm',  # Perl
-            
+            ".py",  # Python
+            ".js",
+            ".jsx",
+            ".ts",
+            ".tsx",  # JavaScript/TypeScript
+            ".rb",
+            ".erb",  # Ruby
+            ".php",  # PHP
+            ".pl",
+            ".pm",  # Perl
             # 编译型语言
-            '.java', '.kt', '.groovy',  # JVM系
-            '.c', '.cpp', '.cc', '.cxx', '.h', '.hpp',  # C/C++
-            '.cs',  # C#
-            '.go',  # Go
-            '.rs',  # Rust
-            '.swift',  # Swift
-            
+            ".java",
+            ".kt",
+            ".groovy",  # JVM系
+            ".c",
+            ".cpp",
+            ".cc",
+            ".cxx",
+            ".h",
+            ".hpp",  # C/C++
+            ".cs",  # C#
+            ".go",  # Go
+            ".rs",  # Rust
+            ".swift",  # Swift
             # Web开发
-            '.vue', '.svelte',  # 前端框架
-            '.html', '.htm',  # HTML
-            '.css', '.scss', '.sass', '.less',  # 样式表
-            
+            ".vue",
+            ".svelte",  # 前端框架
+            ".html",
+            ".htm",  # HTML
+            ".css",
+            ".scss",
+            ".sass",
+            ".less",  # 样式表
             # 其他语言
-            '.scala',  # Scala
-            '.clj',  # Clojure
-            '.coffee',  # CoffeeScript
-            '.lua',  # Lua
-            '.r',  # R
-            '.sh', '.bash',  # Shell脚本
-            '.sql',  # SQL
-            '.dart',  # Dart
-            '.ex', '.exs',  # Elixir
-            '.fs', '.fsx',  # F#
-            '.hs',  # Haskell
-            '.ml', '.mli'  # OCaml
+            ".scala",  # Scala
+            ".clj",  # Clojure
+            ".coffee",  # CoffeeScript
+            ".lua",  # Lua
+            ".r",  # R
+            ".sh",
+            ".bash",  # Shell脚本
+            ".sql",  # SQL
+            ".dart",  # Dart
+            ".ex",
+            ".exs",  # Elixir
+            ".fs",
+            ".fsx",  # F#
+            ".hs",  # Haskell
+            ".ml",
+            ".mli",  # OCaml
         }
-        CONFIG_EXTS = {'.yml', '.yaml', '.json', '.toml', '.ini'}
+        CONFIG_EXTS = {".yml", ".yaml", ".json", ".toml", ".ini"}
 
         return {
             "code": [ext for ext in extensions if ext in CODE_EXTS],
             "config": [ext for ext in extensions if ext in CONFIG_EXTS],
-            "unknown": [ext for ext in extensions if ext not in CODE_EXTS | CONFIG_EXTS]
+            "unknown": [
+                ext for ext in extensions if ext not in CODE_EXTS | CONFIG_EXTS
+            ],
         }
 
     def get_directory_stats(self) -> Dict:
         """获取目录统计信息"""
         stats = {
-            'total_files': 0,
-            'total_dirs': 0,
-            'by_extension': defaultdict(int),
-            'file_types': {
-                'code': 0,
-                'config': 0,
-                'data': 0,
-                'document': 0,
-                'other': 0
-            }
+            "total_files": 0,
+            "total_dirs": 0,
+            "by_extension": defaultdict(int),
+            "file_types": {
+                "code": 0,
+                "config": 0,
+                "data": 0,
+                "document": 0,
+                "other": 0,
+            },
         }
         for root, dirs, files in os.walk(self.directory):
             dirs[:] = [d for d in dirs if not self.file_filter.should_ignore(d, True)]
-            stats['total_dirs'] += len(dirs)
+            stats["total_dirs"] += len(dirs)
             for file in files:
                 if self.file_filter.should_ignore(file, False):
                     continue
-                stats['total_files'] += 1
+                stats["total_files"] += 1
                 ext = os.path.splitext(file)[1].lower()
-                stats['by_extension'][ext] += 1
+                stats["by_extension"][ext] += 1
 
                 # 根据扩展名分类
-                if ext in ['.py', '.js', '.ts', '.java', '.c', '.cpp']:
-                    stats['file_types']['code'] += 1
-                elif ext in ['.yml', '.yaml', '.json', '.toml', '.ini']:
-                    stats['file_types']['config'] += 1
+                if ext in [".py", ".js", ".ts", ".java", ".c", ".cpp"]:
+                    stats["file_types"]["code"] += 1
+                elif ext in [".yml", ".yaml", ".json", ".toml", ".ini"]:
+                    stats["file_types"]["config"] += 1
                 else:
-                    stats['file_types']['other'] += 1
+                    stats["file_types"]["other"] += 1
         return stats
 
     def interactive_display(self):
@@ -253,18 +286,23 @@ class EnhancedFileAnalyzer:
         stats = self.get_directory_stats()
 
         from rich.table import Table
-        table = Table(title="Directory Statistics", show_header=True, header_style="bold magenta")
+
+        table = Table(
+            title="Directory Statistics", show_header=True, header_style="bold magenta"
+        )
         table.add_column("Metric", style="cyan")
         table.add_column("Value", style="green")
 
-        table.add_row("Total Files", str(stats['total_files']))
-        table.add_row("Total Directories", str(stats['total_dirs']))
-        table.add_row("Code Files", str(stats['file_types']['code']))
-        table.add_row("Config Files", str(stats['file_types']['config']))
+        table.add_row("Total Files", str(stats["total_files"]))
+        table.add_row("Total Directories", str(stats["total_dirs"]))
+        table.add_row("Code Files", str(stats["file_types"]["code"]))
+        table.add_row("Config Files", str(stats["file_types"]["config"]))
         self.console.print(table)
+
 
 class EnhancedFileFilter:
     """增强版文件过滤器"""
+
     def __init__(self, config: AnalysisConfig):
         self.config = config
 
@@ -273,7 +311,7 @@ class EnhancedFileFilter:
         base_name = os.path.basename(path)
 
         # 隐藏文件处理
-        if not self.config.show_hidden and base_name.startswith('.'):
+        if not self.config.show_hidden and base_name.startswith("."):
             return True
 
         # 目录排除
@@ -294,11 +332,18 @@ class EnhancedFileFilter:
 
         return False
 
-def get_project_structure(args:AutoCoderArgs, llm:Union[byzerllm.ByzerLLM, byzerllm.SimpleByzerLLM]):
+
+def get_project_structure(
+    args: AutoCoderArgs, llm: Union[byzerllm.ByzerLLM, byzerllm.SimpleByzerLLM]
+):
+    from autocoder.default_project import DefaultProject
+
     if args.project_type == "ts":
         pp = TSProject(args=args, llm=llm)
     elif args.project_type == "py":
         pp = PyProject(args=args, llm=llm)
+    elif not args.project_type or args.project_type == "*":
+        pp = DefaultProject(args=args, llm=llm, file_filter=None)
     else:
         pp = SuffixProject(args=args, llm=llm, file_filter=None)
     return pp.get_tree_like_directory_structure()

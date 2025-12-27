@@ -21,19 +21,21 @@ class RemoteTokenCounter:
 
 
 def initialize_tokenizer(tokenizer_path):
-    global tokenizer_model    
+    global tokenizer_model
     tokenizer_model = Tokenizer.from_file(tokenizer_path)
 
 
-def count_tokens(text: str) -> int:       
+def count_tokens(text: str) -> int:
     try:
         # start_time = time.time_ns()
-        encoded = VariableHolder.TOKENIZER_MODEL.encode('{"role":"user","content":"' + text + '"}')
+        encoded = VariableHolder.TOKENIZER_MODEL.encode(
+            '{"role":"user","content":"' + text + '"}'
+        )
         v = len(encoded.ids)
         # elapsed_time = time.time_ns() - start_time
         # logger.info(f"Token counting took {elapsed_time/1000000} ms")
         return v
-    except Exception as e:        
+    except Exception as e:
         logger.error(f"Error counting tokens: {str(e)}")
         return -1
 
@@ -55,14 +57,23 @@ class TokenCounter:
     def __init__(self, tokenizer_path: str):
         self.tokenizer_path = tokenizer_path
         self.num_processes = cpu_count() - 1 if cpu_count() > 1 else 1
-        self.pool = Pool(
-            processes=self.num_processes,
-            initializer=initialize_tokenizer,
-            initargs=(self.tokenizer_path,),
-        )
+        self._pool = None  # 延迟初始化，避免在模块导入时创建进程池
+
+    @property
+    def pool(self):
+        """延迟创建进程池，只在第一次使用时才初始化"""
+        if self._pool is None:
+            self._pool = Pool(
+                processes=self.num_processes,
+                initializer=initialize_tokenizer,
+                initargs=(self.tokenizer_path,),
+            )
+        return self._pool
 
     def count_tokens(self, text: str) -> int:
         return self.pool.apply(count_tokens_worker, (text,))
-    
+
     def close(self):
-        self.pool.terminate()        
+        if self._pool is not None:
+            self._pool.terminate()
+            self._pool = None

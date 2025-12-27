@@ -24,6 +24,7 @@ class AutoCoderRAGDocListener(BaseCacheManager):
         ignore_dirs: 需要忽略的目录列表
         ignore_entity_patterns: 需要忽略的文件模式列表
     """
+
     cache: Dict[str, Dict] = {}
     ignore_dirs = [
         "__pycache__",
@@ -50,7 +51,14 @@ class AutoCoderRAGDocListener(BaseCacheManager):
         r"^test.*$",
     ]
 
-    def __init__(self, path: str, ignore_spec, required_exts: List, args: Optional[AutoCoderArgs] = None, llm: Optional[Union[ByzerLLM, SimpleByzerLLM, str]] = None) -> None:
+    def __init__(
+        self,
+        path: str,
+        ignore_spec,
+        required_exts: List,
+        args: Optional[AutoCoderArgs] = None,
+        llm: Optional[Union[ByzerLLM, SimpleByzerLLM, str]] = None,
+    ) -> None:
         """
         初始化文件监控缓存管理器。
 
@@ -93,6 +101,8 @@ class AutoCoderRAGDocListener(BaseCacheManager):
         self.required_exts = required_exts
         self.args = args
         self.llm = llm
+        self.model_file = args.model_file if args else None
+        self.product_mode = args.product_mode if args else "lite"
         self.stop_event = threading.Event()
 
         # connect list
@@ -151,7 +161,11 @@ class AutoCoderRAGDocListener(BaseCacheManager):
             3. 日志记录更新的文件及当前缓存状态
         """
         source_code = process_file_local(
-            file_path, llm=self.llm, product_mode=self.product_mode)
+            file_path,
+            llm=self.llm,
+            product_mode=self.product_mode,
+            model_file=self.model_file,
+        )
         self.cache[file_path] = {
             "file_path": file_path,
             "content": [c.model_dump() for c in source_code],

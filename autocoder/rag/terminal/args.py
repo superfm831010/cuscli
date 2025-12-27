@@ -100,6 +100,12 @@ def _add_build_index_parser(subparsers, desc, tokenizer_path):
     build_index_parser.add_argument(
         "--enable_hybrid_index", action="store_true", help="Enable hybrid index"
     )
+    build_index_parser.add_argument(
+        "--hybrid_index_max_output_tokens",
+        type=int,
+        default=1000000,
+        help="The maximum number of tokens in the output. This is only used when enable_hybrid_index is true.",
+    )
 
 
 def _add_serve_parser(subparsers, desc, tokenizer_path):
@@ -393,6 +399,19 @@ def _add_run_parser(subparsers, desc, tokenizer_path):
         "--required_exts", default="", help=desc["doc_build_parse_required_exts"]
     )
 
+    run_parser.add_argument(
+        "--index_filter_workers",
+        type=int,
+        default=100,
+        help=desc["index_filter_workers"],
+    )
+    run_parser.add_argument(
+        "--index_filter_file_num",
+        type=int,
+        default=3,
+        help=desc["index_filter_file_num"],
+    )
+
     # 模型配置
     run_parser.add_argument(
         "--tokenizer_path", default=tokenizer_path, help="Path to tokenizer file"
@@ -452,10 +471,29 @@ def _add_run_parser(subparsers, desc, tokenizer_path):
         help="Disable reordering of document segments after retrieval",
     )
     run_parser.add_argument(
+        "--hybrid_index_max_output_tokens",
+        type=int,
+        default=1000000,
+        help="The maximum number of tokens in the output. This is only used when enable_hybrid_index is true.",
+    )
+    run_parser.add_argument(
+        "--rag_storage_type",
+        type=str,
+        default="duckdb",
+        help="The storage type of the RAG, duckdb or byzer-storage",
+    )
+    run_parser.add_argument(
         "--output_format",
         choices=["text", "json", "stream-json"],
         default="text",
         help="Output format: text (only answer), json (with metadata), or stream-json (streaming json output)",
+    )
+
+    # Web 搜索 API 密钥
+    run_parser.add_argument(
+        "--metaso_api_key",
+        default="",
+        help="Metaso API key for web search and crawl functionality (used in agentic mode)",
     )
 
 
@@ -554,6 +592,12 @@ def _add_tools_parser(subparsers, tokenizer_path):
     )
     count_parser.add_argument(
         "--file", required=True, help="Path to the file to count tokens"
+    )
+    count_parser.add_argument(
+        "--output_format",
+        default="text",
+        choices=["text", "json"],
+        help="Output format: text (rich table) or json",
     )
 
 

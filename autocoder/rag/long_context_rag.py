@@ -14,7 +14,7 @@ from autocoder.common import AutoCoderArgs, SourceCode
 from autocoder.rag.doc_filter import DocFilter
 from autocoder.rag.document_retriever import LocalDocumentRetriever
 from autocoder.rag.relevant_utils import DocFilterResult
-from autocoder.rag.token_counter import RemoteTokenCounter, TokenCounter,count_tokens
+from autocoder.rag.token_counter import RemoteTokenCounter, TokenCounter, count_tokens
 from autocoder.rag.token_limiter import TokenLimiter
 from tokenizers import Tokenizer
 from autocoder.rag.variable_holder import VariableHolder
@@ -29,22 +29,21 @@ from autocoder.rag.searchable import SearchableResults
 from autocoder.rag.conversation_to_queries import extract_search_queries
 from autocoder.common import openai_content as OpenAIContentProcessor
 from autocoder.common.save_formatted_log import save_formatted_log
-from autocoder.rag.types import (
-    RecallStat,ChunkStat,AnswerStat,OtherStat,RAGStat
-)
+from autocoder.rag.types import RecallStat, ChunkStat, AnswerStat, OtherStat, RAGStat
 from autocoder.common.llms import LLMManager
 import json, os
+
 try:
     from autocoder_pro.rag.llm_compute import LLMComputeEngine
+
     pro_version = version("auto-coder-pro")
     autocoder_version = version("auto-coder")
     logger.warning(
-        f"auto-coder-pro({pro_version}) plugin is enabled in auto-coder.rag({autocoder_version})")
+        f"auto-coder-pro({pro_version}) plugin is enabled in auto-coder.rag({autocoder_version})"
+    )
 except ImportError:
-    logger.warning(
-        "Please install auto-coder-pro to enhance llm compute ability")
+    logger.warning("Please install auto-coder-pro to enhance llm compute ability")
     LLMComputeEngine = None
-
 
 
 class LongContextRAG:
@@ -87,10 +86,8 @@ class LongContextRAG:
                 "The sum of full_text_ratio and segment_ratio must be less than or equal to 1.0"
             )
 
-        self.full_text_limit = int(
-            args.rag_context_window_limit * self.full_text_ratio)
-        self.segment_limit = int(
-            args.rag_context_window_limit * self.segment_ratio)
+        self.full_text_limit = int(args.rag_context_window_limit * self.full_text_ratio)
+        self.segment_limit = int(args.rag_context_window_limit * self.segment_ratio)
         self.buff_limit = int(args.rag_context_window_limit * self.buff_ratio)
 
         self.tokenizer = None
@@ -99,8 +96,7 @@ class LongContextRAG:
 
         if self.tokenizer_path:
             VariableHolder.TOKENIZER_PATH = self.tokenizer_path
-            VariableHolder.TOKENIZER_MODEL = Tokenizer.from_file(
-                self.tokenizer_path)
+            VariableHolder.TOKENIZER_MODEL = Tokenizer.from_file(self.tokenizer_path)
             self.tokenizer = TokenCounter(self.tokenizer_path)
         else:
             if llm.is_model_exist("deepseek_tokenizer"):
@@ -149,8 +145,7 @@ class LongContextRAG:
 
         if self.args.enable_hybrid_index and not self.on_ray:
             if self.emb_llm is None:
-                raise ValueError(
-                    "emb_llm is required for local byzer storage cache")
+                raise ValueError("emb_llm is required for local byzer storage cache")
 
         self.document_retriever = retriever_class(
             self.args,
@@ -165,7 +160,7 @@ class LongContextRAG:
             disable_auto_window=self.args.disable_auto_window,
             enable_hybrid_index=self.args.enable_hybrid_index,
             extra_params=self.args,
-            emb_llm=self.emb_llm
+            emb_llm=self.emb_llm,
         )
 
         self.doc_filter = DocFilter(
@@ -203,7 +198,7 @@ class LongContextRAG:
     def count_tokens(self, text: str) -> int:
         if self.tokenizer is None:
             return -1
-        return self.tokenizer.count_tokens(text)    
+        return self.tokenizer.count_tokens(text)
 
     def _get_document_retriever_class(self):
         """Get the document retriever class based on configuration."""
@@ -214,7 +209,7 @@ class LongContextRAG:
         serveignore_path = os.path.join(self.path, ".serveignore")
         if not os.path.exists(serveignore_path):
             serveignore_path = os.path.join(self.path, ".autocoderignore")
-        
+
         gitignore_path = os.path.join(self.path, ".gitignore")
 
         if os.path.exists(serveignore_path):
@@ -225,7 +220,9 @@ class LongContextRAG:
                 return pathspec.PathSpec.from_lines("gitwildmatch", ignore_file)
         return None
 
-    def _retrieve_documents(self, options: Optional[Dict[str, Any]] = None) -> Generator[SourceCode, None, None]:
+    def _retrieve_documents(
+        self, options: Optional[Dict[str, Any]] = None
+    ) -> Generator[SourceCode, None, None]:
         return self.document_retriever.retrieve_documents(options=options)
 
     def build(self):
@@ -245,8 +242,7 @@ class LongContextRAG:
             only_contexts = True
 
         logger.info("Search from RAG.....")
-        logger.info(
-            f"Query: {target_query[0:100]}... only_contexts: {only_contexts}")
+        logger.info(f"Query: {target_query[0:100]}... only_contexts: {only_contexts}")
 
         if self.client:
             new_query = json.dumps(
@@ -262,8 +258,7 @@ class LongContextRAG:
             if not only_contexts:
                 return [SourceCode(module_name=f"RAG:{target_query}", source_code=v)]
 
-            json_lines = [json.loads(line)
-                          for line in v.split("\n") if line.strip()]
+            json_lines = [json.loads(line) for line in v.split("\n") if line.strip()]
             return [SourceCode.model_validate(json_line) for json_line in json_lines]
         else:
             if only_contexts:
@@ -278,14 +273,22 @@ class LongContextRAG:
                     conversations=[{"role": "user", "content": target_query}]
                 )
                 url = ",".join(contexts)
-                result = (item for (item,_) in v)
-                return [SourceCode(module_name=f"RAG:{url}", source_code="".join(result))]
+                result = (item for (item, _) in v)
+                return [
+                    SourceCode(module_name=f"RAG:{url}", source_code="".join(result))
+                ]
 
     def _filter_docs(self, conversations: List[Dict[str, str]]) -> DocFilterResult:
         query = conversations[-1]["content"]
-        queries = extract_search_queries(conversations=conversations, args=self.args, llm=self.llm, max_queries=self.args.rag_recall_max_queries)
+        queries = extract_search_queries(
+            conversations=conversations,
+            args=self.args,
+            llm=self.llm,
+            max_queries=self.args.rag_recall_max_queries,
+        )
         documents = self._retrieve_documents(
-            options={"queries": [query] + [query.query for query in queries]})
+            options={"queries": [query] + [query.query for query in queries]}
+        )
         return self.doc_filter.filter_docs(
             conversations=conversations, documents=documents
         )
@@ -296,15 +299,15 @@ class LongContextRAG:
         model: Optional[str] = None,
         role_mapping=None,
         llm_config: Dict[str, Any] = {},
-        extra_request_params: Dict[str, Any] = {}
-    ):        
+        extra_request_params: Dict[str, Any] = {},
+    ):
         try:
             return self._stream_chat_oai(
                 conversations,
                 model=model,
                 role_mapping=role_mapping,
                 llm_config=llm_config,
-                extra_request_params=extra_request_params
+                extra_request_params=extra_request_params,
             )
         except Exception as e:
             logger.error(f"Error in stream_chat_oai: {str(e)}")
@@ -322,10 +325,15 @@ class LongContextRAG:
 
             if not chunk.choices:
                 if last_meta:
-                    yield ("", SingleOutputMeta(input_tokens_count=input_tokens_count,
-                                                generated_tokens_count=generated_tokens_count,
-                                                reasoning_content="",
-                                                finish_reason=last_meta.finish_reason))
+                    yield (
+                        "",
+                        SingleOutputMeta(
+                            input_tokens_count=input_tokens_count,
+                            generated_tokens_count=generated_tokens_count,
+                            reasoning_content="",
+                            finish_reason=last_meta.finish_reason,
+                        ),
+                    )
                 continue
 
             content = chunk.choices[0].delta.content or ""
@@ -334,10 +342,12 @@ class LongContextRAG:
             if hasattr(chunk.choices[0].delta, "reasoning_content"):
                 reasoning_text = chunk.choices[0].delta.reasoning_content or ""
 
-            last_meta = SingleOutputMeta(input_tokens_count=input_tokens_count,
-                                         generated_tokens_count=generated_tokens_count,
-                                         reasoning_content=reasoning_text,
-                                         finish_reason=chunk.choices[0].finish_reason)
+            last_meta = SingleOutputMeta(
+                input_tokens_count=input_tokens_count,
+                generated_tokens_count=generated_tokens_count,
+                reasoning_content=reasoning_text,
+                finish_reason=chunk.choices[0].finish_reason,
+            )
             yield (content, last_meta)
 
     def _stream_chat_oai(
@@ -346,14 +356,14 @@ class LongContextRAG:
         model: Optional[str] = None,
         role_mapping=None,
         llm_config: Dict[str, Any] = {},
-        extra_request_params: Dict[str, Any] = {}
+        extra_request_params: Dict[str, Any] = {},
     ):
         if not llm_config:
             llm_config = {}
-        
+
         if extra_request_params:
             llm_config.update(extra_request_params)
-        
+
         conversations = OpenAIContentProcessor.process_conversations(conversations)
         if self.client:
             model = model or self.args.model
@@ -362,7 +372,7 @@ class LongContextRAG:
                 messages=conversations,
                 stream=True,
                 max_tokens=self.args.rag_params_max_tokens,
-                extra_body=extra_request_params
+                extra_body=extra_request_params,
             )
             return self._stream_chatfrom_openai_sdk(response), []
 
@@ -370,7 +380,7 @@ class LongContextRAG:
         if self.llm.get_sub_client("qa_model"):
             target_llm = self.llm.get_sub_client("qa_model")
 
-        query = conversations[-1]["content"]        
+        query = conversations[-1]["content"]
         context = []
         try:
             request_params = json.loads(query)
@@ -380,7 +390,8 @@ class LongContextRAG:
 
                 file_path = event_writer.get_event_file_path(request_id)
                 logger.info(
-                    f"Get events for request_id: {request_id} index: {index} file_path: {file_path}")
+                    f"Get events for request_id: {request_id} index: {index} file_path: {file_path}"
+                )
                 events = []
                 if not os.path.exists(file_path):
                     return [], context
@@ -390,9 +401,14 @@ class LongContextRAG:
                         event = json.loads(line)
                         if event["index"] >= index:
                             events.append(event)
-                return [json.dumps({
-                    "events": [event for event in events],
-                }, ensure_ascii=False)], context
+                return [
+                    json.dumps(
+                        {
+                            "events": [event for event in events],
+                        },
+                        ensure_ascii=False,
+                    )
+                ], context
         except json.JSONDecodeError:
             pass
 
@@ -415,7 +431,7 @@ class LongContextRAG:
                 role_mapping=role_mapping,
                 llm_config=llm_config,
                 delta_mode=True,
-                extra_request_params=extra_request_params
+                extra_request_params=extra_request_params,
             )
 
             def generate_chunks():
@@ -461,23 +477,25 @@ class LongContextRAG:
             ),
         )
 
-        context = []        
+        context = []
 
-        return self._generate_sream(
-            conversations=conversations,
-            query=query,
-            only_contexts=only_contexts,
-            start_time=start_time,
-            rag_stat=rag_stat,
-            context=context,
-            target_llm=target_llm,
-            model=model,
-            role_mapping=role_mapping,
-            llm_config=llm_config,
-            extra_request_params=extra_request_params
-        ), context
+        return (
+            self._generate_sream(
+                conversations=conversations,
+                query=query,
+                only_contexts=only_contexts,
+                start_time=start_time,
+                rag_stat=rag_stat,
+                context=context,
+                target_llm=target_llm,
+                model=model,
+                role_mapping=role_mapping,
+                llm_config=llm_config,
+                extra_request_params=extra_request_params,
+            ),
+            context,
+        )
 
-    
     def _generate_sream(
         self,
         conversations,
@@ -490,25 +508,24 @@ class LongContextRAG:
         model=None,
         role_mapping=None,
         llm_config=None,
-        extra_request_params=None
+        extra_request_params=None,
     ):
         """将RAG流程分为三个主要阶段的生成器函数"""
 
-        yield ("", SingleOutputMeta(
-            input_tokens_count=0,
-            generated_tokens_count=0,
-            reasoning_content=get_message_with_format_and_newline(
-                "rag_processing"
-            )
-        ))              
+        yield (
+            "",
+            SingleOutputMeta(
+                input_tokens_count=0,
+                generated_tokens_count=0,
+                reasoning_content=get_message_with_format_and_newline("rag_processing"),
+            ),
+        )
 
         # 第一阶段：文档召回和过滤
         doc_retrieval_generator = self._process_document_retrieval(
-            conversations=conversations,
-            query=query,
-            rag_stat=rag_stat
+            conversations=conversations, query=query, rag_stat=rag_stat
         )
-        
+
         # 处理第一阶段结果
         for item in doc_retrieval_generator:
             if isinstance(item, tuple) and len(item) == 2:
@@ -520,49 +537,68 @@ class LongContextRAG:
                     try:
                         searcher = SearchableResults()
                         result = searcher.reorder(docs=item["result"])
-                        yield (json.dumps(result.model_dump(), ensure_ascii=False), SingleOutputMeta(
-                            input_tokens_count=rag_stat.recall_stat.total_input_tokens + rag_stat.chunk_stat.total_input_tokens,
-                            generated_tokens_count=rag_stat.recall_stat.total_generated_tokens + rag_stat.chunk_stat.total_generated_tokens,
-                        ))
+                        yield (
+                            json.dumps(result.model_dump(), ensure_ascii=False),
+                            SingleOutputMeta(
+                                input_tokens_count=rag_stat.recall_stat.total_input_tokens
+                                + rag_stat.chunk_stat.total_input_tokens,
+                                generated_tokens_count=rag_stat.recall_stat.total_generated_tokens
+                                + rag_stat.chunk_stat.total_generated_tokens,
+                            ),
+                        )
                         return
                     except Exception as e:
-                        yield (str(e), SingleOutputMeta(
-                            input_tokens_count=rag_stat.recall_stat.total_input_tokens + rag_stat.chunk_stat.total_input_tokens,
-                            generated_tokens_count=rag_stat.recall_stat.total_generated_tokens + rag_stat.chunk_stat.total_generated_tokens,
-                        ))
+                        yield (
+                            str(e),
+                            SingleOutputMeta(
+                                input_tokens_count=rag_stat.recall_stat.total_input_tokens
+                                + rag_stat.chunk_stat.total_input_tokens,
+                                generated_tokens_count=rag_stat.recall_stat.total_generated_tokens
+                                + rag_stat.chunk_stat.total_generated_tokens,
+                            ),
+                        )
                         return
-                
+
                 # 如果没有找到相关文档
                 if not item["result"]:
-                    yield ("没有找到可以回答你问题的相关文档", SingleOutputMeta(
-                        input_tokens_count=rag_stat.recall_stat.total_input_tokens + rag_stat.chunk_stat.total_input_tokens,
-                        generated_tokens_count=rag_stat.recall_stat.total_generated_tokens + rag_stat.chunk_stat.total_generated_tokens,
-                    ))
+                    yield (
+                        "没有找到可以回答你问题的相关文档",
+                        SingleOutputMeta(
+                            input_tokens_count=rag_stat.recall_stat.total_input_tokens
+                            + rag_stat.chunk_stat.total_input_tokens,
+                            generated_tokens_count=rag_stat.recall_stat.total_generated_tokens
+                            + rag_stat.chunk_stat.total_generated_tokens,
+                        ),
+                    )
                     return
-                
+
                 # 更新上下文
                 context.extend([doc.source_code.module_name for doc in item["result"]])
-                
+
                 # 输出上下文文档名称
-                yield ("", SingleOutputMeta(
-                    input_tokens_count=rag_stat.recall_stat.total_input_tokens + rag_stat.chunk_stat.total_input_tokens,
-                    generated_tokens_count=rag_stat.recall_stat.total_generated_tokens + rag_stat.chunk_stat.total_generated_tokens,
-                    reasoning_content=get_message_with_format_and_newline(
-                        "context_docs_names",
-                        context_docs_names="*****"
-                    )
-                ))
-                
+                yield (
+                    "",
+                    SingleOutputMeta(
+                        input_tokens_count=rag_stat.recall_stat.total_input_tokens
+                        + rag_stat.chunk_stat.total_input_tokens,
+                        generated_tokens_count=rag_stat.recall_stat.total_generated_tokens
+                        + rag_stat.chunk_stat.total_generated_tokens,
+                        reasoning_content=get_message_with_format_and_newline(
+                            "context_docs_names", context_docs_names="*****"
+                        ),
+                    ),
+                )
+
                 # 记录信息到日志
                 logger.info(f"=== RAG Search Results ===")
                 logger.info(f"Query: {query}")
                 relevant_docs = [doc.source_code for doc in item["result"]]
                 logger.info(f"Found relevant docs: {len(relevant_docs)}")
-                
+
                 # 记录相关文档信息
                 relevant_docs_info = []
                 for i, doc in enumerate(relevant_docs):
-                    doc_path = doc.module_name.replace(self.path, '', 1)
+                    doc_path = doc.module_name.replace(self.path, "", 1)
                     info = f"{i+1}. {doc_path}"
                     if "original_docs" in doc.metadata:
                         original_docs = ", ".join(
@@ -579,15 +615,15 @@ class LongContextRAG:
                         f"Relevant documents list:"
                         + "".join([f"\n  * {info}" for info in relevant_docs_info])
                     )
-                
+
                 # 第二阶段：文档分块与重排序
                 doc_chunking_generator = self._process_document_chunking(
                     relevant_docs=relevant_docs,
                     conversations=conversations,
                     rag_stat=rag_stat,
-                    filter_time=(time.time() - start_time)
+                    filter_time=(time.time() - start_time),
                 )
-                
+
                 for chunking_item in doc_chunking_generator:
                     if isinstance(chunking_item, tuple) and len(chunking_item) == 2:
                         # 正常的生成器项
@@ -595,14 +631,18 @@ class LongContextRAG:
                     elif isinstance(chunking_item, dict) and "result" in chunking_item:
                         processed_docs = chunking_item["result"]
                         filter_time = chunking_item.get("filter_time", 0)
-                        first_round_full_docs = chunking_item.get("first_round_full_docs", [])
-                        second_round_extracted_docs = chunking_item.get("second_round_extracted_docs", [])
+                        first_round_full_docs = chunking_item.get(
+                            "first_round_full_docs", []
+                        )
+                        second_round_extracted_docs = chunking_item.get(
+                            "second_round_extracted_docs", []
+                        )
                         sencond_round_time = chunking_item.get("sencond_round_time", 0)
-                        
+
                         # 记录最终选择的文档详情
                         final_relevant_docs_info = []
                         for i, doc in enumerate(processed_docs):
-                            doc_path = doc.module_name.replace(self.path, '', 1)
+                            doc_path = doc.module_name.replace(self.path, "", 1)
                             info = f"{i+1}. {doc_path}"
 
                             metadata_info = []
@@ -623,7 +663,8 @@ class LongContextRAG:
 
                             if "processing_time" in doc.metadata:
                                 metadata_info.append(
-                                    f"Processing time: {doc.metadata['processing_time']:.2f}s")
+                                    f"Processing time: {doc.metadata['processing_time']:.2f}s"
+                                )
 
                             if metadata_info:
                                 info += f" ({'; '.join(metadata_info)})"
@@ -633,11 +674,18 @@ class LongContextRAG:
                         if final_relevant_docs_info:
                             logger.info(
                                 f"Final documents to be sent to model:"
-                                + "".join([f"\n  * {info}" for info in final_relevant_docs_info])
+                                + "".join(
+                                    [
+                                        f"\n  * {info}"
+                                        for info in final_relevant_docs_info
+                                    ]
+                                )
                             )
 
                         # 记录令牌统计
-                        request_tokens = sum([count_tokens(doc.source_code) for doc in processed_docs])
+                        request_tokens = sum(
+                            [count_tokens(doc.source_code) for doc in processed_docs]
+                        )
                         target_model = target_llm.default_model_name
                         logger.info(
                             f"=== LLM Request ===\n"
@@ -646,24 +694,35 @@ class LongContextRAG:
                         )
 
                         logger.info(
-                            f"Start to send to model {target_model} with {request_tokens} tokens")
+                            f"Start to send to model {target_model} with {request_tokens} tokens"
+                        )
 
-                        yield ("", SingleOutputMeta(
-                            input_tokens_count=rag_stat.recall_stat.total_input_tokens + rag_stat.chunk_stat.total_input_tokens,
-                            generated_tokens_count=rag_stat.recall_stat.total_generated_tokens + rag_stat.chunk_stat.total_generated_tokens,
-                            reasoning_content=get_message_with_format_and_newline(
-                                "send_to_model",
-                                model=target_model,
-                                tokens=request_tokens
-                            )
-                        ))
+                        yield (
+                            "",
+                            SingleOutputMeta(
+                                input_tokens_count=rag_stat.recall_stat.total_input_tokens
+                                + rag_stat.chunk_stat.total_input_tokens,
+                                generated_tokens_count=rag_stat.recall_stat.total_generated_tokens
+                                + rag_stat.chunk_stat.total_generated_tokens,
+                                reasoning_content=get_message_with_format_and_newline(
+                                    "send_to_model",
+                                    model=target_model,
+                                    tokens=request_tokens,
+                                ),
+                            ),
+                        )
 
-                        yield ("", SingleOutputMeta(
-                            input_tokens_count=rag_stat.recall_stat.total_input_tokens + rag_stat.chunk_stat.total_input_tokens,
-                            generated_tokens_count=rag_stat.recall_stat.total_generated_tokens + rag_stat.chunk_stat.total_generated_tokens,
-                            reasoning_content="qa_model_thinking"
-                        ))
-                        
+                        yield (
+                            "",
+                            SingleOutputMeta(
+                                input_tokens_count=rag_stat.recall_stat.total_input_tokens
+                                + rag_stat.chunk_stat.total_input_tokens,
+                                generated_tokens_count=rag_stat.recall_stat.total_generated_tokens
+                                + rag_stat.chunk_stat.total_generated_tokens,
+                                reasoning_content="qa_model_thinking",
+                            ),
+                        )
+
                         # 第三阶段：大模型问答生成
                         qa_generation_generator = self._process_qa_generation(
                             relevant_docs=processed_docs,
@@ -673,29 +732,30 @@ class LongContextRAG:
                             model=model,
                             role_mapping=role_mapping,
                             llm_config=llm_config,
-                            extra_request_params=extra_request_params
+                            extra_request_params=extra_request_params,
                         )
-                        
+
                         for gen_item in qa_generation_generator:
                             yield gen_item
-                        
+
                         # 打印最终的统计信息
                         self._print_rag_stats(rag_stat, conversations)
                         return
 
-    def _process_document_retrieval(self, conversations, 
-                                    query, rag_stat):
+    def _process_document_retrieval(self, conversations, query, rag_stat):
         """第一阶段：文档召回和过滤"""
-        recall_start_time = time.time()  # 记录召回阶段开始时间        
-        
-        yield ("", SingleOutputMeta(
-            input_tokens_count=0,
-            generated_tokens_count=0,
-            reasoning_content=get_message_with_format_and_newline(
-                "rag_searching_docs",
-                model=rag_stat.recall_stat.model_name
-            )
-        ))
+        recall_start_time = time.time()  # 记录召回阶段开始时间
+
+        yield (
+            "",
+            SingleOutputMeta(
+                input_tokens_count=0,
+                generated_tokens_count=0,
+                reasoning_content=get_message_with_format_and_newline(
+                    "rag_searching_docs", model=rag_stat.recall_stat.model_name
+                ),
+            ),
+        )
 
         doc_filter_result = DocFilterResult(
             docs=[],
@@ -703,74 +763,100 @@ class LongContextRAG:
             input_tokens_counts=[],
             generated_tokens_counts=[],
             durations=[],
-            model_name=rag_stat.recall_stat.model_name
+            model_name=rag_stat.recall_stat.model_name,
         )
-        
+
         # 提取查询并检索候选文档
         queries = extract_search_queries(
-            conversations=conversations, args=self.args, llm=self.llm, max_queries=self.args.rag_recall_max_queries,rag_stat=rag_stat)
+            conversations=conversations,
+            args=self.args,
+            llm=self.llm,
+            max_queries=self.args.rag_recall_max_queries,
+            rag_stat=rag_stat,
+        )
         documents = self._retrieve_documents(
-            options={"queries": [query] + [query.query for query in queries]})
+            options={"queries": [query] + [query.query for query in queries]}
+        )
 
         # 使用带进度报告的过滤方法
-        for progress_update, result in self.doc_filter.filter_docs_with_progress(conversations, documents):
+        for progress_update, result in self.doc_filter.filter_docs_with_progress(
+            conversations, documents
+        ):
             if result is not None:
                 doc_filter_result = result
             else:
                 # 生成进度更新
-                yield ("", SingleOutputMeta(
-                    input_tokens_count=rag_stat.recall_stat.total_input_tokens,
-                    generated_tokens_count=rag_stat.recall_stat.total_generated_tokens,
-                    reasoning_content=f"{progress_update.message} ({progress_update.completed}/{progress_update.total})"
-                ))
+                yield (
+                    "",
+                    SingleOutputMeta(
+                        input_tokens_count=rag_stat.recall_stat.total_input_tokens,
+                        generated_tokens_count=rag_stat.recall_stat.total_generated_tokens,
+                        reasoning_content=f"{progress_update.message} ({progress_update.completed}/{progress_update.total})",
+                    ),
+                )
 
         # 更新统计信息
-        rag_stat.recall_stat.total_input_tokens += sum(doc_filter_result.input_tokens_counts)
-        rag_stat.recall_stat.total_generated_tokens += sum(doc_filter_result.generated_tokens_counts)
+        rag_stat.recall_stat.total_input_tokens += sum(
+            doc_filter_result.input_tokens_counts
+        )
+        rag_stat.recall_stat.total_generated_tokens += sum(
+            doc_filter_result.generated_tokens_counts
+        )
         rag_stat.recall_stat.model_name = doc_filter_result.model_name
-        rag_stat.recall_stat.duration = time.time() - recall_start_time  # 记录召回阶段耗时
+        rag_stat.recall_stat.duration = (
+            time.time() - recall_start_time
+        )  # 记录召回阶段耗时
 
         relevant_docs = doc_filter_result.docs
-        
-        yield ("", SingleOutputMeta(
-            input_tokens_count=rag_stat.recall_stat.total_input_tokens,
-            generated_tokens_count=rag_stat.recall_stat.total_generated_tokens,
-            reasoning_content=get_message_with_format_and_newline(
-                "rag_docs_filter_result",
-                filter_time=rag_stat.recall_stat.duration,  # 使用实际耗时
-                docs_num=len(relevant_docs),
-                input_tokens=rag_stat.recall_stat.total_input_tokens,
-                output_tokens=rag_stat.recall_stat.total_generated_tokens,
-                model=rag_stat.recall_stat.model_name
-            )
-        ))
+
+        yield (
+            "",
+            SingleOutputMeta(
+                input_tokens_count=rag_stat.recall_stat.total_input_tokens,
+                generated_tokens_count=rag_stat.recall_stat.total_generated_tokens,
+                reasoning_content=get_message_with_format_and_newline(
+                    "rag_docs_filter_result",
+                    filter_time=rag_stat.recall_stat.duration,  # 使用实际耗时
+                    docs_num=len(relevant_docs),
+                    input_tokens=rag_stat.recall_stat.total_input_tokens,
+                    output_tokens=rag_stat.recall_stat.total_generated_tokens,
+                    model=rag_stat.recall_stat.model_name,
+                ),
+            ),
+        )
 
         # 仅保留高相关性文档
-        highly_relevant_docs = [doc for doc in relevant_docs if doc.relevance.is_relevant]
+        highly_relevant_docs = [
+            doc for doc in relevant_docs if doc.relevance.is_relevant
+        ]
         if highly_relevant_docs:
             relevant_docs = highly_relevant_docs
             logger.info(f"Found {len(relevant_docs)} highly relevant documents")
-        
+
         # 返回结果
         yield {"result": relevant_docs}
 
-    def _process_document_chunking(self, relevant_docs, conversations, rag_stat, filter_time):
+    def _process_document_chunking(
+        self, relevant_docs, conversations, rag_stat, filter_time
+    ):
         """第二阶段：文档分块与重排序"""
         chunk_start_time = time.time()  # 记录分块阶段开始时间
-        
-        yield ("", SingleOutputMeta(
-            generated_tokens_count=0,
-            reasoning_content=get_message_with_format_and_newline(
-                "dynamic_chunking_start",
-                model=rag_stat.chunk_stat.model_name
-            )
-        ))
-        
+
+        yield (
+            "",
+            SingleOutputMeta(
+                generated_tokens_count=0,
+                reasoning_content=get_message_with_format_and_newline(
+                    "dynamic_chunking_start", model=rag_stat.chunk_stat.model_name
+                ),
+            ),
+        )
+
         # 默认值
         first_round_full_docs = []
         second_round_extracted_docs = []
         sencond_round_time = 0
-        
+
         if self.tokenizer is not None:
             token_limiter = TokenLimiter(
                 count_tokens=self.count_tokens,
@@ -788,8 +874,12 @@ class LongContextRAG:
             )
 
             # 更新统计信息
-            rag_stat.chunk_stat.total_input_tokens += sum(token_limiter_result.input_tokens_counts)
-            rag_stat.chunk_stat.total_generated_tokens += sum(token_limiter_result.generated_tokens_counts)
+            rag_stat.chunk_stat.total_input_tokens += sum(
+                token_limiter_result.input_tokens_counts
+            )
+            rag_stat.chunk_stat.total_generated_tokens += sum(
+                token_limiter_result.generated_tokens_counts
+            )
             rag_stat.chunk_stat.model_name = token_limiter_result.model_name
 
             final_relevant_docs = token_limiter_result.docs
@@ -799,45 +889,56 @@ class LongContextRAG:
         else:
             # 如果没有tokenizer，直接限制文档数量
             final_relevant_docs = relevant_docs[: self.args.index_filter_file_num]
-        
-        rag_stat.chunk_stat.duration = time.time() - chunk_start_time  # 记录分块阶段耗时
-        
+
+        rag_stat.chunk_stat.duration = (
+            time.time() - chunk_start_time
+        )  # 记录分块阶段耗时
+
         # 输出分块结果统计
-        yield ("", SingleOutputMeta(
-            generated_tokens_count=rag_stat.chunk_stat.total_generated_tokens + rag_stat.recall_stat.total_generated_tokens,
-            input_tokens_count=rag_stat.chunk_stat.total_input_tokens + rag_stat.recall_stat.total_input_tokens,
-            reasoning_content=get_message_with_format_and_newline(
-                "dynamic_chunking_result",
-                model=rag_stat.chunk_stat.model_name,
-                docs_num=len(final_relevant_docs),
-                filter_time=filter_time,
-                sencond_round_time=sencond_round_time,
-                first_round_full_docs=len(first_round_full_docs),
-                second_round_extracted_docs=len(second_round_extracted_docs),
-                input_tokens=rag_stat.chunk_stat.total_input_tokens,
-                output_tokens=rag_stat.chunk_stat.total_generated_tokens
-            )
-        ))
-        
+        yield (
+            "",
+            SingleOutputMeta(
+                generated_tokens_count=rag_stat.chunk_stat.total_generated_tokens
+                + rag_stat.recall_stat.total_generated_tokens,
+                input_tokens_count=rag_stat.chunk_stat.total_input_tokens
+                + rag_stat.recall_stat.total_input_tokens,
+                reasoning_content=get_message_with_format_and_newline(
+                    "dynamic_chunking_result",
+                    model=rag_stat.chunk_stat.model_name,
+                    docs_num=len(final_relevant_docs),
+                    filter_time=filter_time,
+                    sencond_round_time=sencond_round_time,
+                    first_round_full_docs=len(first_round_full_docs),
+                    second_round_extracted_docs=len(second_round_extracted_docs),
+                    input_tokens=rag_stat.chunk_stat.total_input_tokens,
+                    output_tokens=rag_stat.chunk_stat.total_generated_tokens,
+                ),
+            ),
+        )
+
         # 返回处理结果和相关统计信息
         yield {
             "result": final_relevant_docs,
             "filter_time": filter_time,
             "first_round_full_docs": first_round_full_docs,
             "second_round_extracted_docs": second_round_extracted_docs,
-            "sencond_round_time": sencond_round_time
+            "sencond_round_time": sencond_round_time,
         }
 
-    def _process_qa_generation(self, relevant_docs, conversations, 
-                               target_llm, 
-                               rag_stat, 
-                               model=None, 
-                               role_mapping=None, 
-                               llm_config={}, 
-                               extra_request_params={}):
+    def _process_qa_generation(
+        self,
+        relevant_docs,
+        conversations,
+        target_llm,
+        rag_stat,
+        model=None,
+        role_mapping=None,
+        llm_config={},
+        extra_request_params={},
+    ):
         """第三阶段：大模型问答生成"""
         answer_start_time = time.time()  # 记录答案生成阶段开始时间
-        
+
         # 使用LLMComputeEngine增强处理（如果可用）
         if LLMComputeEngine is not None and not self.args.disable_inference_enhance:
             llm_compute_engine = LLMComputeEngine(
@@ -862,23 +963,34 @@ class LongContextRAG:
 
             for chunk in chunks:
                 if chunk[1] is not None:
-                    rag_stat.answer_stat.total_input_tokens += chunk[1].input_tokens_count
-                    rag_stat.answer_stat.total_generated_tokens += chunk[1].generated_tokens_count
-                    chunk[1].input_tokens_count = rag_stat.recall_stat.total_input_tokens + \
-                        rag_stat.chunk_stat.total_input_tokens + \
-                        rag_stat.answer_stat.total_input_tokens
-                    chunk[1].generated_tokens_count = rag_stat.recall_stat.total_generated_tokens + \
-                        rag_stat.chunk_stat.total_generated_tokens + \
-                        rag_stat.answer_stat.total_generated_tokens
+                    rag_stat.answer_stat.total_input_tokens += chunk[
+                        1
+                    ].input_tokens_count
+                    rag_stat.answer_stat.total_generated_tokens += chunk[
+                        1
+                    ].generated_tokens_count
+                    chunk[1].input_tokens_count = (
+                        rag_stat.recall_stat.total_input_tokens
+                        + rag_stat.chunk_stat.total_input_tokens
+                        + rag_stat.answer_stat.total_input_tokens
+                    )
+                    chunk[1].generated_tokens_count = (
+                        rag_stat.recall_stat.total_generated_tokens
+                        + rag_stat.chunk_stat.total_generated_tokens
+                        + rag_stat.answer_stat.total_generated_tokens
+                    )
                 yield chunk
-            rag_stat.answer_stat.duration = time.time() - answer_start_time  # 记录答案生成阶段耗时
+            rag_stat.answer_stat.duration = (
+                time.time() - answer_start_time
+            )  # 记录答案生成阶段耗时
         else:
             # 常规QA处理路径
             qa_strategy = get_qa_strategy(self.args)
             new_conversations = qa_strategy.create_conversation(
                 documents=[doc.source_code for doc in relevant_docs],
-                conversations=conversations, local_image_host=self.args.local_image_host
-            )            
+                conversations=conversations,
+                local_image_host=self.args.local_image_host,
+            )
 
             # 流式生成回答
             chunks = target_llm.stream_chat_oai(
@@ -887,93 +999,142 @@ class LongContextRAG:
                 role_mapping=role_mapping,
                 llm_config=llm_config,
                 delta_mode=True,
-                extra_request_params=extra_request_params
+                extra_request_params=extra_request_params,
             )
-             
+
             # 返回结果并更新统计信息
             last_content = ""
             for chunk in chunks:
                 if chunk[1] is not None:
-                    rag_stat.answer_stat.total_input_tokens += chunk[1].input_tokens_count
-                    rag_stat.answer_stat.total_generated_tokens += chunk[1].generated_tokens_count
-                    chunk[1].input_tokens_count = rag_stat.recall_stat.total_input_tokens + \
-                        rag_stat.chunk_stat.total_input_tokens + \
-                        rag_stat.answer_stat.total_input_tokens
-                    chunk[1].generated_tokens_count = rag_stat.recall_stat.total_generated_tokens + \
-                        rag_stat.chunk_stat.total_generated_tokens + \
-                        rag_stat.answer_stat.total_generated_tokens
+                    rag_stat.answer_stat.total_input_tokens += chunk[
+                        1
+                    ].input_tokens_count
+                    rag_stat.answer_stat.total_generated_tokens += chunk[
+                        1
+                    ].generated_tokens_count
+                    chunk[1].input_tokens_count = (
+                        rag_stat.recall_stat.total_input_tokens
+                        + rag_stat.chunk_stat.total_input_tokens
+                        + rag_stat.answer_stat.total_input_tokens
+                    )
+                    chunk[1].generated_tokens_count = (
+                        rag_stat.recall_stat.total_generated_tokens
+                        + rag_stat.chunk_stat.total_generated_tokens
+                        + rag_stat.answer_stat.total_generated_tokens
+                    )
                 last_content += chunk[0]
                 yield chunk
 
             # 保存对话日志
-            try:                    
-                logger.info(f"Saving new_conversations log to {self.args.source_dir}/.cache/logs")
+            try:
+                logger.info(
+                    f"Saving new_conversations log to {self.args.source_dir}/.cache/logs"
+                )
                 project_root = self.args.source_dir
-                json_text = json.dumps(new_conversations + [{"role": "assistant", "content": last_content}], ensure_ascii=False)
+                json_text = json.dumps(
+                    new_conversations
+                    + [{"role": "assistant", "content": last_content}],
+                    ensure_ascii=False,
+                )
                 save_formatted_log(project_root, json_text, "rag_conversation")
             except Exception as e:
                 logger.warning(f"Failed to save new_conversations log: {e}")
 
-            rag_stat.answer_stat.duration = time.time() - answer_start_time  # 记录答案生成阶段耗时
+            rag_stat.answer_stat.duration = (
+                time.time() - answer_start_time
+            )  # 记录答案生成阶段耗时
 
-    def _print_rag_stats(self, rag_stat: RAGStat, conversations: Optional[List[Dict[str, str]]] = None) -> None:
+    def _print_rag_stats(
+        self, rag_stat: RAGStat, conversations: Optional[List[Dict[str, str]]] = None
+    ) -> None:
         """打印RAG执行的详细统计信息"""
         total_input_tokens = (
-            rag_stat.recall_stat.total_input_tokens +
-            rag_stat.chunk_stat.total_input_tokens +
-            rag_stat.answer_stat.total_input_tokens
+            rag_stat.recall_stat.total_input_tokens
+            + rag_stat.chunk_stat.total_input_tokens
+            + rag_stat.answer_stat.total_input_tokens
         )
         total_generated_tokens = (
-            rag_stat.recall_stat.total_generated_tokens +
-            rag_stat.chunk_stat.total_generated_tokens +
-            rag_stat.answer_stat.total_generated_tokens
+            rag_stat.recall_stat.total_generated_tokens
+            + rag_stat.chunk_stat.total_generated_tokens
+            + rag_stat.answer_stat.total_generated_tokens
         )
         total_tokens = total_input_tokens + total_generated_tokens
-        
+
         # 计算总耗时
         total_duration = (
-            rag_stat.recall_stat.duration +
-            rag_stat.chunk_stat.duration +
-            rag_stat.answer_stat.duration
+            rag_stat.recall_stat.duration
+            + rag_stat.chunk_stat.duration
+            + rag_stat.answer_stat.duration
         )
-        
+
         # 添加其他阶段的耗时（如果存在）
         if rag_stat.other_stats:
-            total_duration += sum(other_stat.duration for other_stat in rag_stat.other_stats)
+            total_duration += sum(
+                other_stat.duration for other_stat in rag_stat.other_stats
+            )
 
         # 避免除以零错误
         if total_tokens == 0:
             recall_percent = chunk_percent = answer_percent = 0
         else:
-            recall_percent = (rag_stat.recall_stat.total_input_tokens +
-                              rag_stat.recall_stat.total_generated_tokens) / total_tokens * 100
-            chunk_percent = (rag_stat.chunk_stat.total_input_tokens +
-                             rag_stat.chunk_stat.total_generated_tokens) / total_tokens * 100
-            answer_percent = (rag_stat.answer_stat.total_input_tokens +
-                              rag_stat.answer_stat.total_generated_tokens) / total_tokens * 100
-        
+            recall_percent = (
+                (
+                    rag_stat.recall_stat.total_input_tokens
+                    + rag_stat.recall_stat.total_generated_tokens
+                )
+                / total_tokens
+                * 100
+            )
+            chunk_percent = (
+                (
+                    rag_stat.chunk_stat.total_input_tokens
+                    + rag_stat.chunk_stat.total_generated_tokens
+                )
+                / total_tokens
+                * 100
+            )
+            answer_percent = (
+                (
+                    rag_stat.answer_stat.total_input_tokens
+                    + rag_stat.answer_stat.total_generated_tokens
+                )
+                / total_tokens
+                * 100
+            )
+
         # 计算其他阶段的令牌占比
         other_percents = []
         if total_tokens > 0 and rag_stat.other_stats:
             for other_stat in rag_stat.other_stats:
-                other_percent = (other_stat.total_input_tokens +
-                                other_stat.total_generated_tokens) / total_tokens * 100
+                other_percent = (
+                    (other_stat.total_input_tokens + other_stat.total_generated_tokens)
+                    / total_tokens
+                    * 100
+                )
                 other_percents.append(other_percent)
-        
+
         # 计算耗时分布百分比
         if total_duration == 0:
-            recall_duration_percent = chunk_duration_percent = answer_duration_percent = 0
+            recall_duration_percent = chunk_duration_percent = (
+                answer_duration_percent
+            ) = 0
         else:
-            recall_duration_percent = rag_stat.recall_stat.duration / total_duration * 100
+            recall_duration_percent = (
+                rag_stat.recall_stat.duration / total_duration * 100
+            )
             chunk_duration_percent = rag_stat.chunk_stat.duration / total_duration * 100
-            answer_duration_percent = rag_stat.answer_stat.duration / total_duration * 100
-            
+            answer_duration_percent = (
+                rag_stat.answer_stat.duration / total_duration * 100
+            )
+
         # 计算其他阶段的耗时占比
         other_duration_percents = []
         if total_duration > 0 and rag_stat.other_stats:
             for other_stat in rag_stat.other_stats:
-                other_duration_percents.append(other_stat.duration / total_duration * 100)
-        
+                other_duration_percents.append(
+                    other_stat.duration / total_duration * 100
+                )
+
         # 计算成本分布百分比
         if rag_stat.cost == 0:
             recall_cost_percent = chunk_cost_percent = answer_cost_percent = 0
@@ -981,7 +1142,7 @@ class LongContextRAG:
             recall_cost_percent = rag_stat.recall_stat.cost / rag_stat.cost * 100
             chunk_cost_percent = rag_stat.chunk_stat.cost / rag_stat.cost * 100
             answer_cost_percent = rag_stat.answer_stat.cost / rag_stat.cost * 100
-            
+
         # 计算其他阶段的成本占比
         other_costs_percent = []
         if rag_stat.cost > 0 and rag_stat.other_stats:
@@ -997,7 +1158,7 @@ class LongContextRAG:
             if len(query_content) > 100:
                 query_content = query_content[:100] + "..."
             query_content = f"查询内容: {query_content}\n"
-        
+
         stats_str = (
             f"=== (RAG 执行统计信息) ===\n"
             f"{query_content}"
@@ -1033,7 +1194,7 @@ class LongContextRAG:
             f"     - 阶段耗时: {rag_stat.answer_stat.duration:.2f} 秒\n"
             f"\n"
         )
-        
+
         # 如果存在 other_stats，添加其统计信息
         if rag_stat.other_stats:
             for i, other_stat in enumerate(rag_stat.other_stats):
@@ -1047,7 +1208,7 @@ class LongContextRAG:
                     f"     - 阶段耗时: {other_stat.duration:.2f} 秒\n"
                     f"\n"
                 )
-        
+
         # 添加令牌分布百分比
         stats_str += (
             f"令牌分布百分比:\n"
@@ -1055,13 +1216,13 @@ class LongContextRAG:
             f"  - 文档分块: {chunk_percent:.1f}%\n"
             f"  - 答案生成: {answer_percent:.1f}%\n"
         )
-        
+
         # 如果存在 other_stats，添加其令牌占比
         if rag_stat.other_stats:
             for i, other_percent in enumerate(other_percents):
                 if other_percent > 0:
                     stats_str += f"  - 其他阶段 {i+1}: {other_percent:.1f}%\n"
-        
+
         # 添加耗时分布百分比
         stats_str += (
             f"\n"
@@ -1070,13 +1231,13 @@ class LongContextRAG:
             f"  - 文档分块: {chunk_duration_percent:.1f}%\n"
             f"  - 答案生成: {answer_duration_percent:.1f}%\n"
         )
-        
+
         # 如果存在 other_stats，添加其耗时占比
         if rag_stat.other_stats:
             for i, other_duration_percent in enumerate(other_duration_percents):
                 if other_duration_percent > 0:
                     stats_str += f"  - 其他阶段 {i+1}: {other_duration_percent:.1f}%\n"
-        
+
         # 添加成本分布百分比
         stats_str += (
             f"\n"
@@ -1085,20 +1246,19 @@ class LongContextRAG:
             f"  - 文档分块: {chunk_cost_percent:.1f}%\n"
             f"  - 答案生成: {answer_cost_percent:.1f}%\n"
         )
-        
+
         # 如果存在 other_stats，添加其成本占比
         if rag_stat.other_stats:
             for i, other_cost_percent in enumerate(other_costs_percent):
                 if other_cost_percent > 0:
                     stats_str += f"  - 其他阶段 {i+1}: {other_cost_percent:.1f}%\n"
-        
+
         # 输出统计信息
         logger.info(stats_str)
 
         # 记录原始统计数据，以便调试
         logger.debug(f"RAG Stat 原始数据: {rag_stat}")
 
-        
         if estimated_cost > 0:
             logger.info(f"估计成本: 约 {estimated_cost:.4f} ")
 
@@ -1106,7 +1266,7 @@ class LongContextRAG:
         """估算当前请求的令牌成本（人民币）"""
         llm_manager = LLMManager()
         total_cost = 0.0
-        
+
         # 计算召回阶段成本
         if rag_stat.recall_stat.model_name != "unknown":
             try:
@@ -1114,17 +1274,18 @@ class LongContextRAG:
                 if recall_model:
                     input_cost = recall_model.input_price / 1000000
                     output_cost = recall_model.output_price / 1000000
-                    recall_cost = (rag_stat.recall_stat.total_input_tokens * input_cost) + \
-                                 (rag_stat.recall_stat.total_generated_tokens * output_cost)
+                    recall_cost = (
+                        rag_stat.recall_stat.total_input_tokens * input_cost
+                    ) + (rag_stat.recall_stat.total_generated_tokens * output_cost)
                     total_cost += recall_cost
                 else:
                     recall_cost = 0.0
             except Exception as e:
-                logger.warning(f"计算召回阶段成本时出错: {str(e)}")                
+                logger.warning(f"计算召回阶段成本时出错: {str(e)}")
                 recall_cost = 0.0
                 total_cost += recall_cost
-            rag_stat.recall_stat.cost = recall_cost    
-        
+            rag_stat.recall_stat.cost = recall_cost
+
         # 计算分块阶段成本
         if rag_stat.chunk_stat.model_name != "unknown":
             try:
@@ -1132,8 +1293,9 @@ class LongContextRAG:
                 if chunk_model:
                     input_cost = chunk_model.input_price / 1000000
                     output_cost = chunk_model.output_price / 1000000
-                    chunk_cost = (rag_stat.chunk_stat.total_input_tokens * input_cost) + \
-                                (rag_stat.chunk_stat.total_generated_tokens * output_cost)
+                    chunk_cost = (
+                        rag_stat.chunk_stat.total_input_tokens * input_cost
+                    ) + (rag_stat.chunk_stat.total_generated_tokens * output_cost)
                     total_cost += chunk_cost
                 else:
                     chunk_cost = 0.0
@@ -1142,8 +1304,8 @@ class LongContextRAG:
                 # 使用默认值
                 chunk_cost = 0.0
                 total_cost += chunk_cost
-            rag_stat.chunk_stat.cost = chunk_cost    
-        
+            rag_stat.chunk_stat.cost = chunk_cost
+
         # 计算答案生成阶段成本
         if rag_stat.answer_stat.model_name != "unknown":
             try:
@@ -1151,8 +1313,9 @@ class LongContextRAG:
                 if answer_model:
                     input_cost = answer_model.input_price / 1000000
                     output_cost = answer_model.output_price / 1000000
-                    answer_cost = (rag_stat.answer_stat.total_input_tokens * input_cost) + \
-                                 (rag_stat.answer_stat.total_generated_tokens * output_cost)
+                    answer_cost = (
+                        rag_stat.answer_stat.total_input_tokens * input_cost
+                    ) + (rag_stat.answer_stat.total_generated_tokens * output_cost)
                     total_cost += answer_cost
                 else:
                     answer_cost = 0.0
@@ -1162,7 +1325,7 @@ class LongContextRAG:
                 answer_cost = 0.0
                 total_cost += answer_cost
             rag_stat.answer_stat.cost = answer_cost
-            
+
         # 计算其他阶段成本（如果存在）
         for i, other_stat in enumerate(rag_stat.other_stats):
             if other_stat.model_name != "unknown":
@@ -1171,8 +1334,9 @@ class LongContextRAG:
                     if other_model:
                         input_cost = other_model.input_price / 1000000
                         output_cost = other_model.output_price / 1000000
-                        other_cost = (other_stat.total_input_tokens * input_cost) + \
-                                    (other_stat.total_generated_tokens * output_cost)
+                        other_cost = (other_stat.total_input_tokens * input_cost) + (
+                            other_stat.total_generated_tokens * output_cost
+                        )
                         total_cost += other_cost
                     else:
                         other_cost = 0.0
@@ -1182,11 +1346,28 @@ class LongContextRAG:
                     other_cost = 0.0
                     total_cost += other_cost
                 rag_stat.other_stats[i].cost = other_cost
-        
+
         # 将总成本保存到 rag_stat
         rag_stat.cost = total_cost
         return total_cost
-    
+
     def close(self):
+        """关闭 RAG 实例并清理所有资源，包括后台线程和文件监控"""
+        # 关闭 tokenizer
         if self.tokenizer and isinstance(self.tokenizer, TokenCounter):
             self.tokenizer.close()
+
+        # 关闭 document_retriever 的缓存管理器（停止后台线程和文件监控）
+        if hasattr(self, "document_retriever") and self.document_retriever:
+            if (
+                hasattr(self.document_retriever, "cacher")
+                and self.document_retriever.cacher
+            ):
+                try:
+                    # 检查缓存管理器是否有 stop 方法
+                    if hasattr(self.document_retriever.cacher, "stop"):
+                        logger.info("Stopping cache manager background threads...")
+                        self.document_retriever.cacher.stop()
+                        logger.info("Cache manager stopped successfully")
+                except Exception as e:
+                    logger.warning(f"Error stopping cache manager: {e}")

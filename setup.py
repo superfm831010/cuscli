@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Cuscli - Setup配置文件
-基于 auto-coder v1.0.39 进行二次开发，打造定制化的AI编程助手工具
+基于 auto-coder v2.0.32 进行二次开发，打造定制化的AI编程助手工具
 """
 
 from setuptools import setup, find_packages
@@ -57,7 +57,7 @@ setup(
     packages=find_packages(exclude=['tests', 'tests.*', 'dist-info', 'rules', 'docs', 'actions', 'codecheck']),
 
     # Python 版本要求
-    python_requires='>=3.10,<=3.12',
+    python_requires='>=3.10,<3.13',
 
     # 依赖配置
     install_requires=read_requirements(),

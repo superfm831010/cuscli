@@ -13,12 +13,11 @@ from autocoder.workflow_agents.types import (
     WhenConfig,
     RegexCondition,
     JsonPathCondition,
+    TextCondition,
     OutputConfig,
 )
 from autocoder.workflow_agents.exceptions import (
     WorkflowTemplateError,
-    WorkflowConditionError,
-    WorkflowOutputExtractionError,
 )
 
 # 常量定义
@@ -158,6 +157,10 @@ def evaluate_condition(
             when_config.jsonpath, attempt_result, context
         )
 
+    # 文本条件
+    if when_config.text is not None:
+        return evaluate_text_condition(when_config.text, attempt_result, context)
+
     return True
 
 
@@ -245,6 +248,96 @@ def evaluate_jsonpath_condition(
 
     # 默认：检查值是否存在且非空
     return bool(value)
+
+
+def evaluate_text_condition(
+    text_config: TextCondition,
+    attempt_result: Optional[str],
+    context: Dict[str, Any],
+) -> bool:
+    """
+    评估文本条件
+
+    支持多种文本匹配方式：
+    - contains: 包含指定字符串
+    - not_contains: 不包含指定字符串
+    - starts_with: 以指定字符串开头
+    - ends_with: 以指定字符串结尾
+    - equals: 完全相等
+    - not_equals: 不相等
+    - is_empty: 是否为空
+    - matches: 正则表达式匹配
+    - ignore_case: 是否忽略大小写
+
+    Args:
+        text_config: 文本条件配置
+        attempt_result: AttemptCompletion 结果字符串
+        context: 上下文数据
+
+    Returns:
+        条件是否满足
+    """
+    input_str = _get_input_string(text_config.input, context, attempt_result)
+    ignore_case = text_config.ignore_case
+
+    # 辅助函数：根据 ignore_case 进行字符串比较
+    def normalize(s: str) -> str:
+        return s.lower() if ignore_case else s
+
+    # is_empty 检查（优先级最高）
+    if text_config.is_empty is not None:
+        is_empty = input_str is None or input_str.strip() == ""
+        return is_empty == text_config.is_empty
+
+    # 如果 input_str 为 None，后续检查都返回 False
+    if input_str is None:
+        return False
+
+    normalized_input = normalize(input_str)
+
+    # contains 检查
+    if text_config.contains is not None:
+        target = normalize(text_config.contains)
+        if target not in normalized_input:
+            return False
+
+    # not_contains 检查
+    if text_config.not_contains is not None:
+        target = normalize(text_config.not_contains)
+        if target in normalized_input:
+            return False
+
+    # starts_with 检查
+    if text_config.starts_with is not None:
+        target = normalize(text_config.starts_with)
+        if not normalized_input.startswith(target):
+            return False
+
+    # ends_with 检查
+    if text_config.ends_with is not None:
+        target = normalize(text_config.ends_with)
+        if not normalized_input.endswith(target):
+            return False
+
+    # equals 检查
+    if text_config.equals is not None:
+        target = normalize(text_config.equals)
+        if normalized_input != target:
+            return False
+
+    # not_equals 检查
+    if text_config.not_equals is not None:
+        target = normalize(text_config.not_equals)
+        if normalized_input == target:
+            return False
+
+    # matches 正则检查（不受 ignore_case 影响，使用正则自身的 flags）
+    if text_config.matches is not None:
+        flags = re.IGNORECASE if ignore_case else 0
+        if not re.search(text_config.matches, input_str, flags):
+            return False
+
+    return True
 
 
 def extract_jsonpath_value(data: Any, path: str) -> Any:

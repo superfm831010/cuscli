@@ -33,7 +33,12 @@ from autocoder.index.symbols_utils import (
 from autocoder.run_context import get_run_context
 from autocoder.events.event_manager_singleton import get_event_manager
 from autocoder.events import event_content as EventContentCreator
-from autocoder.linters.linter_factory import LinterFactory, lint_file, lint_project, format_lint_result
+from autocoder.linters.linter_factory import (
+    LinterFactory,
+    lint_file,
+    lint_project,
+    format_lint_result,
+)
 import traceback
 from autocoder.common.mcp_tools.server import get_mcp_server
 from autocoder.common.mcp_tools.types import (
@@ -67,8 +72,11 @@ def redirect_stdout():
 
 
 class AutoCommandTools:
-    def __init__(self, args: AutoCoderArgs,
-                 llm: Union[byzerllm.ByzerLLM, byzerllm.SimpleByzerLLM]):
+    def __init__(
+        self,
+        args: AutoCoderArgs,
+        llm: Union[byzerllm.ByzerLLM, byzerllm.SimpleByzerLLM],
+    ):
         self.args = args
         self.llm = llm
         self.result_manager = ResultManager()
@@ -83,8 +91,7 @@ class AutoCommandTools:
             解析后的 token 数量
         """
         return self.args_parser.parse_conversation_prune_safe_zone_tokens(
-            self.args.conversation_prune_safe_zone_tokens,
-            self.args.code_model
+            self.args.conversation_prune_safe_zone_tokens, self.args.code_model
         )
 
     def execute_mcp_server(self, query: str) -> str:
@@ -93,39 +100,34 @@ class AutoCommandTools:
             McpRequest(
                 query=query,
                 model=self.args.inference_model or self.args.model,
-                product_mode=self.args.product_mode
+                product_mode=self.args.product_mode,
             )
         )
 
         result = response.result
 
-        self.result_manager.append(content=result, meta={
-            "action": "execute_mcp_server",
-            "input": {
-                "query": query
-            }
-        })
+        self.result_manager.append(
+            content=result,
+            meta={"action": "execute_mcp_server", "input": {"query": query}},
+        )
         return result
 
     def ask_user(self, question: str) -> str:
-        '''
+        """
         如果你对用户的问题有什么疑问，或者你想从用户收集一些额外信息，可以调用此方法。
         输入参数 question 是你对用户的提问。
         返回值是 用户对你问题的回答。
 
         注意，尽量不要询问用户，除非你感受到你无法回答用户的问题。
-        '''
+        """
 
         # 如果是在web模式下，则使用event_manager事件来询问用户
         if get_run_context().is_web():
-            answer = get_event_manager(
-                self.args.event_file).ask_user(prompt=question)
-            self.result_manager.append(content=answer, meta={
-                "action": "ask_user",
-                "input": {
-                    "question": question
-                }
-            })
+            answer = get_event_manager(self.args.event_file).ask_user(prompt=question)
+            self.result_manager.append(
+                content=answer,
+                meta={"action": "ask_user", "input": {"question": question}},
+            )
             return answer
 
         console = Console()
@@ -136,25 +138,23 @@ class AutoCommandTools:
             question_text,
             title="[bold yellow]auto-coder.chat's Question[/bold yellow]",
             border_style="blue",
-            expand=False
+            expand=False,
         )
 
         # 显示问题面板
         console.print(question_panel)
 
         session = PromptSession(
-            message=self.printer.get_message_from_key('tool_ask_user'))
+            message=self.printer.get_message_from_key("tool_ask_user")
+        )
         try:
             answer = session.prompt()
         except KeyboardInterrupt:
             answer = ""
 
-        self.result_manager.append(content=answer, meta={
-            "action": "ask_user",
-            "input": {
-                "question": question
-            }
-        })
+        self.result_manager.append(
+            content=answer, meta={"action": "ask_user", "input": {"question": question}}
+        )
 
         return answer
 
@@ -165,46 +165,34 @@ class AutoCommandTools:
 
         if get_run_context().is_web():
             try:
-                get_event_manager(
-                    self.args.event_file).write_result(
+                get_event_manager(self.args.event_file).write_result(
                     EventContentCreator.create_result(
-                        EventContentCreator.ResultSummaryContent(
-                            summary=response
-                        )
+                        EventContentCreator.ResultSummaryContent(summary=response)
                     )
                 )
-                self.result_manager.append(content=response, meta={
-                    "action": "response_user",
-                    "input": {
-                        "response": response
-                    }
-                })
+                self.result_manager.append(
+                    content=response,
+                    meta={"action": "response_user", "input": {"response": response}},
+                )
             except Exception as e:
-                error_message = f"Error: {str(e)}\n\n完整异常堆栈信息:\n{traceback.format_exc()}"
-                self.result_manager.append(content=f"Error: {error_message}", meta={
-                    "action": "response_user",
-                    "input": {
-                        "response": response
-                    }
-                })
+                error_message = (
+                    f"Error: {str(e)}\n\n完整异常堆栈信息:\n{traceback.format_exc()}"
+                )
+                self.result_manager.append(
+                    content=f"Error: {error_message}",
+                    meta={"action": "response_user", "input": {"response": response}},
+                )
             return response
 
         console = Console()
         answer_text = Text(response, style="italic")
-        answer_panel = Panel(
-            answer_text,
-            title="",
-            border_style="green",
-            expand=False
-        )
+        answer_panel = Panel(answer_text, title="", border_style="green", expand=False)
         console.print(answer_panel)
 
-        self.result_manager.append(content=response, meta={
-            "action": "response_user",
-            "input": {
-                "response": response
-            }
-        })
+        self.result_manager.append(
+            content=response,
+            meta={"action": "response_user", "input": {"response": response}},
+        )
 
         return response
 
@@ -215,46 +203,34 @@ class AutoCommandTools:
 
         if get_run_context().is_web():
             try:
-                get_event_manager(
-                    self.args.event_file).write_result(
+                get_event_manager(self.args.event_file).write_result(
                     EventContentCreator.create_result(
-                        EventContentCreator.MarkdownContent(
-                            content=response
-                        )
+                        EventContentCreator.MarkdownContent(content=response)
                     )
                 )
-                self.result_manager.append(content=response, meta={
-                    "action": "output_result",
-                    "input": {
-                        "response": response
-                    }
-                })
+                self.result_manager.append(
+                    content=response,
+                    meta={"action": "output_result", "input": {"response": response}},
+                )
             except Exception as e:
-                error_message = f"Error: {str(e)}\n\n完整异常堆栈信息:\n{traceback.format_exc()}"
-                self.result_manager.append(content=f"Error: {error_message}", meta={
-                    "action": "output_result",
-                    "input": {
-                        "response": response
-                    }
-                })
+                error_message = (
+                    f"Error: {str(e)}\n\n完整异常堆栈信息:\n{traceback.format_exc()}"
+                )
+                self.result_manager.append(
+                    content=f"Error: {error_message}",
+                    meta={"action": "output_result", "input": {"response": response}},
+                )
             return response
 
         console = Console()
         answer_text = Text(response, style="italic")
-        answer_panel = Panel(
-            answer_text,
-            title="",
-            border_style="green",
-            expand=False
-        )
+        answer_panel = Panel(answer_text, title="", border_style="green", expand=False)
         console.print(answer_panel)
 
-        self.result_manager.append(content=response, meta={
-            "action": "output_result",
-            "input": {
-                "response": response
-            }
-        })
+        self.result_manager.append(
+            content=response,
+            meta={"action": "output_result", "input": {"response": response}},
+        )
 
         return response
 
@@ -275,12 +251,9 @@ class AutoCommandTools:
         finally:
             interpreter.close()
 
-        self.result_manager.append(content=s, meta={
-            "action": "run_python",
-            "input": {
-                "code": code
-            }
-        })
+        self.result_manager.append(
+            content=s, meta={"action": "run_python", "input": {"code": code}}
+        )
 
         return s
 
@@ -303,12 +276,9 @@ class AutoCommandTools:
         finally:
             interpreter.close()
 
-        self.result_manager.append(content=s, meta={
-            "action": "run_shell_code",
-            "input": {
-                "script": script
-            }
-        })
+        self.result_manager.append(
+            content=s, meta={"action": "run_shell_code", "input": {"script": script}}
+        )
 
         return s
 
@@ -317,12 +287,10 @@ class AutoCommandTools:
         你可以给出类名，函数名，以及文件的用途描述等信息，该工具会根据这些信息返回项目中相关的文件。
         """
         v = self.get_project_related_files(query)
-        self.result_manager.append(content=v, meta={
-            "action": "get_related_files_by_symbols",
-            "input": {
-                "query": query
-            }
-        })
+        self.result_manager.append(
+            content=v,
+            meta={"action": "get_related_files_by_symbols", "input": {"query": query}},
+        )
         return v
 
     def get_project_related_files(self, query: str) -> str:
@@ -332,33 +300,38 @@ class AutoCommandTools:
 
         注意，该工具无法涵盖当前项目中所有文件，因为有些文件可能没有被索引。
         """
+        from autocoder.default_project import DefaultProject
+
         if self.args.project_type == "ts":
             pp = TSProject(args=self.args, llm=self.llm)
         elif self.args.project_type == "py":
             pp = PyProject(args=self.args, llm=self.llm)
+        elif not self.args.project_type or self.args.project_type == "*":
+            pp = DefaultProject(args=self.args, llm=self.llm, file_filter=None)
         else:
             pp = SuffixProject(args=self.args, llm=self.llm, file_filter=None)
         pp.run()
         sources = pp.sources
 
-        index_manager = IndexManager(
-            llm=self.llm, sources=sources, args=self.args)
+        index_manager = IndexManager(llm=self.llm, sources=sources, args=self.args)
         target_files = index_manager.get_target_files_by_query(query)
         file_list = target_files.file_list
         v = ",".join([file.file_path for file in file_list])
-        self.result_manager.append(content=v, meta={
-            "action": "get_project_related_files",
-            "input": {
-                "query": query
-            }
-        })
+        self.result_manager.append(
+            content=v,
+            meta={"action": "get_project_related_files", "input": {"query": query}},
+        )
         return v
 
     def _get_sources(self):
+        from autocoder.default_project import DefaultProject
+
         if self.args.project_type == "ts":
             pp = TSProject(args=self.args, llm=self.llm)
         elif self.args.project_type == "py":
             pp = PyProject(args=self.args, llm=self.llm)
+        elif not self.args.project_type or self.args.project_type == "*":
+            pp = DefaultProject(args=self.args, llm=self.llm, file_filter=None)
         else:
             pp = SuffixProject(args=self.args, llm=self.llm, file_filter=None)
         pp.run()
@@ -366,8 +339,7 @@ class AutoCommandTools:
 
     def _get_index(self):
         sources = self._get_sources()
-        index_manager = IndexManager(
-            llm=self.llm, sources=sources, args=self.args)
+        index_manager = IndexManager(llm=self.llm, sources=sources, args=self.args)
         return index_manager
 
     def get_project_map(self, file_paths: Optional[str] = None) -> str:
@@ -388,12 +360,10 @@ class AutoCommandTools:
             index_data = json.loads(s)
         except Exception as e:
             v = f"Error: {str(e)}\n\n完整异常堆栈信息:\n{traceback.format_exc()}"
-            self.result_manager.add_result(content=v, meta={
-                "action": "get_project_map",
-                "input": {
-                    "file_paths": file_paths
-                }
-            })
+            self.result_manager.add_result(
+                content=v,
+                meta={"action": "get_project_map", "input": {"file_paths": file_paths}},
+            )
             return v
 
         final_result = []
@@ -405,8 +375,7 @@ class AutoCommandTools:
             if isinstance(file_paths, list):
                 file_path_list = file_paths
             elif isinstance(file_paths, str):
-                file_path_list = [path.strip()
-                                  for path in file_paths.split(",")]
+                file_path_list = [path.strip() for path in file_paths.split(",")]
             else:
                 file_path_list = [str(file_paths)]
 
@@ -429,25 +398,27 @@ class AutoCommandTools:
         v = json.dumps(final_result, ensure_ascii=False)
         tokens = count_tokens(v)
         parsed_safe_zone_tokens = self._get_parsed_safe_zone_tokens()
-        if tokens > parsed_safe_zone_tokens/2.0:
+        if tokens > parsed_safe_zone_tokens / 2.0:
             result = f"The project map is too large to return. (tokens: {tokens}). Try to use another function."
-            self.result_manager.add_result(content=result, meta={
-                "action": "get_project_map",
-                "input": {
-                    "file_paths": file_paths
-                }
-            })
+            self.result_manager.add_result(
+                content=result,
+                meta={"action": "get_project_map", "input": {"file_paths": file_paths}},
+            )
             return result
 
-        self.result_manager.add_result(content=v, meta={
-            "action": "get_project_map",
-            "input": {
-                "file_paths": file_paths
-            }
-        })
+        self.result_manager.add_result(
+            content=v,
+            meta={"action": "get_project_map", "input": {"file_paths": file_paths}},
+        )
         return v
 
-    def read_file_with_keyword_ranges(self, file_path: str, keyword: str, before_size: int = 100, after_size: int = 100) -> str:
+    def read_file_with_keyword_ranges(
+        self,
+        file_path: str,
+        keyword: str,
+        before_size: int = 100,
+        after_size: int = 100,
+    ) -> str:
         """
         该函数用于读取包含了关键字(keyword)的行，以及该行前后指定大小的行。
         输入参数:
@@ -508,27 +479,33 @@ class AutoCommandTools:
 
         except Exception as e:
             v = f"Error reading file {absolute_path}: {str(e)}"
-            self.result_manager.add_result(content=v, meta={
+            self.result_manager.add_result(
+                content=v,
+                meta={
+                    "action": "read_file_with_keyword_ranges",
+                    "input": {
+                        "file_path": file_path,
+                        "keyword": keyword,
+                        "before_size": before_size,
+                        "after_size": after_size,
+                    },
+                },
+            )
+            return v
+
+        final_result = "\n\n".join(result)
+        self.result_manager.add_result(
+            content=final_result,
+            meta={
                 "action": "read_file_with_keyword_ranges",
                 "input": {
                     "file_path": file_path,
                     "keyword": keyword,
                     "before_size": before_size,
-                    "after_size": after_size
-                }
-            })
-            return v
-
-        final_result = "\n\n".join(result)
-        self.result_manager.add_result(content=final_result, meta={
-            "action": "read_file_with_keyword_ranges",
-            "input": {
-                "file_path": file_path,
-                "keyword": keyword,
-                "before_size": before_size,
-                "after_size": after_size
-            }
-        })
+                    "after_size": after_size,
+                },
+            },
+        )
 
         return final_result
 
@@ -537,7 +514,7 @@ class AutoCommandTools:
         该工具用于读取指定文件的内容。
 
         参数说明:
-        1. paths (str): 
+        1. paths (str):
            - 以逗号分隔的文件路径列表
            - 支持两种格式:
              a) 文件名: 如果多个文件匹配该名称，将选择第一个匹配项
@@ -551,7 +528,7 @@ class AutoCommandTools:
              * 使用逗号分隔不同文件的行范围
              * 每个文件可以指定多个行范围，用/分隔
              * 每个行范围使用-连接起始行和结束行
-           - 示例: 
+           - 示例:
              * "1-100,2-50" (为两个文件分别指定一个行范围)
              * "1-100/200-300,50-100" (第一个文件指定两个行范围，第二个文件指定一个行范围)
            - 注意: line_ranges中的文件数量必须与paths中的文件数量一致
@@ -568,15 +545,14 @@ class AutoCommandTools:
         if line_ranges:
             ranges_per_file = line_ranges.split(",")
             if len(ranges_per_file) != len(paths):
-                self.result_manager.add_result(content="Number of line ranges must match number of files", meta={
-                    "action": "read_files",
-                    "input": {
-                        "paths": paths,
-                        "line_ranges": line_ranges
-                    }
-                })
-                raise ValueError(
-                    "Number of line ranges must match number of files")
+                self.result_manager.add_result(
+                    content="Number of line ranges must match number of files",
+                    meta={
+                        "action": "read_files",
+                        "input": {"paths": paths, "line_ranges": line_ranges},
+                    },
+                )
+                raise ValueError("Number of line ranges must match number of files")
 
             for path, ranges in zip(paths, ranges_per_file):
                 file_line_ranges[path] = []
@@ -606,7 +582,8 @@ class AutoCommandTools:
                     end = min(len(lines), end)
                     content = "".join(lines[start:end])
                     filtered_lines.extend(
-                        f"##File: {absolute_path}\n##Line: {start}-{end}\n\n{content}")
+                        f"##File: {absolute_path}\n##Line: {start}-{end}\n\n{content}"
+                    )
                 source_code = "".join(filtered_lines)
                 # Add source_code to source_code_str
                 source_code_str += source_code
@@ -615,17 +592,16 @@ class AutoCommandTools:
                 content = files_utils.read_file(absolute_path)
                 source_code = f"##File: {absolute_path}\n\n{content}"
 
-                sc = SourceCode(module_name=absolute_path,
-                                source_code=source_code)
+                sc = SourceCode(module_name=absolute_path, source_code=source_code)
                 source_code_str += f"{sc.source_code}\n\n"
 
-        self.result_manager.add_result(content=source_code_str, meta={
-            "action": "read_files",
-            "input": {
-                "paths": paths,
-                "line_ranges": line_ranges
-            }
-        })
+        self.result_manager.add_result(
+            content=source_code_str,
+            meta={
+                "action": "read_files",
+                "input": {"paths": paths, "line_ranges": line_ranges},
+            },
+        )
         return source_code_str
 
     def find_symbol_definition(self, symbol: str) -> str:
@@ -642,8 +618,10 @@ class AutoCommandTools:
             symbols = extract_symbols(item.symbols)
             for symbol_info in symbols:
                 # 进行精确匹配和模糊匹配
-                if (symbol_info.name == symbol or
-                        symbol.lower() in symbol_info.name.lower()):
+                if (
+                    symbol_info.name == symbol
+                    or symbol.lower() in symbol_info.name.lower()
+                ):
                     # 检查是否已经添加过该文件路径
                     if symbol_info.module_name not in result:
                         result.append(symbol_info.module_name)
@@ -656,12 +634,10 @@ class AutoCommandTools:
             file_paths = f"未找到符号 '{symbol}' 的定义"
 
         # 记录操作结果
-        self.result_manager.add_result(content=file_paths, meta={
-            "action": "find_symbols_definition",
-            "input": {
-                "symbol": symbol
-            }
-        })
+        self.result_manager.add_result(
+            content=file_paths,
+            meta={"action": "find_symbols_definition", "input": {"symbol": symbol}},
+        )
 
         return file_paths
 
@@ -680,22 +656,16 @@ class AutoCommandTools:
         # 确保路径存在且是目录
         if not os.path.exists(target_path):
             result = f"目录不存在: {target_path}"
-            self.result_manager.add_result(content=result, meta={
-                "action": "list_files",
-                "input": {
-                    "path": path
-                }
-            })
+            self.result_manager.add_result(
+                content=result, meta={"action": "list_files", "input": {"path": path}}
+            )
             return result
 
         if not os.path.isdir(target_path):
             result = f"指定路径不是目录: {target_path}"
-            self.result_manager.add_result(content=result, meta={
-                "action": "list_files",
-                "input": {
-                    "path": path
-                }
-            })
+            self.result_manager.add_result(
+                content=result, meta={"action": "list_files", "input": {"path": path}}
+            )
             return result
 
         # 只收集当前目录下的文件，不递归子目录
@@ -708,20 +678,21 @@ class AutoCommandTools:
         result = "\n".join(file_list)
 
         # 记录结果
-        self.result_manager.add_result(content=result, meta={
-            "action": "list_files",
-            "input": {
-                "path": path
-            }
-        })
+        self.result_manager.add_result(
+            content=result, meta={"action": "list_files", "input": {"path": path}}
+        )
 
         return result
 
     def get_project_structure(self) -> str:
+        from autocoder.default_project import DefaultProject
+
         if self.args.project_type == "ts":
             pp = TSProject(args=self.args, llm=self.llm)
         elif self.args.project_type == "py":
             pp = PyProject(args=self.args, llm=self.llm)
+        elif not self.args.project_type or self.args.project_type == "*":
+            pp = DefaultProject(args=self.args, llm=self.llm, file_filter=None)
         else:
             pp = SuffixProject(args=self.args, llm=self.llm, file_filter=None)
         pp.run()
@@ -731,18 +702,14 @@ class AutoCommandTools:
         parsed_safe_zone_tokens = self._get_parsed_safe_zone_tokens()
         if tokens > parsed_safe_zone_tokens / 2.0:
             result = f"The project structure is too large to return. (tokens: {tokens}). Try to use another function."
-            self.result_manager.add_result(content=result, meta={
-                "action": "get_project_structure",
-                "input": {
-                }
-            })
+            self.result_manager.add_result(
+                content=result, meta={"action": "get_project_structure", "input": {}}
+            )
             return result
 
-        self.result_manager.add_result(content=s, meta={
-            "action": "get_project_structure",
-            "input": {
-            }
-        })
+        self.result_manager.add_result(
+            content=s, meta={"action": "get_project_structure", "input": {}}
+        )
         return s
 
     def find_files_by_name(self, keyword: str) -> str:
@@ -757,8 +724,7 @@ class AutoCommandTools:
         matched_files = []
         for root, dirs, files in os.walk(self.args.source_dir):
             # 过滤忽略的目录，避免递归进入
-            dirs[:] = [d for d in dirs if not should_ignore(
-                os.path.join(root, d))]
+            dirs[:] = [d for d in dirs if not should_ignore(os.path.join(root, d))]
             for file in files:
                 file_path = os.path.join(root, file)
                 if should_ignore(file_path):
@@ -772,20 +738,16 @@ class AutoCommandTools:
         parsed_safe_zone_tokens = self._get_parsed_safe_zone_tokens()
         if tokens > parsed_safe_zone_tokens / 2.0:
             result = f"The result is too large to return. (tokens: {tokens}). Try to use another function or use another keyword to search."
-            self.result_manager.add_result(content=result, meta={
-                "action": "find_files_by_name",
-                "input": {
-                    "keyword": keyword
-                }
-            })
+            self.result_manager.add_result(
+                content=result,
+                meta={"action": "find_files_by_name", "input": {"keyword": keyword}},
+            )
             return result
 
-        self.result_manager.add_result(content=v, meta={
-            "action": "find_files_by_name",
-            "input": {
-                "keyword": keyword
-            }
-        })
+        self.result_manager.add_result(
+            content=v,
+            meta={"action": "find_files_by_name", "input": {"keyword": keyword}},
+        )
         return v
 
     def count_file_tokens(self, file_path: str) -> int:
@@ -821,15 +783,19 @@ class AutoCommandTools:
 
         for root, dirs, files in os.walk(self.args.source_dir):
             # 使用 should_ignore 过滤目录
-            dirs[:] = [d for d in dirs if not should_ignore(os.path.join(root, d), self.args.source_dir)]
+            dirs[:] = [
+                d
+                for d in dirs
+                if not should_ignore(os.path.join(root, d), self.args.source_dir)
+            ]
 
             for file in files:
                 file_path = os.path.join(root, file)
-                
+
                 # 使用 should_ignore 过滤文件
                 if should_ignore(file_path, self.args.source_dir):
                     continue
-                
+
                 try:
                     content = files_utils.read_file(file_path)
                     if keyword.lower() in content.lower():
@@ -844,15 +810,19 @@ class AutoCommandTools:
                 break
 
         v = ",".join(matched_files[:10])
-        self.result_manager.add_result(content=v, meta={
-            "action": "find_files_by_content",
-            "input": {
-                "keyword": keyword
-            }
-        })
+        self.result_manager.add_result(
+            content=v,
+            meta={"action": "find_files_by_content", "input": {"keyword": keyword}},
+        )
         return v
 
-    def lint_code(self, path: str, language: Optional[str] = None, fix: bool = False, verbose: bool = False) -> str:
+    def lint_code(
+        self,
+        path: str,
+        language: Optional[str] = None,
+        fix: bool = False,
+        verbose: bool = False,
+    ) -> str:
         """
         对代码进行质量检查，支持多种编程语言。
 
@@ -885,8 +855,7 @@ class AutoCommandTools:
             # 根据路径类型执行相应的lint操作
             if is_directory:
                 # 对整个项目进行lint
-                result = lint_project(
-                    path, language=language, fix=fix, verbose=verbose)
+                result = lint_project(path, language=language, fix=fix, verbose=verbose)
             else:
                 # 对单个文件进行lint
                 result = lint_file(path, fix=fix, verbose=verbose)
@@ -895,31 +864,37 @@ class AutoCommandTools:
             formatted_result = format_lint_result(result, language=language)
 
             # 记录操作结果
-            self.result_manager.add_result(content=formatted_result, meta={
-                "action": "lint_code",
-                "input": {
-                    "path": path,
-                    "language": language,
-                    "fix": fix,
-                    "verbose": verbose
+            self.result_manager.add_result(
+                content=formatted_result,
+                meta={
+                    "action": "lint_code",
+                    "input": {
+                        "path": path,
+                        "language": language,
+                        "fix": fix,
+                        "verbose": verbose,
+                    },
+                    "result": result,
                 },
-                "result": result
-            })
+            )
 
             return formatted_result
 
         except Exception as e:
             error_message = f"Linting failed: {str(e)}\n\n完整异常堆栈信息:\n{traceback.format_exc()}"
 
-            self.result_manager.add_result(content=error_message, meta={
-                "action": "lint_code",
-                "input": {
-                    "path": path,
-                    "language": language,
-                    "fix": fix,
-                    "verbose": verbose
+            self.result_manager.add_result(
+                content=error_message,
+                meta={
+                    "action": "lint_code",
+                    "input": {
+                        "path": path,
+                        "language": language,
+                        "fix": fix,
+                        "verbose": verbose,
+                    },
+                    "error": error_message,
                 },
-                "error": error_message
-            })
+            )
 
             return error_message

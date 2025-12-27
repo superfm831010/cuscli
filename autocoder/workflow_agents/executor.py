@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import threading
 from loguru import logger
 
 from autocoder.common import AutoCoderArgs
@@ -19,7 +20,9 @@ from autocoder.common.v2.agent.agentic_edit_types import (
 )
 from autocoder.common.conversations.get_conversation_manager import (
     get_conversation_manager,
+    copy_conversation,
 )
+from autocoder.utils.llms import get_single_llm
 from autocoder.workflow_agents.types import (
     WorkflowSpec,
     StepSpec,
@@ -34,11 +37,16 @@ from autocoder.workflow_agents.utils import (
     evaluate_condition,
     extract_outputs,
 )
+from autocoder.common.llms import LLMManager
+from autocoder.common.international import get_message, get_message_with_format
 from autocoder.workflow_agents.exceptions import (
     WorkflowDependencyError,
     WorkflowAgentNotFoundError,
-    WorkflowStepError,
-    WorkflowAgentDefinitionError,
+    WorkflowModelValidationError,
+)
+from autocoder.common.global_cancel import (
+    global_cancel,
+    CancelRequestedException,
 )
 
 
@@ -87,6 +95,14 @@ class SubagentWorkflowExecutor:
 
         # 执行结果
         self.step_results: List[StepResult] = []
+
+        # LLM 缓存机制：按模型名缓存 LLM 实例
+        # 初始化时将全局 LLM 放入缓存
+        self._llm_cache: Dict[str, Any] = {args.model: llm}
+        self._llm_cache_lock = threading.RLock()
+
+        # LLM 管理器：用于验证模型存在性和密钥配置
+        self._llm_manager = LLMManager()
 
     def _build_agents(self) -> Dict[str, WorkflowSubAgent]:
         """
@@ -173,26 +189,78 @@ class SubagentWorkflowExecutor:
         """
         system_prompt, model, include_rules = agent_definition
 
-        retry = (
-            agent_spec.retry
-            if agent_spec.retry is not None
-            else self.spec.globals.retries
-        )
-        timeout_sec = (
-            agent_spec.timeout_sec
-            if agent_spec.timeout_sec is not None
-            else self.spec.globals.timeout_sec
-        )
-
         return WorkflowSubAgent(
             agent_id=agent_spec.id,
             model=model,
             system_prompt=system_prompt,
-            retry=retry,
-            timeout_sec=timeout_sec,
             runner_type=agent_spec.runner,
             include_rules=include_rules,
         )
+
+    def _get_llm_for_model(
+        self, model_name: Optional[str], step_id: str = None, agent_id: str = None
+    ) -> Any:
+        """
+        根据模型名称获取 LLM 实例，支持缓存和验证
+
+        Args:
+            model_name: 模型名称，如果为 None 或与全局模型相同，返回全局 LLM
+            step_id: 步骤 ID（用于错误提示）
+            agent_id: 代理 ID（用于错误提示）
+
+        Returns:
+            LLM 实例
+
+        Raises:
+            WorkflowModelValidationError: 如果模型不存在或密钥未配置
+            Exception: 如果模型初始化失败
+        """
+        # 未指定模型或与全局模型相同，使用全局 LLM
+        if not model_name or model_name == self.args.model:
+            logger.debug(f"使用全局 LLM: {self.args.model}")
+            return self.llm
+
+        # 验证模型存在性（新增✨）
+        if not self._llm_manager.check_model_exists(model_name):
+            logger.error(f"模型不存在: {model_name}")
+            raise WorkflowModelValidationError.for_model_not_found(
+                step_id=step_id or "unknown",
+                agent_id=agent_id or "unknown",
+                model=model_name,
+            )
+
+        # 验证模型密钥配置（新增✨）
+        if not self._llm_manager.has_key(model_name):
+            logger.error(f"模型未配置 API 密钥: {model_name}")
+            raise WorkflowModelValidationError.for_key_missing(
+                step_id=step_id or "unknown",
+                agent_id=agent_id or "unknown",
+                model=model_name,
+            )
+
+        # 检查缓存
+        with self._llm_cache_lock:
+            cached_llm = self._llm_cache.get(model_name)
+            if cached_llm:
+                logger.debug(f"使用缓存的 LLM: {model_name}")
+                return cached_llm
+
+            # 首次使用该模型，创建新的 LLM 实例
+            logger.info(
+                f"初始化新的 LLM 实例: model={model_name}, product_mode={self.args.product_mode}"
+            )
+            try:
+                new_llm = get_single_llm(
+                    model_names=model_name, product_mode=self.args.product_mode
+                )
+                self._llm_cache[model_name] = new_llm
+                logger.debug(
+                    f"LLM 缓存已更新，当前缓存模型: {list(self._llm_cache.keys())}"
+                )
+                return new_llm
+            except Exception as e:
+                logger.error(f"初始化 LLM 失败: model={model_name}, error={str(e)}")
+                raise
 
     def _toposort(self) -> List[StepSpec]:
         """
@@ -255,11 +323,18 @@ class SubagentWorkflowExecutor:
         return result
 
     def _get_conversation_config(
-        self, step: StepSpec
+        self, step: StepSpec, set_current: bool = True
     ) -> Optional[AgenticEditConversationConfig]:
-        """按新语义仅基于 action 与可选 conversation_id 构造配置"""
+        """按新语义仅基于 action 与可选 conversation_id 构造配置
+
+        Args:
+            step: 步骤配置
+            set_current: 是否设置为当前会话（并行执行时只有第一个副本需要设置）
+        """
         action = self._get_action(step)
-        conversation_id = self._resolve_conversation_id(step, action)
+        conversation_id = self._resolve_conversation_id(
+            step, action, set_current=set_current
+        )
 
         return AgenticEditConversationConfig(
             action=ConversationAction(action),
@@ -273,8 +348,21 @@ class SubagentWorkflowExecutor:
             action = step.conversation.action
         return action
 
-    def _resolve_conversation_id(self, step: StepSpec, action: str) -> Optional[str]:
-        """基于 action 与可选 conversation_id（支持模板渲染）获取会话ID"""
+    def _resolve_conversation_id(
+        self, step: StepSpec, action: str, set_current: bool = True
+    ) -> Optional[str]:
+        """基于 action 与可选 conversation_id（支持模板渲染）获取会话ID
+
+        Args:
+            step: 步骤配置
+            action: 会话动作（new | resume | continue）
+            set_current: 是否设置为当前会话并更新实例状态
+                - True: 修改 self._conversation_id 并设置为全局 current（正常路径/首副本）
+                - False: 并行副本模式，resume/continue 时拷贝当前会话获得独立副本
+
+        Returns:
+            会话 ID
+        """
         conversation_manager = get_conversation_manager()
 
         # 1) 若步骤显式指定 conversation_id（需渲染），优先使用
@@ -290,57 +378,102 @@ class SubagentWorkflowExecutor:
         if explicit_id:
             # resume/continue/new 都可使用外部传入ID；new时若需要强制新建则忽略此ID
             if action == "new":
-                # new 强制新建新会话并将其作为共享链路会话
-                self._conversation_id = conversation_manager.create_conversation(
+                # new 强制新建新会话
+                conv_id = conversation_manager.create_conversation(
                     name=self.workflow_spec.metadata.name,
                     description=self.workflow_spec.metadata.description,
                 )
-                conversation_manager.set_current_conversation(self._conversation_id)
-                return self._conversation_id
+                if set_current:
+                    self._conversation_id = conv_id
+                    conversation_manager.set_current_conversation(conv_id)
+                return conv_id
             else:
-                # resume/continue 使用该ID，并设为共享链路会话
-                self._conversation_id = explicit_id
-                try:
-                    conversation_manager.set_current_conversation(self._conversation_id)
-                except Exception:
-                    # 若不存在，则按 resume 兜底：创建并设置
-                    self._conversation_id = conversation_manager.create_conversation(
-                        name=self.workflow_spec.metadata.name,
-                        description=self.workflow_spec.metadata.description,
-                    )
-                    conversation_manager.set_current_conversation(self._conversation_id)
-                return self._conversation_id
+                # resume/continue 使用该ID
+                if set_current:
+                    # 首副本：直接使用该 ID
+                    conv_id = explicit_id
+                    self._conversation_id = conv_id
+                    try:
+                        conversation_manager.set_current_conversation(conv_id)
+                    except Exception:
+                        # 若不存在，则按 resume 兜底：创建并设置
+                        conv_id = conversation_manager.create_conversation(
+                            name=self.workflow_spec.metadata.name,
+                            description=self.workflow_spec.metadata.description,
+                        )
+                        self._conversation_id = conv_id
+                        conversation_manager.set_current_conversation(conv_id)
+                    return conv_id
+                else:
+                    # 非首副本：拷贝该会话，获得独立副本
+                    try:
+                        conv_id = copy_conversation(
+                            source_conversation_id=explicit_id,
+                            new_name=f"{self.workflow_spec.metadata.name} (replica)",
+                            copy_messages=True,
+                            copy_metadata=True,
+                        )
+                        logger.debug(f"非首副本拷贝会话 {explicit_id} -> {conv_id}")
+                        return conv_id
+                    except Exception as e:
+                        # 拷贝失败，创建新会话
+                        logger.warning(f"拷贝会话失败: {e}，创建新会话")
+                        return conversation_manager.create_conversation(
+                            name=self.workflow_spec.metadata.name,
+                            description=self.workflow_spec.metadata.description,
+                        )
 
         # 2) 未显式指定ID，依据 action 与共享链路状态处理
         if action == "new":
-            # 总是新建并重置共享链路
-            self._conversation_id = conversation_manager.create_conversation(
+            # 总是新建
+            conv_id = conversation_manager.create_conversation(
                 name=self.workflow_spec.metadata.name,
                 description=self.workflow_spec.metadata.description,
             )
-            conversation_manager.set_current_conversation(self._conversation_id)
-            return self._conversation_id
+            if set_current:
+                self._conversation_id = conv_id
+                conversation_manager.set_current_conversation(conv_id)
+            return conv_id
 
         # resume / continue：若已有共享ID则复用；否则从 current 获取，没有就新建
-        if self._conversation_id:
-            return self._conversation_id
+        # 首先确定基准会话 ID
+        base_conv_id = self._conversation_id
+        if not base_conv_id:
+            base_conv_id = conversation_manager.get_current_conversation_id()
 
-        current_id = conversation_manager.get_current_conversation_id()
-        if current_id:
-            self._conversation_id = current_id
-            return self._conversation_id
+        if base_conv_id:
+            if set_current:
+                # 首副本：直接使用
+                self._conversation_id = base_conv_id
+                return base_conv_id
+            else:
+                # 非首副本：拷贝会话，获得独立副本
+                try:
+                    conv_id = copy_conversation(
+                        source_conversation_id=base_conv_id,
+                        new_name=f"{self.workflow_spec.metadata.name} (replica)",
+                        copy_messages=True,
+                        copy_metadata=True,
+                    )
+                    logger.debug(f"非首副本拷贝会话 {base_conv_id} -> {conv_id}")
+                    return conv_id
+                except Exception as e:
+                    # 拷贝失败，创建新会话
+                    logger.warning(f"拷贝会话失败: {e}，创建新会话")
+                    return conversation_manager.create_conversation(
+                        name=self.workflow_spec.metadata.name,
+                        description=self.workflow_spec.metadata.description,
+                    )
 
-        # 无当前会话则新建并设为当前
-        self._conversation_id = conversation_manager.create_conversation(
+        # 无当前会话则新建
+        conv_id = conversation_manager.create_conversation(
             name=self.workflow_spec.metadata.name,
             description=self.workflow_spec.metadata.description,
         )
-        conversation_manager.set_current_conversation(self._conversation_id)
-        return self._conversation_id
-
-    def _get_shared_conversation_id(self, conversation_manager: Any) -> Optional[str]:
-        """兼容保留：不再使用 share_across_steps，内部转到 _resolve_conversation_id"""
-        return self._conversation_id
+        if set_current:
+            self._conversation_id = conv_id
+            conversation_manager.set_current_conversation(conv_id)
+        return conv_id
 
     def run(self) -> WorkflowResult:
         """
@@ -358,7 +491,9 @@ class SubagentWorkflowExecutor:
                 success=False, context=self.context, step_results=[], error=error_msg
             )
         except Exception as e:
-            error_msg = f"拓扑排序失败: {str(e)}"
+            error_msg = get_message_with_format(
+                "workflow.exec_toposort_failed", error=str(e)
+            )
             logger.error(error_msg, exc_info=True)
             return WorkflowResult(
                 success=False, context=self.context, step_results=[], error=error_msg
@@ -367,8 +502,48 @@ class SubagentWorkflowExecutor:
         logger.info(f"开始执行 workflow: {self.workflow_spec.metadata.name}")
 
         for step in sorted_steps:
+            # 在执行每个步骤之前检查取消状态
+            if self.cancel_token and global_cancel.is_requested(self.cancel_token):
+                logger.info(f"检测到取消请求，中止 workflow 执行")
+                # 将剩余步骤标记为取消
+                remaining_steps = sorted_steps[sorted_steps.index(step) :]
+                for remaining_step in remaining_steps:
+                    self.step_results.append(
+                        StepResult(
+                            step_id=remaining_step.id,
+                            status=StepStatus.CANCELLED,
+                            error="Workflow execution was cancelled by user",
+                        )
+                    )
+                return WorkflowResult(
+                    success=False,
+                    context=self.context,
+                    step_results=self.step_results,
+                    error="Workflow execution was cancelled by user",
+                )
+
             step_result = self._execute_step(step)
             self.step_results.append(step_result)
+
+            # 如果步骤被取消，停止执行后续步骤
+            if step_result.status == StepStatus.CANCELLED:
+                logger.info(f"步骤 {step.id} 被取消，中止后续步骤执行")
+                # 将剩余步骤标记为取消
+                current_idx = sorted_steps.index(step)
+                for remaining_step in sorted_steps[current_idx + 1 :]:
+                    self.step_results.append(
+                        StepResult(
+                            step_id=remaining_step.id,
+                            status=StepStatus.CANCELLED,
+                            error="Skipped due to workflow cancellation",
+                        )
+                    )
+                return WorkflowResult(
+                    success=False,
+                    context=self.context,
+                    step_results=self.step_results,
+                    error="Workflow execution was cancelled by user",
+                )
 
             # 如果步骤失败，可以选择是否继续（目前继续执行）
             if step_result.status == StepStatus.FAILED:
@@ -389,7 +564,13 @@ class SubagentWorkflowExecutor:
             success=success,
             context=self.context,
             step_results=self.step_results,
-            error=None if success else f"{len(failed_steps)} 个步骤失败",
+            error=(
+                None
+                if success
+                else get_message_with_format(
+                    "workflow.exec_failed_steps_count", n=len(failed_steps)
+                )
+            ),
         )
 
     def _execute_step(self, step: StepSpec) -> StepResult:
@@ -403,6 +584,15 @@ class SubagentWorkflowExecutor:
             StepResult 对象
         """
         logger.info(f"执行步骤: {step.id}")
+
+        # 在执行步骤之前检查取消状态
+        if self.cancel_token and global_cancel.is_requested(self.cancel_token):
+            logger.info(f"步骤 {step.id} 执行前检测到取消请求")
+            return StepResult(
+                step_id=step.id,
+                status=StepStatus.CANCELLED,
+                error="Step cancelled before execution",
+            )
 
         # 评估条件
         attempt_prev = self.context.get("_last_attempt_result")
@@ -450,19 +640,30 @@ class SubagentWorkflowExecutor:
             # 获取会话配置
             conversation_config = self._get_conversation_config(step)
 
-            # 运行代理
+            # 获取该 agent 专属的 LLM（如果 agent 指定了模型）
             agent = self.agents[step.agent]
+            agent_llm = self._get_llm_for_model(
+                agent.model, step_id=step.id, agent_id=step.agent
+            )
+
+            # 记录使用的模型
+            if agent.model and agent.model != self.args.model:
+                logger.info(
+                    f"步骤 {step.id} (agent={step.agent}) 使用 agent 专属模型: {agent.model}"
+                )
+
+            # 运行代理
             completion = agent.run(
                 user_input=user_input,
                 conversation_config=conversation_config,
                 args=self.args,
-                llm=self.llm,
+                llm=agent_llm,
                 cancel_token=self.cancel_token,
             )
 
             # 处理结果
             if completion is None:
-                error_msg = "代理未返回结果"
+                error_msg = get_message("workflow.exec_agent_no_result")
                 logger.warning(f"步骤 {step.id} {error_msg}")
                 return StepResult(
                     step_id=step.id, status=StepStatus.FAILED, error=error_msg
@@ -499,8 +700,15 @@ class SubagentWorkflowExecutor:
                 outputs=outputs,
             )
 
+        except CancelRequestedException:
+            logger.info(f"步骤 {step.id} 执行过程中被取消")
+            return StepResult(
+                step_id=step.id,
+                status=StepStatus.CANCELLED,
+                error="Step cancelled during execution",
+            )
         except Exception as e:
-            error_msg = f"执行异常: {str(e)}"
+            error_msg = get_message_with_format("workflow.exec_exception", error=str(e))
             logger.error(f"步骤 {step.id} {error_msg}", exc_info=True)
             return StepResult(
                 step_id=step.id, status=StepStatus.FAILED, error=error_msg
@@ -518,6 +726,15 @@ class SubagentWorkflowExecutor:
         """
         logger.info(f"步骤 {step.id} 将并行执行 {step.replicas} 个副本")
 
+        # 在执行之前检查取消状态
+        if self.cancel_token and global_cancel.is_requested(self.cancel_token):
+            logger.info(f"步骤 {step.id} 并行执行前检测到取消请求")
+            return StepResult(
+                step_id=step.id,
+                status=StepStatus.CANCELLED,
+                error="Step cancelled before parallel execution",
+            )
+
         # 渲染用户输入（所有副本使用相同输入）
         try:
             user_input = render_template(
@@ -526,7 +743,9 @@ class SubagentWorkflowExecutor:
             if not isinstance(user_input, str):
                 user_input = str(user_input)
         except Exception as e:
-            error_msg = f"渲染输入失败: {str(e)}"
+            error_msg = get_message_with_format(
+                "workflow.exec_render_input_failed", error=str(e)
+            )
             logger.error(f"步骤 {step.id} {error_msg}", exc_info=True)
             return StepResult(
                 step_id=step.id, status=StepStatus.FAILED, error=error_msg
@@ -534,8 +753,24 @@ class SubagentWorkflowExecutor:
 
         # 并行执行所有副本
         agent = self.agents[step.agent]
+        # 获取该 agent 专属的 LLM（如果 agent 指定了模型）
+        agent_llm = self._get_llm_for_model(
+            agent.model, step_id=step.id, agent_id=step.agent
+        )
+
+        # 记录使用的模型
+        if agent.model and agent.model != self.args.model:
+            logger.info(
+                f"步骤 {step.id} (agent={step.agent}) 使用 agent 专属模型: {agent.model}"
+            )
+
         results = []
         errors = []
+
+        # 用于存储每个副本的会话 ID
+        replica_conversation_ids: Dict[int, Optional[str]] = {}
+        # 用于保护 conversation_id 的锁
+        conv_lock = threading.Lock()
 
         def run_replica(replica_idx: int):
             """运行单个副本"""
@@ -544,30 +779,67 @@ class SubagentWorkflowExecutor:
                     f"步骤 {step.id} 副本 {replica_idx + 1}/{step.replicas} 开始执行"
                 )
 
-                # 获取会话配置（每个副本独立会话）
-                conversation_config = self._get_conversation_config(step)
+                # 只有第一个副本设置 current 会话，避免并发时 current 抖动
+                is_first_replica = replica_idx == 0
 
-                # 运行代理
+                # 获取会话配置
+                # 注意：每个副本需要独立获取会话配置，避免竞态条件
+                with conv_lock:
+                    conversation_config = self._get_conversation_config(
+                        step, set_current=is_first_replica
+                    )
+                    # 记录当前副本使用的会话 ID（从 conversation_config 获取，而非实例状态）
+                    replica_conv_id = conversation_config.conversation_id
+                    replica_conversation_ids[replica_idx] = replica_conv_id
+
+                # 决定 runner_type：只有第一个副本（replica_idx=0）使用原配置的 runner
+                # 其他副本强制使用 SdkRunner，避免控制台输出交错
+                override_runner_type = None  # 使用 agent 默认配置
+                if not is_first_replica:
+                    override_runner_type = "sdk"
+                    logger.debug(
+                        f"步骤 {step.id} 副本 {replica_idx + 1} 使用 SdkRunner（避免输出交错）"
+                    )
+
+                # 运行代理（使用 agent 专属的 LLM）
                 completion = agent.run(
                     user_input=user_input,
                     conversation_config=conversation_config,
                     args=self.args,
-                    llm=self.llm,
+                    llm=agent_llm,
                     cancel_token=self.cancel_token,
+                    runner_type=override_runner_type,
                 )
 
                 if completion is None:
-                    return (replica_idx, None, "代理未返回结果")
+                    return (
+                        replica_idx,
+                        None,
+                        get_message("workflow.exec_agent_no_result"),
+                    )
 
                 logger.info(
                     f"步骤 {step.id} 副本 {replica_idx + 1}/{step.replicas} 执行完成"
                 )
                 return (replica_idx, completion.result, None)
 
+            except CancelRequestedException:
+                logger.info(
+                    f"步骤 {step.id} 副本 {replica_idx + 1}/{step.replicas} 被取消"
+                )
+                return (replica_idx, None, "cancelled")
+
             except Exception as e:
-                error_msg = f"副本 {replica_idx + 1} 执行异常: {str(e)}"
+                error_msg = get_message_with_format(
+                    "workflow.exec_replica_exception",
+                    idx=replica_idx + 1,
+                    error=str(e),
+                )
                 logger.error(f"步骤 {step.id} {error_msg}", exc_info=True)
                 return (replica_idx, None, error_msg)
+
+        # 用于追踪是否有取消请求
+        cancelled = False
 
         # 使用线程池并行执行
         with ThreadPoolExecutor(max_workers=step.replicas) as executor:
@@ -576,14 +848,29 @@ class SubagentWorkflowExecutor:
             for future in as_completed(futures):
                 replica_idx, result, error = future.result()
                 if error:
+                    if error == "cancelled":
+                        cancelled = True
                     errors.append(f"副本 {replica_idx + 1}: {error}")
                 else:
                     results.append((replica_idx, result))
 
+        # 如果检测到取消请求，返回取消状态
+        if cancelled and not results:
+            logger.info(f"步骤 {step.id} 所有副本都被取消")
+            return StepResult(
+                step_id=step.id,
+                status=StepStatus.CANCELLED,
+                error="All replicas were cancelled",
+            )
+
         # 判断成功：任意一个成功即可（any-success 策略）
         if not results:
             # 全部失败
-            error_msg = f"所有 {step.replicas} 个副本都失败了: " + "; ".join(errors)
+            error_msg = get_message_with_format(
+                "workflow.exec_all_replicas_failed",
+                n=step.replicas,
+                errors="; ".join(errors),
+            )
             logger.error(f"步骤 {step.id} {error_msg}")
             return StepResult(
                 step_id=step.id, status=StepStatus.FAILED, error=error_msg
@@ -592,8 +879,40 @@ class SubagentWorkflowExecutor:
         # 至少有一个成功
         logger.info(f"步骤 {step.id} 成功执行了 {len(results)}/{step.replicas} 个副本")
 
+        # 使用第一个成功副本的会话作为链路会话
+        # 按副本索引排序，取第一个成功副本的会话 ID
+        sorted_results = sorted(results, key=lambda x: x[0])
+        first_success_replica_idx = sorted_results[0][0]
+        first_success_conv_id = replica_conversation_ids.get(first_success_replica_idx)
+
+        if first_success_conv_id:
+            self._conversation_id = first_success_conv_id
+            conversation_manager = get_conversation_manager()
+            conversation_manager.set_current_conversation(first_success_conv_id)
+            logger.info(
+                f"步骤 {step.id} 使用副本 {first_success_replica_idx + 1} 的会话作为链路会话: {first_success_conv_id}"
+            )
+
+        # 过滤结果（根据 merge.when 条件）
+        filtered_results = self._filter_replica_results(results, step)
+
+        if not filtered_results:
+            # 所有结果都被过滤掉了
+            error_msg = get_message_with_format(
+                "workflow.exec_all_filtered", n=len(results)
+            )
+            logger.error(f"步骤 {step.id} {error_msg}")
+            return StepResult(
+                step_id=step.id, status=StepStatus.FAILED, error=error_msg
+            )
+
+        if len(filtered_results) < len(results):
+            logger.info(
+                f"步骤 {step.id} 有 {len(filtered_results)}/{len(results)} 个副本通过合并条件"
+            )
+
         # 合并结果
-        merged_result = self._merge_replica_results(results, step)
+        merged_result = self._merge_replica_results(filtered_results, step)
 
         # 更新上下文
         self.context["_last_attempt_result"] = merged_result
@@ -627,6 +946,38 @@ class SubagentWorkflowExecutor:
             attempt_result=merged_result,
             outputs=outputs,
         )
+
+    def _filter_replica_results(
+        self, results: List[Tuple[int, str]], step: StepSpec
+    ) -> List[Tuple[int, str]]:
+        """
+        根据 merge.when 条件过滤副本结果
+
+        只有满足条件的副本结果才会参与最终合并。
+
+        Args:
+            results: [(replica_idx, attempt_result), ...]
+            step: 步骤规格
+
+        Returns:
+            过滤后的结果列表
+        """
+        # 如果没有配置 merge.when，返回所有结果
+        if not step.merge or not step.merge.when:
+            return results
+
+        filtered = []
+        for replica_idx, result in results:
+            # 评估条件：input 为空时，evaluate_condition 会使用 attempt_result 作为输入
+            if evaluate_condition(step.merge.when, result, self.context):
+                filtered.append((replica_idx, result))
+                logger.debug(f"步骤 {step.id} 副本 {replica_idx + 1} 通过合并条件")
+            else:
+                logger.info(
+                    f"步骤 {step.id} 副本 {replica_idx + 1} 未通过合并条件，不参与合并"
+                )
+
+        return filtered
 
     def _merge_replica_results(
         self, results: List[Tuple[int, str]], step: StepSpec

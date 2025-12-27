@@ -28,9 +28,7 @@ class AsyncAgentHandler:
         # 初始化组件
         self.markdown_processor = MarkdownProcessor()
         self.worktree_manager = WorktreeManager(
-            options.workdir,
-            options.from_branch,
-            original_project_path=str(self.cwd)
+            options.workdir, options.from_branch, original_project_path=str(self.cwd)
         )
         self.async_executor = AsyncExecutor(
             model=options.model,
@@ -40,7 +38,8 @@ class AsyncAgentHandler:
             verbose=options.verbose,
             task_prefix=options.task_prefix,
             worktree_name=options.worktree_name,
-            include_libs=options.include_libs
+            include_libs=options.include_libs,
+            workflow=options.workflow,
         )
 
         # 设置 worktree 管理器
@@ -61,8 +60,7 @@ class AsyncAgentHandler:
         elif self.options.split_mode == "any":
             self.markdown_processor.set_split_mode(SplitMode.ANY_HEADING)
             self.markdown_processor.set_heading_level_range(
-                self.options.min_level,
-                self.options.max_level
+                self.options.min_level, self.options.max_level
             )
         elif self.options.split_mode == "delimiter":
             self.markdown_processor.set_delimiter(self.options.delimiter)
@@ -87,7 +85,9 @@ class AsyncAgentHandler:
             # 如果启用了 verbose，打印调试信息
             if self.options.verbose:
                 print(f"[DEBUG] AsyncAgentHandler.handle() started")
-                print(f"[DEBUG] Options: async_mode={self.options.async_mode}, split_mode={self.options.split_mode}")
+                print(
+                    f"[DEBUG] Options: async_mode={self.options.async_mode}, split_mode={self.options.split_mode}"
+                )
                 print(f"[DEBUG] Working directory: {self.cwd}")
 
             # 检查是否有标准输入
@@ -95,11 +95,7 @@ class AsyncAgentHandler:
                 error_msg = get_message("no_stdin_data")
                 if self.options.verbose:
                     print(f"[DEBUG] No stdin input detected. Error: {error_msg}")
-                return CLIResult(
-                    success=False,
-                    output="",
-                    error=error_msg
-                )
+                return CLIResult(success=False, output="", error=error_msg)
 
             # 读取标准输入
             if self.options.verbose:
@@ -118,21 +114,13 @@ class AsyncAgentHandler:
                 error_msg = get_message("input_content_empty")
                 if self.options.verbose:
                     print(f"[DEBUG] Input content is empty. Error: {error_msg}")
-                return CLIResult(
-                    success=False,
-                    output="",
-                    error=error_msg
-                )
+                return CLIResult(success=False, output="", error=error_msg)
 
             # 验证内容
             try:
                 self.markdown_processor.validate_content(input_content)
             except ValueError as e:
-                return CLIResult(
-                    success=False,
-                    output="",
-                    error=str(e)
-                )
+                return CLIResult(success=False, output="", error=str(e))
 
             # 处理 Markdown 内容
             documents = self.markdown_processor.process_content(input_content, "stdin")
@@ -141,10 +129,12 @@ class AsyncAgentHandler:
                 return CLIResult(
                     success=False,
                     output="",
-                    error=get_message("no_processable_document_content")
+                    error=get_message("no_processable_document_content"),
                 )
 
-            print(get_message_with_format("parsed_document_parts", count=len(documents)))
+            print(
+                get_message_with_format("parsed_document_parts", count=len(documents))
+            )
 
             # 开始并行处理
             print(get_message("starting_async_document_processing"))
@@ -154,7 +144,9 @@ class AsyncAgentHandler:
                 return CLIResult(
                     success=False,
                     output="",
-                    error=get_message_with_format("async_execution_failed", error=str(e))
+                    error=get_message_with_format(
+                        "async_execution_failed", error=str(e)
+                    ),
                 )
 
             # 汇总结果
@@ -163,9 +155,17 @@ class AsyncAgentHandler:
 
             output_lines = []
             output_lines.append(get_message("async_agent_runner_completed"))
-            output_lines.append(get_message_with_format("total_processed", total=total_count))
-            output_lines.append(get_message_with_format("success_count", count=success_count))
-            output_lines.append(get_message_with_format("failure_count", count=total_count - success_count))
+            output_lines.append(
+                get_message_with_format("total_processed", total=total_count)
+            )
+            output_lines.append(
+                get_message_with_format("success_count", count=success_count)
+            )
+            output_lines.append(
+                get_message_with_format(
+                    "failure_count", count=total_count - success_count
+                )
+            )
 
             if self.options.bg_mode:
                 # 后台模式，显示日志文件信息
@@ -184,20 +184,19 @@ class AsyncAgentHandler:
 
             return CLIResult(
                 success=success_count > 0,  # 至少有一个成功就算成功
-                output="\n".join(output_lines)
+                output="\n".join(output_lines),
             )
 
         except Exception as e:
-            error_msg = get_message_with_format("async_agent_handler_execution_failed", error=str(e))
+            error_msg = get_message_with_format(
+                "async_agent_handler_execution_failed", error=str(e)
+            )
             if self.options.verbose:
                 print(f"[DEBUG] Exception in handle(): {e}")
                 import traceback
+
                 print(f"[DEBUG] Traceback:\n{traceback.format_exc()}")
-            return CLIResult(
-                success=False,
-                output="",
-                error=error_msg
-            )
+            return CLIResult(success=False, output="", error=error_msg)
 
     def _has_stdin_input(self) -> bool:
         """检查是否有标准输入"""
@@ -218,7 +217,7 @@ class AsyncAgentHandler:
                     if self.options.verbose:
                         print(f"[DEBUG] Detected pipe input")
                     return True
-                if stat.S_ISREG(stdin_stat.st_mode):   # 重定向文件
+                if stat.S_ISREG(stdin_stat.st_mode):  # 重定向文件
                     if self.options.verbose:
                         print(f"[DEBUG] Detected file input")
                     return True
@@ -228,6 +227,7 @@ class AsyncAgentHandler:
                     # 在 macOS 上，select 可能不能正确工作，尝试其他方法
                     try:
                         import select
+
                         # 使用 select 检查是否有数据可读（超时时间很短）
                         ready, _, _ = select.select([sys.stdin], [], [], 0.1)
                         has_input = bool(ready)
@@ -240,7 +240,9 @@ class AsyncAgentHandler:
                         # select 失败时，尝试检查是否是 tty
                         if not sys.stdin.isatty():
                             if self.options.verbose:
-                                print(f"[DEBUG] stdin is not a tty, assuming input exists")
+                                print(
+                                    f"[DEBUG] stdin is not a tty, assuming input exists"
+                                )
                             return True
                         return False
 
@@ -270,10 +272,10 @@ class AsyncAgentHandler:
         """读取标准输入内容"""
         try:
             # 如果 stdin 是二进制模式，需要解码
-            if hasattr(sys.stdin, 'buffer'):
+            if hasattr(sys.stdin, "buffer"):
                 # 尝试从 buffer 读取（用于处理二进制输入）
                 try:
-                    content = sys.stdin.buffer.read().decode('utf-8')
+                    content = sys.stdin.buffer.read().decode("utf-8")
                     if self.options.verbose:
                         print(f"[DEBUG] Read from stdin.buffer")
                     return content
@@ -304,14 +306,13 @@ class AsyncAgentHandler:
         try:
             self.async_executor.cleanup_all_worktrees(pattern)
             return CLIResult(
-                success=True,
-                output=get_message("worktree_cleanup_completed")
+                success=True, output=get_message("worktree_cleanup_completed")
             )
         except Exception as e:
             return CLIResult(
                 success=False,
                 output="",
-                error=get_message_with_format("worktree_cleanup_failed", error=str(e))
+                error=get_message_with_format("worktree_cleanup_failed", error=str(e)),
             )
 
     def split_by_pattern(self, content: str, pattern: str) -> List[str]:
@@ -342,7 +343,7 @@ class AsyncAgentHandler:
         for match in matches:
             if match.start() > start:
                 # 添加当前部分
-                part = content[start:match.start()].strip()
+                part = content[start : match.start()].strip()
                 if part:
                     parts.append(part)
             start = match.start()

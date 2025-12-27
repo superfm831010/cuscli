@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import sys
 from datetime import datetime
 import byzerllm
 from loguru import logger
@@ -51,9 +52,6 @@ def handle_run_command(args):
     6. 执行查询
     7. 输出结果
     """
-    import sys
-    import json
-
     # 步骤1: 读取查询内容
     query = args.query
 
@@ -91,7 +89,15 @@ def handle_run_command(args):
         disable_auto_window=args.disable_auto_window,
         disable_segment_reorder=args.disable_segment_reorder,
         model=args.model,
+        emb_model=args.emb_model,
         product_mode=args.product_mode or "lite",
+        model_file=args.model_file,
+        hybrid_index_max_output_tokens=args.hybrid_index_max_output_tokens,
+        rag_storage_type=args.rag_storage_type,
+        rag_run_once=True,  # Run command is one-time execution
+        index_filter_workers=args.index_filter_workers,
+        index_filter_file_num=args.index_filter_file_num,
+        metaso_api_key=args.metaso_api_key,
     )
 
     # 生成 RAG build name
@@ -134,6 +140,12 @@ def handle_run_command(args):
         return
     finally:
         rag.close()
+        # 确保 stdout 被刷新，以便 Node.js 进程能正确读取所有输出
+        sys.stdout.flush()
+        # Run 模式是一次性执行，完成后强制退出进程
+        # 这确保所有守护线程和资源都能被正确清理
+        # 使用 os._exit 而不是 exit，避免触发 atexit 钩子
+        os._exit(0)
 
 
 def handle_benchmark_command(args):
@@ -220,6 +232,13 @@ def handle_serve_command(args, serve_parser):
     auto_coder_args = merge_args_with_config(
         args, server_args_config, AutoCoderArgs, serve_parser
     )
+
+    # 传递 model_file 参数
+    if hasattr(args, "model_file") and args.model_file:
+        auto_coder_args.model_file = args.model_file
+
+    # Serve 模式是常驻服务，使用异步增量更新
+    auto_coder_args.rag_run_once = False
 
     # 步骤4: 设置本地图床地址
     if args.enable_local_image_host:
@@ -444,8 +463,9 @@ def handle_build_hybrid_index_command(args):
 def handle_tools_command(args):
     """处理 tools 命令"""
     if args.tool == "count":
-        # auto-coder.rag tools count --tokenizer_path /Users/allwefantasy/Downloads/tokenizer.json --file /Users/allwefantasy/data/yum/schema/schema.xlsx
-        count_tokens(args.tokenizer_path, args.file)
+        # auto-coder.rag tools count --tokenizer_path /Users/allwefantasy/Downloads/tokenizer.json --file /Users/allwefantasy/data/yum/schema/schema.xlsx --output_format json
+        output_format = getattr(args, "output_format", "text")
+        count_tokens(args.tokenizer_path, args.file, output_format)
     elif args.tool == "recall":
         _handle_recall_tool(args)
     elif args.tool == "chunk":

@@ -1,5 +1,3 @@
-
-
 """
 Git Worktree 管理器模块
 
@@ -19,6 +17,7 @@ from .task_metadata import TaskMetadataManager
 @dataclass
 class WorktreeInfo:
     """Worktree 信息"""
+
     name: str
     path: str
     branch: str
@@ -28,7 +27,9 @@ class WorktreeInfo:
 class WorktreeManager:
     """Git Worktree 管理器，用于创建和管理 Git worktree"""
 
-    def __init__(self, base_work_dir: str, from_branch: str = "", original_project_path: str = ""):
+    def __init__(
+        self, base_work_dir: str, from_branch: str = "", original_project_path: str = ""
+    ):
         """
         初始化 worktree 管理器
 
@@ -56,7 +57,9 @@ class WorktreeManager:
         """保持兼容性的work_dir属性"""
         return str(self.tasks_dir)
 
-    def create_worktree(self, name: str, user_query: str = "", model: str = "", split_mode: str = "") -> WorktreeInfo:
+    def create_worktree(
+        self, name: str, user_query: str = "", model: str = "", split_mode: str = ""
+    ) -> WorktreeInfo:
         """
         创建新的 git worktree 并记录元数据
 
@@ -77,7 +80,11 @@ class WorktreeManager:
 
         # 检查目录是否已存在
         if full_path.exists():
-            print(get_message_with_format("reusing_existing_worktree", path=str(full_path)))
+            print(
+                get_message_with_format(
+                    "reusing_existing_worktree", path=str(full_path)
+                )
+            )
 
             # 尝试获取现有目录的分支信息
             current_branch = name  # 默认使用 name 作为分支
@@ -88,7 +95,9 @@ class WorktreeManager:
                     cwd=str(full_path),
                     capture_output=True,
                     text=True,
-                    check=False
+                    encoding="utf-8",
+                    errors="replace",
+                    check=False,
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     current_branch = result.stdout.strip()
@@ -98,9 +107,7 @@ class WorktreeManager:
 
             # 直接创建 WorktreeInfo 对象，复用现有目录
             worktree_info = WorktreeInfo(
-                name=name,
-                path=str(full_path),
-                branch=current_branch
+                name=name, path=str(full_path), branch=current_branch
             )
         else:
             # 目录不存在，创建新的 git worktree
@@ -112,12 +119,22 @@ class WorktreeManager:
 
             # 创建 git worktree
             try:
-                cmd = ["git", "worktree", "add", str(full_path), "-b", name, base_branch]
+                cmd = [
+                    "git",
+                    "worktree",
+                    "add",
+                    str(full_path),
+                    "-b",
+                    name,
+                    base_branch,
+                ]
                 result = subprocess.run(
                     cmd,
                     check=True,
                     capture_output=True,
-                    text=True
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
                 )
 
                 print(get_message_with_format("create_git_worktree", name=name))
@@ -125,16 +142,14 @@ class WorktreeManager:
                     print(result.stdout)
 
             except subprocess.CalledProcessError as e:
-                error_msg = get_message_with_format("create_git_worktree_failed", error=str(e))
+                error_msg = get_message_with_format(
+                    "create_git_worktree_failed", error=str(e)
+                )
                 if e.stderr:
                     error_msg += f"\n{e.stderr}"
                 raise Exception(error_msg)
 
-            worktree_info = WorktreeInfo(
-                name=name,
-                path=str(full_path),
-                branch=name
-            )
+            worktree_info = WorktreeInfo(name=name, path=str(full_path), branch=name)
 
         # 创建任务元数据
         if user_query:  # 只有提供了查询内容才创建元数据
@@ -144,7 +159,7 @@ class WorktreeManager:
                 worktree_path=str(full_path),
                 original_project_path=self.original_project_path,
                 model=model,
-                split_mode=split_mode
+                split_mode=split_mode,
             )
 
         return worktree_info
@@ -165,11 +180,17 @@ class WorktreeManager:
                 ["git", "branch", "--show-current"],
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             )
             current_branch = result.stdout.strip()
             if current_branch:
-                print(get_message_with_format("using_current_branch", branch=current_branch))
+                print(
+                    get_message_with_format(
+                        "using_current_branch", branch=current_branch
+                    )
+                )
                 return current_branch
         except subprocess.CalledProcessError:
             pass
@@ -180,12 +201,14 @@ class WorktreeManager:
                 ["git", "branch", "--list"],
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             )
 
             branches = []
-            for line in result.stdout.split('\n'):
-                branch = line.strip().lstrip('*').strip()
+            for line in result.stdout.split("\n"):
+                branch = line.strip().lstrip("*").strip()
                 if branch:
                     branches.append(branch)
 
@@ -202,7 +225,11 @@ class WorktreeManager:
             # 如果找不到 main 或 master，返回第一个分支
             if branches:
                 first_branch = branches[0]
-                print(get_message_with_format("using_first_available_branch", branch=first_branch))
+                print(
+                    get_message_with_format(
+                        "using_first_available_branch", branch=first_branch
+                    )
+                )
                 return first_branch
 
         except subprocess.CalledProcessError as e:
@@ -214,12 +241,18 @@ class WorktreeManager:
                 ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             )
             ref = result.stdout.strip()
             if ref.startswith("refs/remotes/origin/"):
                 default_branch = ref.replace("refs/remotes/origin/", "")
-                print(get_message_with_format("using_remote_default_branch", branch=default_branch))
+                print(
+                    get_message_with_format(
+                        "using_remote_default_branch", branch=default_branch
+                    )
+                )
                 return default_branch
         except subprocess.CalledProcessError:
             pass
@@ -242,14 +275,18 @@ class WorktreeManager:
                 ["git", "worktree", "remove", info.path, "--force"],
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             )
         except subprocess.CalledProcessError:
             # 如果命令失败，尝试手动删除目录
             try:
                 shutil.rmtree(info.path)
             except OSError as e:
-                raise Exception(get_message_with_format("cleanup_worktree_failed", error=str(e)))
+                raise Exception(
+                    get_message_with_format("cleanup_worktree_failed", error=str(e))
+                )
 
         # 删除分支（如果存在）
         try:
@@ -257,7 +294,9 @@ class WorktreeManager:
                 ["git", "branch", "-D", info.branch],
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             )
         except subprocess.CalledProcessError:
             # 忽略错误，因为分支可能不存在
@@ -278,13 +317,17 @@ class WorktreeManager:
                 ["git", "worktree", "list", "--porcelain"],
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             )
         except subprocess.CalledProcessError as e:
-            raise Exception(get_message_with_format("get_worktree_list_failed", error=str(e)))
+            raise Exception(
+                get_message_with_format("get_worktree_list_failed", error=str(e))
+            )
 
         worktrees = []
-        lines = result.stdout.split('\n')
+        lines = result.stdout.split("\n")
 
         current = WorktreeInfo(name="", path="", branch="")
         for line in lines:
@@ -328,9 +371,15 @@ class WorktreeManager:
                     try:
                         self.cleanup_worktree(wt)
                     except Exception as e:
-                        print(get_message_with_format("cleanup_worktree_warning", error=str(e)))
+                        print(
+                            get_message_with_format(
+                                "cleanup_worktree_warning", error=str(e)
+                            )
+                        )
 
-    def write_content_to_worktree(self, info: WorktreeInfo, filename: str, content: str) -> None:
+    def write_content_to_worktree(
+        self, info: WorktreeInfo, filename: str, content: str
+    ) -> None:
         """
         在 worktree 中写入内容到文件
 
@@ -345,7 +394,7 @@ class WorktreeManager:
         file_path = Path(info.path) / filename
 
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
             info.temp_file = filename
         except OSError as e:
@@ -403,7 +452,14 @@ class WorktreeManager:
 
         return None
 
-    def update_task_status(self, task_id: str, status: str, error_message: str = "", log_file: str = "", execution_result: Optional[Dict[str, Any]] = None) -> bool:
+    def update_task_status(
+        self,
+        task_id: str,
+        status: str,
+        error_message: str = "",
+        log_file: str = "",
+        execution_result: Optional[Dict[str, Any]] = None,
+    ) -> bool:
         """
         更新任务状态
 
@@ -422,7 +478,7 @@ class WorktreeManager:
             status=status,
             error_message=error_message,
             log_file=log_file,
-            execution_result=execution_result
+            execution_result=execution_result,
         )
 
     def get_task_metadata(self, task_id: str):

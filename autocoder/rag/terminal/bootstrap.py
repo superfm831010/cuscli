@@ -13,6 +13,7 @@ from autocoder.rag.terminal.command_handlers import (
 )
 import importlib.resources as resources
 
+
 def load_tokenizer():
     from autocoder.rag.variable_holder import VariableHolder
     from tokenizers import Tokenizer
@@ -33,7 +34,7 @@ if platform.system() == "Windows":
 
 def run_cli(input_args=None):
     """CLI 入口函数"""
-    # 打印启动横幅    
+    # 打印启动横幅
     load_tokenizer()
 
     # 解析参数
@@ -44,6 +45,11 @@ def run_cli(input_args=None):
         handle_benchmark_command(args)
     elif args.command == "serve":
         print_banner()
+        # 处理 lite/pro 模式（需要在 initialize_system 之前设置 product_mode）
+        if hasattr(args, "lite") and args.lite:
+            args.product_mode = "lite"
+        elif hasattr(args, "pro") and args.pro:
+            args.product_mode = "pro"
         # 初始化系统（如果不是 quick 模式）
         if not args.quick:
             initialize_system(args)

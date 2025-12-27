@@ -24,7 +24,6 @@ from autocoder.utils.llms import get_llm_names
 from autocoder.run_context import get_run_context, RunMode
 from autocoder.common.action_yml_file_manager import ActionYmlFileManager
 from autocoder.common.conversations.get_conversation_manager import get_conversation_manager
-from autocoder.common.global_cancel import CancelRequestedException
 
 
 class ChatAgent:
@@ -104,104 +103,38 @@ class ChatAgent:
 
         # 输出响应
         model_name = ",".join(get_llm_names(chat_llm))
-        try:
-            assistant_response, last_meta = stream_out(
-                v,
-                request_id=self.args.request_id,
-                console=self.console,
-                model_name=model_name,
-                args=self.args
-            )
+        assistant_response, last_meta = stream_out(
+            v,
+            request_id=self.args.request_id,
+            console=self.console,
+            model_name=model_name,
+            args=self.args
+        )
 
-            self.result_manager.append(content=assistant_response, meta={
-                "action": "chat",
-                "input": {
-                    "query": self.args.query
-                }
-            })
+        self.result_manager.append(content=assistant_response, meta={
+            "action": "chat",
+            "input": {
+                "query": self.args.query
+            }
+        })
 
-            # 处理学习命令的特殊逻辑
-            if "learn" in commands_info and commit_file_name:
-                self._handle_learn_command(commit_file_name, assistant_response)
+        # 处理学习命令的特殊逻辑
+        if "learn" in commands_info and commit_file_name:
+            self._handle_learn_command(commit_file_name, assistant_response)
 
-            # 打印统计信息
-            if last_meta:
-                self._print_stats(last_meta, start_time, model_name)
+        # 打印统计信息
+        if last_meta:
+            self._print_stats(last_meta, start_time, model_name)
 
-            # 兜底检查：确保响应不为空（包括语义空响应）
-            if self._is_empty_response(assistant_response):
-                logger.warning(
-                    f"Empty assistant response detected. "
-                    f"Raw response: {repr(assistant_response[:200] if assistant_response else '')}. "
-                    f"This may indicate a problem with the LLM or streaming process. "
-                    f"Skipping adding to conversation history."
-                )
-                return
+        # 更新聊天历史 - 添加助手回复到当前会话
+        self.conversation_manager.append_message_to_current(
+            role="assistant",
+            content=assistant_response,
+            namespace=self.namespace
+        )
 
-            # 更新聊天历史 - 添加助手回复到当前会话
-            self.conversation_manager.append_message_to_current(
-                role="assistant",
-                content=assistant_response,
-                namespace=self.namespace
-            )
-
-            # 处理后续命令
-            self._handle_post_commands(commands_info, assistant_response)
-
-        except CancelRequestedException:
-            # 取消操作，不添加消息到历史
-            logger.info("Chat operation cancelled by user, no message added to history")
-            return
-
-    def _is_empty_response(self, response: str) -> bool:
-        """
-        检查响应是否为空（包括语义空响应）
-
-        注意：如果响应只包含 thinking 标签但有实际内容，会根据 keep_reasoning_content
-        参数判断是否视为空响应，并给出友好提示。
-
-        Args:
-            response: 助手响应内容
-
-        Returns:
-            bool: 如果为空返回 True，否则返回 False
-        """
-        if not response or not response.strip():
-            return True
-
-        # 检查是否只包含空的 thinking 标签
-        if response.strip() == "<thinking></thinking>":
-            return True
-
-        # 检查去除 thinking 标签后是否为空
-        cleaned = response.replace("<thinking>", "").replace("</thinking>", "").strip()
-
-        # 如果去除 thinking 后为空，但原始响应不为空，说明有 thinking 内容
-        if not cleaned and response.strip():
-            # 如果配置不保留 reasoning，则视为空响应并给出提示
-            if not getattr(self.args, 'keep_reasoning_content', False):
-                logger.warning(
-                    f"Response contains only thinking content, but keep_reasoning_content is False. "
-                    f"Consider using --keep-reasoning-content to view the model's reasoning process."
-                )
-                # 给用户友好提示
-                self.console.print(Panel(
-                    "模型只返回了思考内容（thinking），但当前配置不显示思考过程。\n\n"
-                    "这通常发生在以下情况：\n"
-                    "  • 使用支持 extended thinking 的模型（如 Claude）\n"
-                    "  • 模型进行了推理但没有生成正式回答\n\n"
-                    "解决方案：\n"
-                    "  • 使用 --keep-reasoning-content 参数查看思考过程\n"
-                    "  • 或者尝试重新表述您的问题",
-                    title="💭 提示",
-                    border_style="cyan"
-                ))
-            return True
-
-        if not cleaned:
-            return True
-
-        return False
+        # 处理后续命令
+        self._handle_post_commands(commands_info, assistant_response)
 
     def _handle_new_session(self):
         """处理新会话逻辑"""

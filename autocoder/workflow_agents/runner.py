@@ -27,6 +27,7 @@ STATUS_ICONS = {
     StepStatus.SUCCESS: "✅",
     StepStatus.FAILED: "❌",
     StepStatus.SKIPPED: "⏭️",
+    StepStatus.CANCELLED: "🚫",
 }
 
 

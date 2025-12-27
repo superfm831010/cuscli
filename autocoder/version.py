@@ -4,8 +4,8 @@ Version information for cuscli
 Cuscli 基于 auto-coder 进行二次开发
 """
 
-__version__ = "1.1.5"
-__base_version__ = "2.0.2"  # 基于的 auto-coder 版本
+__version__ = "1.2.0"
+__base_version__ = "2.0.32"  # 基于的 auto-coder 版本
 __architecture__ = "terminal"  # 使用的架构
 
 def get_version_info():

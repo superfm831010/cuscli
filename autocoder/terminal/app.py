@@ -259,6 +259,7 @@ class TerminalApp:
         self.command_registry.register(
             "/workflow", self.command_processor.handle_workflow
         )
+        self.command_registry.register("/remote", self.command_processor.handle_remote)
 
         # 兜底处理器
         self.command_registry.set_fallback(
@@ -287,24 +288,31 @@ class TerminalApp:
                 )
                 return
 
-            # 3. 尝试插件处理
+            # 3. 如果以 $ 开头，当作 workflow 快捷命令执行
+            if user_input.startswith("$"):
+                await self.command_processor.handle_workflow_shortcut(
+                    user_input, {"session": session}
+                )
+                return
+
+            # 4. 尝试插件处理
             context = {"session": session, "new_prompt_callback": new_prompt_callback}
             if self.command_processor.handle_plugin_command(user_input, context):
                 return
 
-            # 4. Shell 模式处理
+            # 5. Shell 模式处理
             if await self.command_processor.handle_shell_mode(user_input, context):
                 return
 
-            # 5. 自动检测模式
+            # 6. 自动检测模式
             if self.command_processor.handle_auto_detect_mode(user_input, context):
                 return
 
-            # 6. 语音输入模式
+            # 7. 语音输入模式
             if self.command_processor.handle_voice_input_mode(user_input, context):
                 return
 
-            # 7. 使用命令注册表分发命令
+            # 8. 使用命令注册表分发命令
             await self.command_registry.dispatch(user_input, context)
 
         except EOFError:

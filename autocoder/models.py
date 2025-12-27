@@ -54,9 +54,8 @@ def process_api_key_path(base_url: str) -> str:
 
 def load_models() -> List[Dict]:
     """
-    Load models from ~/.auto-coder/keys/models.json and merge with default_models_list.
-    Models are merged and deduplicated based on their name field.
-    If file doesn't exist or is invalid, use default_models_list.
+    Load models from ~/.auto-coder/keys/models.json.
+    Returns an empty list if no models are configured.
     """
     lm = _get_llm_manager()
     models = lm.get_all_models()

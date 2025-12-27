@@ -21,13 +21,18 @@ from autocoder.workflow_agents.types import (
     WhenConfig,
     RegexCondition,
     JsonPathCondition,
+    TextCondition,
     OutputConfig,
     StepConversationConfig,
+    MergeConfig,
 )
+from autocoder.common.agents import AgentManager
+from autocoder.common.international import get_message, get_message_with_format
 from autocoder.workflow_agents.exceptions import (
     WorkflowFileNotFoundError,
     WorkflowParseError,
     WorkflowValidationError,
+    WorkflowAgentResolutionError,
 )
 
 
@@ -69,8 +74,8 @@ def load_workflow_from_yaml(yaml_path: str) -> WorkflowSpec:
 
     if data is None:
         raise WorkflowValidationError(
-            message="YAML 文件为空或仅包含注释",
-            suggestion="请确保 YAML 文件包含有效的 workflow 配置",
+            message=get_message("workflow.yaml_empty"),
+            suggestion=get_message("workflow.yaml_empty_suggestion"),
         )
 
     return parse_workflow_spec(data, yaml_path=str(yaml_file))
@@ -99,21 +104,21 @@ def parse_workflow_spec(data: Dict[str, Any], yaml_path: str = None) -> Workflow
     api_version = data["apiVersion"]
     if api_version != "autocoder/v1":
         raise WorkflowValidationError(
-            message=f"不支持的 apiVersion",
+            message=get_message("workflow.unsupported_api_version"),
             field_path="apiVersion",
             expected="autocoder/v1",
             actual=api_version,
-            suggestion="请将 apiVersion 修改为 'autocoder/v1'",
+            suggestion=get_message("workflow.api_version_suggestion"),
         )
 
     kind = data["kind"]
     if kind != "SubagentWorkflow":
         raise WorkflowValidationError(
-            message=f"不支持的 kind",
+            message=get_message("workflow.unsupported_kind"),
             field_path="kind",
             expected="SubagentWorkflow",
             actual=kind,
-            suggestion="请将 kind 修改为 'SubagentWorkflow'",
+            suggestion=get_message("workflow.kind_suggestion"),
         )
 
     # 解析 metadata
@@ -123,11 +128,11 @@ def parse_workflow_spec(data: Dict[str, Any], yaml_path: str = None) -> Workflow
     workflow_name = metadata_data.get("name")
     if not workflow_name or not workflow_name.strip():
         raise WorkflowValidationError(
-            message="metadata.name 不能为空",
+            message=get_message("workflow.metadata_name_empty"),
             field_path="metadata.name",
-            expected="非空字符串",
+            expected=get_message("workflow.non_empty_string"),
             actual=str(workflow_name),
-            suggestion="请设置一个有意义的 workflow 名称，如 'my-workflow'",
+            suggestion=get_message("workflow.metadata_name_suggestion"),
         )
 
     metadata = MetadataConfig(
@@ -139,11 +144,11 @@ def parse_workflow_spec(data: Dict[str, Any], yaml_path: str = None) -> Workflow
     spec_data = data.get("spec", {})
     if not isinstance(spec_data, dict):
         raise WorkflowValidationError(
-            message="spec 必须是一个字典对象",
+            message=get_message("workflow.spec_must_be_dict"),
             field_path="spec",
-            expected="字典对象",
+            expected=get_message("workflow.dict_object"),
             actual=str(type(spec_data).__name__),
-            suggestion="请确保 spec: 后面跟的是字典格式的配置",
+            suggestion=get_message("workflow.spec_dict_suggestion"),
         )
 
     spec = parse_spec_config(spec_data, yaml_path=yaml_path)
@@ -178,11 +183,11 @@ def parse_spec_config(data: Dict[str, Any], yaml_path: str = None) -> SpecConfig
     vars_data = data.get("vars", {})
     if not isinstance(vars_data, dict):
         raise WorkflowValidationError(
-            message="spec.vars 必须是字典对象",
+            message=get_message("workflow.vars_must_be_dict"),
             field_path="spec.vars",
-            expected="字典对象",
+            expected=get_message("workflow.dict_object"),
             actual=str(type(vars_data).__name__),
-            suggestion="将 vars 定义为键值对，如: vars:\\n  project_type: '*'",
+            suggestion=get_message("workflow.vars_dict_suggestion"),
         )
 
     # 解析 conversation
@@ -197,20 +202,20 @@ def parse_spec_config(data: Dict[str, Any], yaml_path: str = None) -> SpecConfig
     agents_data = data.get("agents", [])
     if not isinstance(agents_data, list):
         raise WorkflowValidationError(
-            message="spec.agents 必须是列表",
+            message=get_message("workflow.agents_must_be_list"),
             field_path="spec.agents",
-            expected="列表（数组）",
+            expected=get_message("workflow.list_array"),
             actual=str(type(agents_data).__name__),
-            suggestion="确保 agents: 后面跟的是列表格式，每项以 - 开头",
+            suggestion=get_message("workflow.agents_list_suggestion"),
         )
 
     if not agents_data:
         raise WorkflowValidationError(
-            message="spec.agents 不能为空",
+            message=get_message("workflow.agents_empty"),
             field_path="spec.agents",
-            expected="至少一个 agent 定义",
-            actual="空列表",
-            suggestion="请定义至少一个 agent，例如:\\n  - id: context\\n    path: context.md",
+            expected=get_message("workflow.at_least_one_agent"),
+            actual=get_message("workflow.empty_list"),
+            suggestion=get_message("workflow.agents_empty_suggestion"),
         )
 
     agents = [
@@ -222,29 +227,34 @@ def parse_spec_config(data: Dict[str, Any], yaml_path: str = None) -> SpecConfig
     duplicates = [aid for aid in agent_ids if agent_ids.count(aid) > 1]
     if duplicates:
         raise WorkflowValidationError(
-            message=f"发现重复的 agent ID: {', '.join(set(duplicates))}",
+            message=get_message_with_format(
+                "workflow.duplicate_agent_ids", ids=", ".join(set(duplicates))
+            ),
             field_path="spec.agents",
-            suggestion="每个 agent 的 id 必须唯一，请修改重复的 ID",
+            suggestion=get_message("workflow.duplicate_agent_ids_suggestion"),
         )
+
+    # 验证 agent 文件存在性（新增✨）
+    _validate_agents_existence(agents, yaml_path)
 
     # 解析 steps
     steps_data = data.get("steps", [])
     if not isinstance(steps_data, list):
         raise WorkflowValidationError(
-            message="spec.steps 必须是列表",
+            message=get_message("workflow.steps_must_be_list"),
             field_path="spec.steps",
-            expected="列表（数组）",
+            expected=get_message("workflow.list_array"),
             actual=str(type(steps_data).__name__),
-            suggestion="确保 steps: 后面跟的是列表格式，每项以 - 开头",
+            suggestion=get_message("workflow.steps_list_suggestion"),
         )
 
     if not steps_data:
         raise WorkflowValidationError(
-            message="spec.steps 不能为空",
+            message=get_message("workflow.steps_empty"),
             field_path="spec.steps",
-            expected="至少一个 step 定义",
-            actual="空列表",
-            suggestion="请定义至少一个 step，例如:\\n  - id: step1\\n    agent: context",
+            expected=get_message("workflow.at_least_one_step"),
+            actual=get_message("workflow.empty_list"),
+            suggestion=get_message("workflow.steps_empty_suggestion"),
         )
 
     steps = [
@@ -257,9 +267,11 @@ def parse_spec_config(data: Dict[str, Any], yaml_path: str = None) -> SpecConfig
     duplicates = [sid for sid in step_ids if step_ids.count(sid) > 1]
     if duplicates:
         raise WorkflowValidationError(
-            message=f"发现重复的 step ID: {', '.join(set(duplicates))}",
+            message=get_message_with_format(
+                "workflow.duplicate_step_ids", ids=", ".join(set(duplicates))
+            ),
             field_path="spec.steps",
-            suggestion="每个 step 的 id 必须唯一，请修改重复的 ID",
+            suggestion=get_message("workflow.duplicate_step_ids_suggestion"),
         )
 
     return SpecConfig(
@@ -295,11 +307,11 @@ def parse_agent_spec(data: Dict[str, Any], index: int = None) -> AgentSpec:
     runner = data.get("runner", "sdk")
     if runner not in ["sdk", "terminal"]:
         raise WorkflowValidationError(
-            message=f"agent runner 类型无效",
+            message=get_message("workflow.invalid_runner_type"),
             field_path=f"{context}.runner",
-            expected="'sdk' 或 'terminal'",
+            expected="'sdk' or 'terminal'",
             actual=f"'{runner}'",
-            suggestion=f"请将 agent '{data['id']}' 的 runner 修改为 'sdk' 或 'terminal'",
+            suggestion=get_message("workflow.runner_type_suggestion"),
         )
 
     return AgentSpec(
@@ -307,8 +319,6 @@ def parse_agent_spec(data: Dict[str, Any], index: int = None) -> AgentSpec:
         path=data["path"],
         runner=runner,
         model=data.get("model"),
-        retry=data.get("retry"),
-        timeout_sec=data.get("timeout_sec"),
     )
 
 
@@ -340,22 +350,26 @@ def parse_step_spec(
     # 验证 agent 引用是否存在
     if available_agent_ids and agent_id not in available_agent_ids:
         raise WorkflowValidationError(
-            message=f"步骤引用的 agent 不存在: '{agent_id}'",
+            message=get_message_with_format(
+                "workflow.step_agent_not_found", agent_id=agent_id
+            ),
             field_path=f"{context}.agent",
-            expected=f"以下之一: {', '.join(available_agent_ids)}",
+            expected=f"one of: {', '.join(available_agent_ids)}",
             actual=f"'{agent_id}'",
-            suggestion=f"请将 agent 修改为已定义的 agent ID，或在 spec.agents 中添加 '{agent_id}' 的定义",
+            suggestion=get_message_with_format(
+                "workflow.step_agent_suggestion", agent_id=agent_id
+            ),
         )
 
     # 验证 needs 字段
     needs = data.get("needs", [])
     if not isinstance(needs, list):
         raise WorkflowValidationError(
-            message="needs 必须是列表",
+            message=get_message("workflow.needs_must_be_list"),
             field_path=f"{context}.needs",
-            expected="列表（数组）",
+            expected=get_message("workflow.list_array"),
             actual=str(type(needs).__name__),
-            suggestion="将 needs 定义为列表，如: needs: [step1, step2]",
+            suggestion=get_message("workflow.needs_list_suggestion"),
         )
 
     # 解析 when
@@ -366,11 +380,11 @@ def parse_step_spec(
     outputs_data = data.get("outputs", {})
     if not isinstance(outputs_data, dict):
         raise WorkflowValidationError(
-            message="outputs 必须是字典对象",
+            message=get_message("workflow.outputs_must_be_dict"),
             field_path=f"{context}.outputs",
-            expected="字典对象",
+            expected=get_message("workflow.dict_object"),
             actual=str(type(outputs_data).__name__),
-            suggestion="将 outputs 定义为键值对",
+            suggestion=get_message("workflow.outputs_dict_suggestion"),
         )
     outputs = {
         key: parse_output_config(value, f"{context}.outputs.{key}")
@@ -387,12 +401,18 @@ def parse_step_spec(
     replicas = data.get("replicas", 1)
     if not isinstance(replicas, int) or replicas < 1:
         raise WorkflowValidationError(
-            message="replicas 必须是正整数",
+            message=get_message("workflow.replicas_must_be_positive"),
             field_path=f"{context}.replicas",
-            expected="正整数（>= 1）",
+            expected=get_message("workflow.positive_integer"),
             actual=str(replicas),
-            suggestion="将 replicas 设置为正整数，如 2（表示并行运行2个副本）",
+            suggestion=get_message("workflow.replicas_suggestion"),
         )
+
+    # 解析 merge
+    merge_data = data.get("merge")
+    merge_config = (
+        parse_merge_config(merge_data, f"{context}.merge") if merge_data else None
+    )
 
     return StepSpec(
         id=step_id,
@@ -403,7 +423,187 @@ def parse_step_spec(
         outputs=outputs,
         conversation=conversation,
         replicas=replicas,
+        merge=merge_config,
     )
+
+
+def parse_merge_config(
+    data: Dict[str, Any], context: str = "merge 配置"
+) -> MergeConfig:
+    """
+    解析 merge 配置
+
+    用于多副本执行时的结果合并配置。
+
+    Args:
+        data: merge 字典
+        context: 上下文描述（用于错误提示）
+
+    Returns:
+        MergeConfig 对象
+
+    Raises:
+        WorkflowValidationError: 如果配置格式不正确
+    """
+    if not isinstance(data, dict):
+        raise WorkflowValidationError(
+            message=get_message("workflow.merge_must_be_dict"),
+            field_path=context,
+            expected=get_message("workflow.dict_object"),
+            actual=str(type(data).__name__),
+            suggestion=get_message("workflow.merge_dict_suggestion"),
+        )
+
+    when_config = None
+
+    if "when" in data:
+        when_data = data["when"]
+        if not isinstance(when_data, dict):
+            raise WorkflowValidationError(
+                message=get_message("workflow.merge_when_must_be_dict"),
+                field_path=f"{context}.when",
+                expected=get_message("workflow.dict_object"),
+                actual=str(type(when_data).__name__),
+                suggestion=get_message("workflow.merge_when_dict_suggestion"),
+            )
+        # 使用宽松模式解析，input 字段可选（默认使用 attempt_result）
+        when_config = parse_when_config_for_merge(when_data, context=f"{context}.when")
+
+    return MergeConfig(when=when_config)
+
+
+def parse_when_config_for_merge(
+    data: Dict[str, Any], context: str = "merge.when 配置"
+) -> WhenConfig:
+    """
+    为 merge.when 解析条件配置（宽松模式）
+
+    与 parse_when_config 的区别：
+    - text 条件不要求 input 字段（默认使用 attempt_result）
+    - regex 条件不要求 input 字段（默认使用 attempt_result）
+    - jsonpath 条件不要求 input 字段（默认使用 attempt_result）
+
+    Args:
+        data: when 字典
+        context: 上下文描述
+
+    Returns:
+        WhenConfig 对象
+
+    Raises:
+        WorkflowValidationError: 如果条件配置格式不正确
+    """
+    regex_config = None
+    jsonpath_config = None
+    text_config = None
+
+    if "regex" in data:
+        regex_data = data["regex"]
+        if not isinstance(regex_data, dict):
+            raise WorkflowValidationError(
+                message=get_message("workflow.regex_must_be_dict"),
+                field_path=f"{context}.regex",
+                expected=get_message("workflow.dict_object"),
+                actual=str(type(regex_data).__name__),
+                suggestion=get_message("workflow.regex_dict_suggestion"),
+            )
+
+        # 验证必需字段 pattern
+        if "pattern" not in regex_data or not regex_data["pattern"]:
+            raise WorkflowValidationError(
+                message=get_message("workflow.regex_missing_pattern"),
+                field_path=f"{context}.regex.pattern",
+                expected=get_message("workflow.non_empty_regex"),
+                actual=str(regex_data.get("pattern")),
+                suggestion=get_message("workflow.regex_pattern_suggestion"),
+            )
+
+        # input 可选，默认为空（评估时使用 attempt_result）
+        regex_config = RegexCondition(
+            input=regex_data.get("input", ""),
+            pattern=regex_data["pattern"],
+            flags=regex_data.get("flags"),
+        )
+
+    if "jsonpath" in data:
+        jsonpath_data = data["jsonpath"]
+        if not isinstance(jsonpath_data, dict):
+            raise WorkflowValidationError(
+                message=get_message("workflow.jsonpath_must_be_dict"),
+                field_path=f"{context}.jsonpath",
+                expected=get_message("workflow.dict_object"),
+                actual=str(type(jsonpath_data).__name__),
+                suggestion=get_message("workflow.jsonpath_dict_suggestion"),
+            )
+
+        # 验证必需字段 path
+        if "path" not in jsonpath_data or not jsonpath_data["path"]:
+            raise WorkflowValidationError(
+                message=get_message("workflow.jsonpath_missing_path"),
+                field_path=f"{context}.jsonpath.path",
+                expected=get_message("workflow.non_empty_jsonpath"),
+                actual=str(jsonpath_data.get("path")),
+                suggestion=get_message("workflow.jsonpath_path_suggestion"),
+            )
+
+        # input 可选，默认为空（评估时使用 attempt_result）
+        jsonpath_config = JsonPathCondition(
+            input=jsonpath_data.get("input", ""),
+            path=jsonpath_data["path"],
+            exists=jsonpath_data.get("exists"),
+            equals=jsonpath_data.get("equals"),
+            contains=jsonpath_data.get("contains"),
+        )
+
+    if "text" in data:
+        text_data = data["text"]
+        if not isinstance(text_data, dict):
+            raise WorkflowValidationError(
+                message=get_message("workflow.text_must_be_dict"),
+                field_path=f"{context}.text",
+                expected=get_message("workflow.dict_object"),
+                actual=str(type(text_data).__name__),
+                suggestion=get_message("workflow.text_dict_suggestion"),
+            )
+
+        # input 可选（与 parse_when_config 的区别）
+
+        # 至少需要一个匹配条件
+        match_fields = [
+            "contains",
+            "not_contains",
+            "starts_with",
+            "ends_with",
+            "equals",
+            "not_equals",
+            "is_empty",
+            "matches",
+        ]
+        has_match_condition = any(field in text_data for field in match_fields)
+        if not has_match_condition:
+            raise WorkflowValidationError(
+                message=get_message("workflow.text_missing_match_condition"),
+                field_path=f"{context}.text",
+                expected=f"at least one of: {', '.join(match_fields)}",
+                actual=str(list(text_data.keys())),
+                suggestion=get_message("workflow.text_match_suggestion"),
+            )
+
+        # input 可选，默认为空（评估时使用 attempt_result）
+        text_config = TextCondition(
+            input=text_data.get("input", ""),
+            contains=text_data.get("contains"),
+            not_contains=text_data.get("not_contains"),
+            starts_with=text_data.get("starts_with"),
+            ends_with=text_data.get("ends_with"),
+            equals=text_data.get("equals"),
+            not_equals=text_data.get("not_equals"),
+            is_empty=text_data.get("is_empty"),
+            matches=text_data.get("matches"),
+            ignore_case=text_data.get("ignore_case", False),
+        )
+
+    return WhenConfig(regex=regex_config, jsonpath=jsonpath_config, text=text_config)
 
 
 def parse_when_config(data: Dict[str, Any], context: str = "when 配置") -> WhenConfig:
@@ -422,54 +622,54 @@ def parse_when_config(data: Dict[str, Any], context: str = "when 配置") -> Whe
     """
     regex_config = None
     jsonpath_config = None
+    text_config = None
 
     if "regex" in data:
         regex_data = data["regex"]
         if not isinstance(regex_data, dict):
             raise WorkflowValidationError(
-                message="regex 条件必须是字典对象",
+                message=get_message("workflow.regex_must_be_dict"),
                 field_path=f"{context}.regex",
-                expected="字典对象",
+                expected=get_message("workflow.dict_object"),
                 actual=str(type(regex_data).__name__),
-                suggestion="请使用字典格式定义 regex 条件",
+                suggestion=get_message("workflow.regex_dict_suggestion"),
             )
 
         # 验证必需字段
         if "pattern" not in regex_data or not regex_data["pattern"]:
             raise WorkflowValidationError(
-                message="regex 条件缺少 pattern 字段",
+                message=get_message("workflow.regex_missing_pattern"),
                 field_path=f"{context}.regex.pattern",
-                expected="非空正则表达式",
+                expected=get_message("workflow.non_empty_regex"),
                 actual=str(regex_data.get("pattern")),
-                suggestion="请提供有效的正则表达式 pattern",
+                suggestion=get_message("workflow.regex_pattern_suggestion"),
             )
 
         regex_config = RegexCondition(
             input=regex_data.get("input", ""),
             pattern=regex_data["pattern"],
             flags=regex_data.get("flags"),
-            group=regex_data.get("group"),
         )
 
     if "jsonpath" in data:
         jsonpath_data = data["jsonpath"]
         if not isinstance(jsonpath_data, dict):
             raise WorkflowValidationError(
-                message="jsonpath 条件必须是字典对象",
+                message=get_message("workflow.jsonpath_must_be_dict"),
                 field_path=f"{context}.jsonpath",
-                expected="字典对象",
+                expected=get_message("workflow.dict_object"),
                 actual=str(type(jsonpath_data).__name__),
-                suggestion="请使用字典格式定义 jsonpath 条件",
+                suggestion=get_message("workflow.jsonpath_dict_suggestion"),
             )
 
         # 验证必需字段
         if "path" not in jsonpath_data or not jsonpath_data["path"]:
             raise WorkflowValidationError(
-                message="jsonpath 条件缺少 path 字段",
+                message=get_message("workflow.jsonpath_missing_path"),
                 field_path=f"{context}.jsonpath.path",
-                expected="非空 JSONPath 表达式",
+                expected=get_message("workflow.non_empty_jsonpath"),
                 actual=str(jsonpath_data.get("path")),
-                suggestion="请提供有效的 JSONPath 表达式，如 '$.files'",
+                suggestion=get_message("workflow.jsonpath_path_suggestion"),
             )
 
         jsonpath_config = JsonPathCondition(
@@ -480,7 +680,62 @@ def parse_when_config(data: Dict[str, Any], context: str = "when 配置") -> Whe
             contains=jsonpath_data.get("contains"),
         )
 
-    return WhenConfig(regex=regex_config, jsonpath=jsonpath_config)
+    if "text" in data:
+        text_data = data["text"]
+        if not isinstance(text_data, dict):
+            raise WorkflowValidationError(
+                message=get_message("workflow.text_must_be_dict"),
+                field_path=f"{context}.text",
+                expected=get_message("workflow.dict_object"),
+                actual=str(type(text_data).__name__),
+                suggestion=get_message("workflow.text_dict_suggestion"),
+            )
+
+        # 验证必需字段 input
+        if "input" not in text_data:
+            raise WorkflowValidationError(
+                message=get_message("workflow.text_missing_input"),
+                field_path=f"{context}.text.input",
+                expected=get_message("workflow.input_template"),
+                actual="None",
+                suggestion=get_message("workflow.text_input_suggestion"),
+            )
+
+        # 至少需要一个匹配条件
+        match_fields = [
+            "contains",
+            "not_contains",
+            "starts_with",
+            "ends_with",
+            "equals",
+            "not_equals",
+            "is_empty",
+            "matches",
+        ]
+        has_match_condition = any(field in text_data for field in match_fields)
+        if not has_match_condition:
+            raise WorkflowValidationError(
+                message=get_message("workflow.text_missing_match_condition"),
+                field_path=f"{context}.text",
+                expected=f"at least one of: {', '.join(match_fields)}",
+                actual=str(list(text_data.keys())),
+                suggestion=get_message("workflow.text_match_suggestion"),
+            )
+
+        text_config = TextCondition(
+            input=text_data.get("input", ""),
+            contains=text_data.get("contains"),
+            not_contains=text_data.get("not_contains"),
+            starts_with=text_data.get("starts_with"),
+            ends_with=text_data.get("ends_with"),
+            equals=text_data.get("equals"),
+            not_equals=text_data.get("not_equals"),
+            is_empty=text_data.get("is_empty"),
+            matches=text_data.get("matches"),
+            ignore_case=text_data.get("ignore_case", False),
+        )
+
+    return WhenConfig(regex=regex_config, jsonpath=jsonpath_config, text=text_config)
 
 
 def parse_output_config(value: Any, context: str = "output 配置") -> OutputConfig:
@@ -510,11 +765,11 @@ def parse_output_config(value: Any, context: str = "output 配置") -> OutputCon
 
         if not (has_jsonpath or has_regex or has_template):
             raise WorkflowValidationError(
-                message="output 配置必须指定至少一种提取方法",
+                message=get_message("workflow.output_missing_method"),
                 field_path=context,
-                expected="jsonpath, regex 或 template 之一",
-                actual="无有效提取方法",
-                suggestion="请添加 jsonpath, regex 或直接使用字符串模板",
+                expected="jsonpath, regex or template",
+                actual="no valid extraction method",
+                suggestion=get_message("workflow.output_method_suggestion"),
             )
 
         return OutputConfig(
@@ -525,11 +780,11 @@ def parse_output_config(value: Any, context: str = "output 配置") -> OutputCon
         )
 
     raise WorkflowValidationError(
-        message="output 配置格式不正确",
+        message=get_message("workflow.output_invalid_format"),
         field_path=context,
-        expected="字符串或字典对象",
+        expected="string or dictionary object",
         actual=str(type(value).__name__),
-        suggestion="使用字符串（如 '${attempt_result}'）或字典（如 {jsonpath: '$.files'}）",
+        suggestion=get_message("workflow.output_format_suggestion"),
     )
 
 
@@ -555,11 +810,11 @@ def parse_step_conversation_config(
     valid_actions = ["new", "resume", "continue"]
     if action not in valid_actions:
         raise WorkflowValidationError(
-            message=f"无效的 conversation action",
+            message=get_message("workflow.invalid_conversation_action"),
             field_path=f"{context}.conversation.action",
-            expected=f"以下之一: {', '.join(valid_actions)}",
+            expected=f"one of: {', '.join(valid_actions)}",
             actual=f"'{action}'",
-            suggestion=f"请将 action 修改为 {', '.join(valid_actions)} 之一",
+            suggestion=get_message("workflow.conversation_action_suggestion"),
         )
 
     return StepConversationConfig(
@@ -585,21 +840,25 @@ def _validate_required_field(
     """
     if field not in data:
         raise WorkflowValidationError(
-            message=f"缺少必需字段: '{field}'",
+            message=get_message_with_format(
+                "workflow.missing_required_field", field=field
+            ),
             field_path=f"{context}.{field}",
-            expected=f"必需字段 '{field}'",
-            actual="字段不存在",
-            suggestion=f"请在 {context} 中添加 '{field}' 字段",
+            expected=f"required field '{field}'",
+            actual="field does not exist",
+            suggestion=f"Please add '{field}' field in {context}",
         )
 
     value = data[field]
     if value is None or (isinstance(value, str) and not value.strip()):
         raise WorkflowValidationError(
-            message=f"字段 '{field}' 不能为空",
+            message=get_message_with_format(
+                "workflow.field_cannot_be_empty", field=field
+            ),
             field_path=f"{context}.{field}",
-            expected="非空值",
+            expected=get_message("workflow.non_empty_string"),
             actual=str(value),
-            suggestion=f"请为 '{field}' 提供有效的值",
+            suggestion=f"Please provide a valid value for '{field}'",
         )
 
 
@@ -616,55 +875,9 @@ def _parse_globals_config(data: Dict[str, Any]) -> GlobalsConfig:
     Raises:
         WorkflowValidationError: 如果配置类型不正确
     """
-    # 验证数值类型字段
-    max_turns = data.get("max_turns", 6)
-    if not isinstance(max_turns, int) or max_turns < 1:
-        raise WorkflowValidationError(
-            message="globals.max_turns 必须是正整数",
-            field_path="spec.globals.max_turns",
-            expected="正整数（>= 1）",
-            actual=str(max_turns),
-            suggestion="将 max_turns 设置为正整数，如 6",
-        )
-
-    retries = data.get("retries", 2)
-    if not isinstance(retries, int) or retries < 0:
-        raise WorkflowValidationError(
-            message="globals.retries 必须是非负整数",
-            field_path="spec.globals.retries",
-            expected="非负整数（>= 0）",
-            actual=str(retries),
-            suggestion="将 retries 设置为非负整数，如 2",
-        )
-
-    timeout_sec = data.get("timeout_sec", 300)
-    if not isinstance(timeout_sec, int) or timeout_sec < 1:
-        raise WorkflowValidationError(
-            message="globals.timeout_sec 必须是正整数",
-            field_path="spec.globals.timeout_sec",
-            expected="正整数（>= 1）",
-            actual=str(timeout_sec),
-            suggestion="将 timeout_sec 设置为正整数（秒），如 300",
-        )
-
-    # 验证布尔类型字段
-    include_rules = data.get("include_rules", False)
-    if not isinstance(include_rules, bool):
-        raise WorkflowValidationError(
-            message="globals.include_rules 必须是布尔值",
-            field_path="spec.globals.include_rules",
-            expected="true 或 false",
-            actual=str(include_rules),
-            suggestion="将 include_rules 设置为 true 或 false",
-        )
-
     return GlobalsConfig(
         model=data.get("model", "v3_chat"),
         product_mode=data.get("product_mode", "lite"),
-        max_turns=max_turns,
-        retries=retries,
-        timeout_sec=timeout_sec,
-        include_rules=include_rules,
     )
 
 
@@ -681,30 +894,18 @@ def _parse_conversation_config(data: Dict[str, Any]) -> ConversationConfig:
     Raises:
         WorkflowValidationError: 如果配置值不正确
     """
-    start = data.get("start", "current")
-    valid_start_values = ["current", "new"]
-    if start not in valid_start_values:
-        raise WorkflowValidationError(
-            message="conversation.start 值无效",
-            field_path="spec.conversation.start",
-            expected=f"以下之一: {', '.join(valid_start_values)}",
-            actual=f"'{start}'",
-            suggestion=f"请将 start 修改为 {' 或 '.join(valid_start_values)}",
-        )
-
     default_action = data.get("default_action", "resume")
     valid_actions = ["resume", "new", "continue"]
     if default_action not in valid_actions:
         raise WorkflowValidationError(
-            message="conversation.default_action 值无效",
+            message=get_message("workflow.invalid_default_action"),
             field_path="spec.conversation.default_action",
-            expected=f"以下之一: {', '.join(valid_actions)}",
+            expected=f"one of: {', '.join(valid_actions)}",
             actual=f"'{default_action}'",
-            suggestion=f"请将 default_action 修改为 {', '.join(valid_actions)} 之一",
+            suggestion=get_message("workflow.default_action_suggestion"),
         )
 
     return ConversationConfig(
-        start=start,
         default_action=default_action,
     )
 
@@ -726,24 +927,119 @@ def _parse_attempt_config(data: Dict[str, Any]) -> AttemptConfig:
     valid_formats = ["json", "text"]
     if format_type not in valid_formats:
         raise WorkflowValidationError(
-            message="attempt.format 值无效",
+            message=get_message("workflow.invalid_attempt_format"),
             field_path="spec.attempt.format",
-            expected=f"以下之一: {', '.join(valid_formats)}",
+            expected=f"one of: {', '.join(valid_formats)}",
             actual=f"'{format_type}'",
-            suggestion=f"请将 format 修改为 {' 或 '.join(valid_formats)}",
+            suggestion=get_message("workflow.attempt_format_suggestion"),
         )
 
     jsonpaths = data.get("jsonpaths", {})
     if not isinstance(jsonpaths, dict):
         raise WorkflowValidationError(
-            message="attempt.jsonpaths 必须是字典对象",
+            message=get_message("workflow.jsonpaths_must_be_dict"),
             field_path="spec.attempt.jsonpaths",
-            expected="字典对象",
+            expected=get_message("workflow.dict_object"),
             actual=str(type(jsonpaths).__name__),
-            suggestion="将 jsonpaths 定义为键值对",
+            suggestion=get_message("workflow.jsonpaths_dict_suggestion"),
         )
 
     return AttemptConfig(
         format=format_type,
         jsonpaths=jsonpaths,
     )
+
+
+def _validate_agents_existence(agents: List[AgentSpec], yaml_path: str = None) -> None:
+    """
+    验证所有 agent 定义文件是否存在
+
+    使用 AgentManager 的优先级目录搜索机制来验证 agent 是否可以被解析。
+
+    Args:
+        agents: agent 规格列表
+        yaml_path: YAML 文件路径（用于推断 project_root）
+
+    Raises:
+        WorkflowAgentResolutionError: 如果任何 agent 无法被解析
+    """
+    # 推断 project_root
+    if yaml_path:
+        yaml_file = Path(yaml_path)
+        # 尝试从 YAML 文件路径推断 project_root
+        # 假设 YAML 在 .autocoderworkflow/ 或 .auto-coder/.autocoderworkflow/ 下
+        if ".autocoderworkflow" in yaml_file.parts:
+            # 找到 .autocoderworkflow 的父目录
+            for i, part in enumerate(yaml_file.parts):
+                if part == ".autocoderworkflow":
+                    project_root = Path(*yaml_file.parts[:i])
+                    break
+                elif (
+                    part == ".auto-coder"
+                    and i + 1 < len(yaml_file.parts)
+                    and yaml_file.parts[i + 1] == ".autocoderworkflow"
+                ):
+                    project_root = Path(*yaml_file.parts[:i])
+                    break
+            else:
+                project_root = yaml_file.parent
+        else:
+            project_root = yaml_file.parent if yaml_file.is_file() else yaml_file
+    else:
+        project_root = Path.cwd()
+
+    # 创建 AgentManager 实例
+    agent_manager = AgentManager(project_root=str(project_root))
+
+    # 获取所有搜索目录用于错误提示
+    search_directories = agent_manager.get_all_agents_directories()
+
+    # 如果没有搜索目录，使用默认目录列表
+    if not search_directories:
+        search_directories = [
+            str(project_root / ".autocoderagents"),
+            str(project_root / ".auto-coder" / ".autocoderagents"),
+            str(Path.home() / ".auto-coder" / ".autocoderagents"),
+        ]
+
+    # 验证每个 agent
+    for i, agent_spec in enumerate(agents):
+        agent_id = agent_spec.id
+        agent_path = agent_spec.path
+
+        # 方法1：尝试通过 ID 获取（假设 agent ID 与 agent name 一致）
+        agent_definition = agent_manager.get_agent(agent_id)
+
+        if agent_definition:
+            # 找到了 agent 定义，验证通过
+            logger.debug(
+                f"验证通过: agent '{agent_id}' 存在于 {agent_definition.file_path}"
+            )
+            continue
+
+        # 方法2：如果通过 ID 找不到，尝试直接检查文件路径
+        # 按优先级在各个目录中查找
+        found = False
+        for search_dir in search_directories:
+            potential_path = Path(search_dir) / agent_path
+            if potential_path.exists() and potential_path.is_file():
+                logger.debug(f"验证通过: agent 文件存在于 {potential_path}")
+                found = True
+                break
+
+        if found:
+            continue
+
+        # 未找到 agent 定义文件，抛出错误
+        field_path = f"spec.agents[{i}].path"
+
+        # 构建搜索路径列表用于错误提示
+        searched_paths = [str(Path(d) / agent_path) for d in search_directories]
+
+        raise WorkflowAgentResolutionError(
+            agent_id=agent_id,
+            path=agent_path,
+            searched_paths=searched_paths,
+            field_path=field_path,
+            suggestion=f"请确保代理定义文件 '{agent_path}' 存在于以下目录之一：{', '.join(search_directories)}",
+        )

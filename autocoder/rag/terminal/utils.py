@@ -72,8 +72,15 @@ def merge_args_with_config(args, config, arg_class, parser):
     return arg_class(**merged)
 
 
-def count_tokens(tokenizer_path: str, file_path: str):
-    """统计文件的 token 数量"""
+def count_tokens(tokenizer_path: str, file_path: str, output_format: str = "text"):
+    """统计文件的 token 数量
+
+    Args:
+        tokenizer_path: tokenizer 文件路径
+        file_path: 要统计的文件路径
+        output_format: 输出格式，"text" 为 rich 表格，"json" 为 JSON 格式
+    """
+    import json
     from autocoder.rag.variable_holder import VariableHolder
     from tokenizers import Tokenizer
 
@@ -82,14 +89,9 @@ def count_tokens(tokenizer_path: str, file_path: str):
     token_counter = TokenCounter(tokenizer_path)
     source_codes = process_file_local(file_path)
 
-    console = Console()
-    table = Table(title="Token Count Results")
-    table.add_column("File", style="cyan")
-    table.add_column("Characters", justify="right", style="magenta")
-    table.add_column("Tokens", justify="right", style="green")
-
     total_chars = 0
     total_tokens = 0
+    files_result = []
 
     for source_code in source_codes:
         content = source_code.source_code
@@ -99,8 +101,36 @@ def count_tokens(tokenizer_path: str, file_path: str):
         total_chars += chars
         total_tokens += tokens
 
-        table.add_row(source_code.module_name, str(chars), str(tokens))
+        files_result.append(
+            {
+                "file": source_code.module_name,
+                "characters": chars,
+                "tokens": tokens,
+            }
+        )
 
-    table.add_row("Total", str(total_chars), str(total_tokens), style="bold")
+    if output_format == "json":
+        result = {
+            "files": files_result,
+            "totalCharacters": total_chars,
+            "totalTokens": total_tokens,
+        }
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        # 默认使用 rich 表格输出
+        console = Console()
+        table = Table(title="Token Count Results")
+        table.add_column("File", style="cyan")
+        table.add_column("Characters", justify="right", style="magenta")
+        table.add_column("Tokens", justify="right", style="green")
 
-    console.print(table)
+        for file_info in files_result:
+            table.add_row(
+                file_info["file"],
+                str(file_info["characters"]),
+                str(file_info["tokens"]),
+            )
+
+        table.add_row("Total", str(total_chars), str(total_tokens), style="bold")
+
+        console.print(table)

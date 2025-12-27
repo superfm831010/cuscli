@@ -2,15 +2,18 @@ from multiprocessing import Pool
 import functools
 from autocoder.common import SourceCode
 from autocoder.rag.cache.base_cache import (
-    BaseCacheManager, DeleteEvent, AddOrUpdateEvent,
+    BaseCacheManager,
+    DeleteEvent,
+    AddOrUpdateEvent,
     FileInfo,
-    CacheItem
+    CacheItem,
 )
 from typing import Dict, List, Tuple, Any, Optional, Union
 import os
 import threading
 import json
 import platform
+
 if platform.system() != "Windows":
     import fcntl
 else:
@@ -27,11 +30,7 @@ from autocoder.utils.llms import get_llm_names
 from autocoder.common.file_monitor.monitor import get_file_monitor, Change
 
 
-default_ignore_dirs = [
-    "__pycache__",
-    "node_modules",
-    "_images"
-]
+default_ignore_dirs = ["__pycache__", "node_modules", "_images"]
 
 
 def generate_file_md5(file_path: str) -> str:
@@ -51,7 +50,14 @@ def generate_content_md5(content: Union[str, bytes]) -> str:
 
 
 class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
-    def __init__(self, path: str, ignore_spec, required_exts: list, args: Optional[AutoCoderArgs] = None, llm: Optional[Union[ByzerLLM, SimpleByzerLLM, str]] = None):
+    def __init__(
+        self,
+        path: str,
+        ignore_spec,
+        required_exts: list,
+        args: Optional[AutoCoderArgs] = None,
+        llm: Optional[Union[ByzerLLM, SimpleByzerLLM, str]] = None,
+    ):
         """
         初始化异步更新队列，用于管理代码文件的缓存。
 
@@ -100,15 +106,15 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
         self.required_exts = required_exts
         self.args = args
         self.llm = llm
-        self.product_mode = args.product_mode or "lite"
+        self.product_mode = args.product_mode if args else "lite"
+        self.model_file = args.model_file if args else None
         self.queue = []
         self.cache = {}  # 初始化为空字典，稍后通过 read_cache() 填充
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
 
         # 用于存放解析失败的文件路径集合
-        self.failed_files_path = os.path.join(
-            self.path, ".cache", "failed_files.json")
+        self.failed_files_path = os.path.join(self.path, ".cache", "failed_files.json")
         self.failed_files = load_failed_files(self.failed_files_path)
 
         # 启动处理队列的线程
@@ -140,7 +146,7 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
     def _on_file_change(self, change_type: Change, file_path: str):
         """
         文件监控回调函数，当文件发生变化时触发更新
-        
+
         参数:
             change_type: 变化类型 (Change.added, Change.modified, Change.deleted)
             file_path: 发生变化的文件路径
@@ -149,15 +155,19 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
             # 如果缓存还没有初始化，跳过触发
             if not self.cache:
                 return
-                
+
             # 检查文件扩展名，如果不在需要处理的扩展名列表中，跳过
-            if self.required_exts and not any(file_path.endswith(ext) for ext in self.required_exts):
+            if self.required_exts and not any(
+                file_path.endswith(ext) for ext in self.required_exts
+            ):
                 return
-                
+
             # 检查是否在忽略规则中
-            if self.ignore_spec and self.ignore_spec.match_file(os.path.relpath(file_path, self.path)):
+            if self.ignore_spec and self.ignore_spec.match_file(
+                os.path.relpath(file_path, self.path)
+            ):
                 return
-                            
+
             self.trigger_update()
         except Exception as e:
             logger.error(f"Error in file change handler: {e}")
@@ -172,11 +182,16 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
         except Exception as e:
             logger.error(f"Error unregistering file monitor callback: {e}")
         # 只等待队列处理线程结束
-        if hasattr(self, 'queue_thread') and self.queue_thread.is_alive():
+        if hasattr(self, "queue_thread") and self.queue_thread.is_alive():
             self.queue_thread.join(timeout=2.0)
 
     def fileinfo_to_tuple(self, file_info: FileInfo) -> Tuple[str, str, float, str]:
-        return (file_info.file_path, file_info.relative_path, file_info.modify_time, file_info.file_md5)
+        return (
+            file_info.file_path,
+            file_info.relative_path,
+            file_info.modify_time,
+            file_info.file_md5,
+        )
 
     def __del__(self):
         # 确保在对象被销毁时停止监控并清理资源
@@ -186,7 +201,7 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
         with self.lock:
             if self.cache:
                 return
-            files_to_process = []            
+            files_to_process = []
             for file_info in self.get_all_files():
                 file_path, _, modify_time, file_md5 = file_info
                 if (
@@ -201,23 +216,34 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
             #     [process_file.remote(file_info) for file_info in files_to_process]
             # )
             from autocoder.rag.token_counter import initialize_tokenizer
-            llm_name = get_llm_names(self.llm)[0] if self.llm else None            
+
+            llm_name = get_llm_names(self.llm)[0] if self.llm else None
+            # 计算实际使用的 CPU 数量
+            workers = self.args.rag_cache_build_workers if self.args else 0
+            if workers == 0:
+                workers = max(1, os.cpu_count() // 2)
+
             with Pool(
-                processes=os.cpu_count(),
+                processes=workers,
                 initializer=initialize_tokenizer,
                 initargs=(VariableHolder.TOKENIZER_PATH,),
             ) as pool:
-                
+
                 worker_func = functools.partial(
-                    process_file_in_multi_process, llm=llm_name, product_mode=self.product_mode)
-                results = pool.map(worker_func, files_to_process)            
-            
+                    process_file_in_multi_process,
+                    llm=llm_name,
+                    product_mode=self.product_mode,
+                    model_file=self.model_file,
+                )
+                results = pool.map(worker_func, files_to_process)
+
             for file_info, result in zip(files_to_process, results):
                 if result:  # 只有当result不为空时才更新缓存
                     self.update_cache(file_info, result)
                 else:
                     logger.warning(
-                        f"Empty result for file: {file_info[0]}, skipping cache update")
+                        f"Empty result for file: {file_info[0]}, skipping cache update"
+                    )
 
             self.write_cache()
 
@@ -229,15 +255,16 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
             file_path, relative_path, modify_time, file_md5 = file_info
             current_files.add(file_path)
             # 如果文件曾经解析失败，跳过本次增量更新
-            if file_path in self.failed_files:                
+            if file_path in self.failed_files:
                 continue
-            # 变更检测            
+            # 变更检测
             if (
                 file_path not in self.cache
                 or self.cache[file_path].get("md5", "") != file_md5
             ):
                 files_to_process.append(
-                    (file_path, relative_path, modify_time, file_md5))            
+                    (file_path, relative_path, modify_time, file_md5)
+                )
 
         deleted_files = set(self.cache.keys()) - current_files
         logger.info(f"files_to_process: {files_to_process}")
@@ -247,13 +274,19 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
                 self.queue.append(DeleteEvent(file_paths=deleted_files))
         if files_to_process:
             with self.lock:
-                self.queue.append(AddOrUpdateEvent(
-                    file_infos=[FileInfo(
-                        file_path=item[0],
-                        relative_path=item[1],
-                        modify_time=item[2],
-                        file_md5=item[3]
-                    ) for item in files_to_process]))
+                self.queue.append(
+                    AddOrUpdateEvent(
+                        file_infos=[
+                            FileInfo(
+                                file_path=item[0],
+                                relative_path=item[1],
+                                modify_time=item[2],
+                                file_md5=item[3],
+                            )
+                            for item in files_to_process
+                        ]
+                    )
+                )
 
     def process_queue(self):
         while self.queue:
@@ -266,38 +299,38 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
                     # 删除时也从失败列表中移除（防止文件已修复）
                     if item in self.failed_files:
                         self.failed_files.remove(item)
-                        save_failed_files(
-                            self.failed_files_path, self.failed_files)
+                        save_failed_files(self.failed_files_path, self.failed_files)
             elif isinstance(file_list, AddOrUpdateEvent):
                 for file_info in file_list.file_infos:
-                    logger.info(
-                        f"{file_info.file_path} is detected to be updated")
+                    logger.info(f"{file_info.file_path} is detected to be updated")
                     try:
                         result = process_file_local(
-                            file_info.file_path, llm=self.llm, product_mode=self.product_mode)
+                            file_info.file_path,
+                            llm=self.llm,
+                            product_mode=self.product_mode,
+                            model_file=self.model_file,
+                        )
                         if result:
                             # 解析成功且非空
-                            self.update_cache(
-                                self.fileinfo_to_tuple(file_info), result)
+                            self.update_cache(self.fileinfo_to_tuple(file_info), result)
                             # 如果之前失败过且本次成功，移除失败记录
                             if file_info.file_path in self.failed_files:
                                 self.failed_files.remove(file_info.file_path)
                                 save_failed_files(
-                                    self.failed_files_path, self.failed_files)
+                                    self.failed_files_path, self.failed_files
+                                )
                         else:
                             # 只要为空也认为解析失败，加入失败列表
                             logger.warning(
-                                f"Empty result for file: {file_info.file_path}, treat as parse failed, skipping cache update")
+                                f"Empty result for file: {file_info.file_path}, treat as parse failed, skipping cache update"
+                            )
                             self.failed_files.add(file_info.file_path)
-                            save_failed_files(
-                                self.failed_files_path, self.failed_files)
+                            save_failed_files(self.failed_files_path, self.failed_files)
                     except Exception as e:
-                        logger.error(
-                            f"SimpleCache Error in process_queue: {e}")
+                        logger.error(f"SimpleCache Error in process_queue: {e}")
                         # 解析失败则加入失败列表
                         self.failed_files.add(file_info.file_path)
-                        save_failed_files(
-                            self.failed_files_path, self.failed_files)
+                        save_failed_files(self.failed_files_path, self.failed_files)
 
             self.write_cache()
 
@@ -315,7 +348,7 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
                     data = json.loads(line)
                     cache[data["file_path"]] = data
         else:
-            self.load_first()            
+            self.load_first()
         return cache
 
     def write_cache(self):
@@ -330,7 +363,8 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
                         f.write("\n")
                     except Exception as e:
                         logger.error(
-                            f"Failed to write {data['file_path']} to .cache/cache.jsonl: {e}")
+                            f"Failed to write {data['file_path']} to .cache/cache.jsonl: {e}"
+                        )
         else:
             lock_file = cache_file + ".lock"
             with open(lock_file, "w", encoding="utf-8") as lockf:
@@ -345,7 +379,8 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
                                 f.write("\n")
                             except Exception as e:
                                 logger.error(
-                                    f"Failed to write {data['file_path']} to .cache/cache.jsonl: {e}")
+                                    f"Failed to write {data['file_path']} to .cache/cache.jsonl: {e}"
+                                )
 
                 finally:
                     # 释放文件锁
@@ -384,14 +419,49 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
 
     def get_cache(self, options: Optional[Dict[str, Any]] = None):
         self.load_first()
+        
+        # Run-once 模式：同步完成增量更新后再返回缓存
+        if self.args and self.args.rag_run_once:
+            logger.info("[Run-once mode] Triggering synchronous incremental update...")
+            self.trigger_update()
+            
+            # 同步处理队列，确保所有增量更新完成
+            max_iterations = 10  # 防止无限循环
+            iteration = 0
+            while iteration < max_iterations:
+                queue_len_before = len(self.queue)
+                if queue_len_before == 0:
+                    break
+                
+                logger.info(f"[Run-once mode] Processing queue (iteration {iteration + 1}, queue size: {queue_len_before})...")
+                self.process_queue()
+                
+                queue_len_after = len(self.queue)
+                if queue_len_after == 0:
+                    logger.info(f"[Run-once mode] Queue processed successfully, cache updated with {len(self.cache)} documents")
+                    break
+                elif queue_len_after >= queue_len_before:
+                    # 队列没有减少，可能出现问题，退出循环
+                    logger.warning(f"[Run-once mode] Queue size not decreasing (before: {queue_len_before}, after: {queue_len_after}), stopping")
+                    break
+                
+                iteration += 1
+            
+            if iteration >= max_iterations:
+                logger.warning(f"[Run-once mode] Reached max iterations ({max_iterations}), some updates may be pending")
+        
+        # Serve 模式或队列已处理完成，返回缓存
         # 不再在这里触发更新，因为已经有定时线程在处理
         return self.cache
 
     def get_all_files(self) -> List[Tuple[str, str, float]]:
         all_files = []
         for root, dirs, files in os.walk(self.path, followlinks=True):
-            dirs[:] = [d for d in dirs if not d.startswith(
-                ".") and d not in default_ignore_dirs]
+            dirs[:] = [
+                d
+                for d in dirs
+                if not d.startswith(".") and d not in default_ignore_dirs
+            ]
 
             # Filter out files that start with a dot
             files[:] = [f for f in files if not f.startswith(".")]
@@ -419,6 +489,5 @@ class AutoCoderRAGAsyncUpdateQueue(BaseCacheManager):
                 relative_path = os.path.relpath(file_path, self.path)
                 modify_time = os.path.getmtime(file_path)
                 file_md5 = generate_file_md5(file_path)
-                all_files.append(
-                    (file_path, relative_path, modify_time, file_md5))        
+                all_files.append((file_path, relative_path, modify_time, file_md5))
         return all_files

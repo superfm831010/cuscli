@@ -19,7 +19,6 @@ from rich.text import Text
 from rich.prompt import Prompt
 
 
-
 @contextmanager
 def redirect_stdout():
     original_stdout = sys.stdout
@@ -85,23 +84,23 @@ def context(project_map: str) -> str:
 
     7. find_files_by_content(keyword: str) -> str
         - 根据关键字搜索项目中的文件内容。
-        - 返回内容包含关键字的文件路径列表，以逗号分隔。   
+        - 返回内容包含关键字的文件路径列表，以逗号分隔。
 
     工作流程建议:
 
     1. 首先使用get_related_files_by_symbols/find_files_by_name/find_files_by_content获取相关文件路径。
-    2. 然后使用read_files读取这些文件的内容(优先阅读markdown类文件)。        
+    2. 然后使用read_files读取这些文件的内容(优先阅读markdown类文件)。
     3. 需要时，可以多次组合使用get_related_files_by_symbols/find_files_by_name/find_files_by_content和read_files以获取更全面的信息。
 
     ## 特殊指导1
     对于需要计算的问题（如代码行数、文件数量等），优先使用run_python_code。
 
     ## 特殊指导2
-    如需执行Shell命令，使用run_shell_code，但要注意环境兼容性。 
+    如需执行Shell命令，使用run_shell_code，但要注意环境兼容性。
 
     ## 特殊指导3
     如果用户问该项目的一个功能特性如何使用，优先通过 find_files_by_content 找到包含关键字的文件，然后优先阅读markdown类文件，如果还不行，则
-    思考应该先找到相关的类或函数，再通过 read_files 读取文件内容。 
+    思考应该先找到相关的类或函数，再通过 read_files 读取文件内容。
 
     ## 特殊指导4
     为了梳理一个项目中特定特性的实现，可以遵循以下流程：
@@ -145,7 +144,7 @@ def context(project_map: str) -> str:
         - 使用 run_python_code 或 run_shell_code 来验证关键部分的行为。
         - 综合所有信息，总结特性的实现流程、主要组件和关键点。
 
-    在这个过程中，根据需要多次使用工具，特别是 get_related_files_by_symbols、read_files 和 find_files_by_content，以确保全面理解特性的实现。如果遇到不清楚的地方，我会提出进一步的问题或建议更深入的分析。   
+    在这个过程中，根据需要多次使用工具，特别是 get_related_files_by_symbols、read_files 和 find_files_by_content，以确保全面理解特性的实现。如果遇到不清楚的地方，我会提出进一步的问题或建议更深入的分析。
 
     请根据用户的具体需求，灵活运用这些工具来分析和理解项目。提供简洁、准确的回答，并在需要时主动提供深入解释的选项。
     """
@@ -166,16 +165,16 @@ def detect_rm_command(command: str) -> Bool:
 
 
 def get_tools(args: AutoCoderArgs, llm: byzerllm.ByzerLLM):
-    
-    def ask_user(question:str) -> str:
-        '''
+
+    def ask_user(question: str) -> str:
+        """
         如果你对用户的问题有什么疑问，或者你想从用户收集一些额外信息，可以调用
         此方法。
         输入参数 question 是你对用户的提问。
         返回值是 用户对你问题的回答。
 
         注意，尽量不要询问用户，除非你感受到你无法回答用户的问题。
-        '''        
+        """
 
         console = Console()
 
@@ -185,17 +184,14 @@ def get_tools(args: AutoCoderArgs, llm: byzerllm.ByzerLLM):
             question_text,
             title="[bold yellow]auto-coder.chat's Question[/bold yellow]",
             border_style="blue",
-            expand=False
+            expand=False,
         )
 
         # 显示问题面板
         console.print(question_panel)
 
         # 创建一个自定义提示符
-        prompt = Prompt.ask(
-            "\n[bold green]Your Answer[/bold green]",
-            console=console
-        )
+        prompt = Prompt.ask("\n[bold green]Your Answer[/bold green]", console=console)
 
         # 获取用户的回答
         answer = prompt
@@ -206,7 +202,7 @@ def get_tools(args: AutoCoderArgs, llm: byzerllm.ByzerLLM):
             answer_text,
             title="[bold yellow]Your Response[/bold yellow]",
             border_style="green",
-            expand=False
+            expand=False,
         )
         console.print(answer_panel)
 
@@ -283,10 +279,14 @@ def get_tools(args: AutoCoderArgs, llm: byzerllm.ByzerLLM):
 
         注意，该工具无法涵盖当前项目中所有文件，因为有些文件可能没有被索引。
         """
+        from autocoder.default_project import DefaultProject
+
         if args.project_type == "ts":
             pp = TSProject(args=args, llm=llm)
         elif args.project_type == "py":
             pp = PyProject(args=args, llm=llm)
+        elif not args.project_type or args.project_type == "*":
+            pp = DefaultProject(args=args, llm=llm, file_filter=None)
         else:
             pp = SuffixProject(args=args, llm=llm, file_filter=None)
         pp.run()
@@ -305,10 +305,14 @@ def get_tools(args: AutoCoderArgs, llm: byzerllm.ByzerLLM):
         注意，这个工具无法返回所有文件的信息，因为有些文件可能没有被索引。
         尽量避免使用该工具。
         """
+        from autocoder.default_project import DefaultProject
+
         if args.project_type == "ts":
             pp = TSProject(args=args, llm=llm)
         elif args.project_type == "py":
             pp = PyProject(args=args, llm=llm)
+        elif not args.project_type or args.project_type == "*":
+            pp = DefaultProject(args=args, llm=llm, file_filter=None)
         else:
             pp = SuffixProject(args=args, llm=llm, file_filter=None)
         pp.run()
@@ -345,7 +349,7 @@ def get_tools(args: AutoCoderArgs, llm: byzerllm.ByzerLLM):
                             path = os.path.join(root, file)
                             break
 
-            with open(path, "r",encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 source_code = f.read()
                 sc = SourceCode(module_name=path, source_code=source_code)
                 source_code_str += f"##File: {sc.module_name}\n"
@@ -394,8 +398,9 @@ def get_tools(args: AutoCoderArgs, llm: byzerllm.ByzerLLM):
                     pass
 
         return ",".join(matched_files)
-    
+
     from llama_index.core.tools import FunctionTool
+
     tools = [
         # FunctionTool.from_defaults(get_project_related_files),
         FunctionTool.from_defaults(get_related_files_by_symbols),

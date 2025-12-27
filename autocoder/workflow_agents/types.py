@@ -15,18 +15,12 @@ class GlobalsConfig:
 
     model: str = "v3_chat"
     product_mode: str = "lite"
-    max_turns: int = 6
-    retries: int = 2
-    timeout_sec: int = 300
-    include_rules: bool = False
 
 
 @dataclass
 class ConversationConfig:
     """会话共享策略配置"""
 
-    # start 和 default_action 保留向后兼容
-    start: str = "current"  # current | new（向后兼容，当前实现中不强制使用）
     default_action: str = "resume"  # resume | new | continue
 
 
@@ -46,8 +40,6 @@ class AgentSpec:
     path: str
     runner: str = "sdk"  # sdk | terminal
     model: Optional[str] = None
-    retry: Optional[int] = None
-    timeout_sec: Optional[int] = None
 
 
 @dataclass
@@ -57,7 +49,6 @@ class RegexCondition:
     input: str
     pattern: str
     flags: Optional[str] = None
-    group: Optional[int] = None
 
 
 @dataclass
@@ -72,11 +63,41 @@ class JsonPathCondition:
 
 
 @dataclass
+class TextCondition:
+    """
+    文本条件配置
+
+    支持多种文本匹配方式：
+    - contains: 包含指定字符串
+    - not_contains: 不包含指定字符串
+    - starts_with: 以指定字符串开头
+    - ends_with: 以指定字符串结尾
+    - equals: 完全相等
+    - not_equals: 不相等
+    - is_empty: 是否为空
+    - matches: 正则表达式匹配
+    - ignore_case: 是否忽略大小写（适用于 contains/starts_with/ends_with/equals）
+    """
+
+    input: str  # 输入模板，支持 ${...} 语法
+    contains: Optional[str] = None
+    not_contains: Optional[str] = None
+    starts_with: Optional[str] = None
+    ends_with: Optional[str] = None
+    equals: Optional[str] = None
+    not_equals: Optional[str] = None
+    is_empty: Optional[bool] = None  # True: 检查为空, False: 检查非空
+    matches: Optional[str] = None  # 正则表达式
+    ignore_case: bool = False  # 是否忽略大小写
+
+
+@dataclass
 class WhenConfig:
     """条件判断配置"""
 
     regex: Optional[RegexCondition] = None
     jsonpath: Optional[JsonPathCondition] = None
+    text: Optional[TextCondition] = None
 
 
 @dataclass
@@ -98,6 +119,22 @@ class StepConversationConfig:
 
 
 @dataclass
+class MergeConfig:
+    """
+    合并配置
+
+    用于配置多副本执行时的结果合并行为。
+
+    Attributes:
+        when: 参与合并的条件（复用 WhenConfig）。
+              只有满足条件的副本结果才会参与最终合并。
+              条件中不需要指定 input，默认使用当前副本的 attempt_result。
+    """
+
+    when: Optional["WhenConfig"] = None
+
+
+@dataclass
 class StepSpec:
     """步骤规格配置"""
 
@@ -109,6 +146,7 @@ class StepSpec:
     outputs: Dict[str, OutputConfig] = field(default_factory=dict)
     conversation: Optional[StepConversationConfig] = None
     replicas: int = 1  # 并行副本数，默认为1（不并行）
+    merge: Optional[MergeConfig] = None  # 合并配置（用于多副本场景）
 
 
 @dataclass
@@ -150,6 +188,7 @@ class StepStatus(str, Enum):
     SUCCESS = "success"
     FAILED = "failed"
     SKIPPED = "skipped"
+    CANCELLED = "cancelled"
 
 
 @dataclass

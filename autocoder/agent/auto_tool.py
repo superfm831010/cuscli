@@ -155,101 +155,113 @@ def get_tools(args: AutoCoderArgs, llm: byzerllm.ByzerLLM):
         该工具可以帮助你查看当前屏幕截图，并且根据下一步需要做的操作来使用 pyautogui 生成操作电脑的 Python 代码。
         输入参数 action_desc: 下一步需要做的操作描述，比如在哪个地方点击某个按钮、在哪个app输入某个文字等。
         """
+
         @byzerllm.prompt()
         def analyze_screen_and_generate_code(
             image: ImagePath, action_desc: str, previous_result: str, attempt: int
         ) -> str:
             """
             {{ image }}
-            
+
             目标操作：{{ action_desc }}
-            
+
             {% if previous_result %}
             前一次尝试的代码和结果：
             ```
             {{ previous_result }}
             ```
             {% endif %}
-            
+
             当前是第 {{ attempt }} 次尝试。
-            
+
             请根据以下指南生成或修改 Python 代码：
-            
+
             1. 仔细分析屏幕截图，识别相关的UI元素（如按钮、输入框、菜单等）。
             2. 根据目标操作和UI元素，使用 pyautogui 库生成相应的 Python 代码。
             3. 代码应包含必要的错误处理和验证步骤。
             4. 如果是修改前一次的代码，请解释修改原因。
             5. 输出应只包含一个代码块，使用 ```python ``` 标签包裹。
-            
+
             注意事项：
-            - 始终先聚焦目标软件，再进行操作。            
+            - 始终先聚焦目标软件，再进行操作。
             - 添加适当的延时（pyautogui.sleep()）以确保操作的稳定性。
             - 使用 try-except 块处理可能的异常。
             - 在关键步骤后添加验证，确认操作是否成功。
             - 如果操作成功，清晰地指出成功信息。
             - 如果操作失败或需要进一步尝试，提供明确的失败原因和建议。
             - 务必不要做什么假设，而是基于屏幕截图的实际情况来编写代码,你的代码会被无任何修改直接运行。
-            
+
             如果您认为已经达成目标或无法继续尝试，请不要生成代码，而是提供一个总结说明。
             """
-        
+
         import pyautogui
         import tempfile
         from rich.console import Console
         from rich.panel import Panel
         from rich.markdown import Markdown
-        
+
         console = Console()
         vl_model = llm.get_sub_client("vl_model")
-        
+
         max_attempts = 5
         for attempt in range(1, max_attempts + 1):
             # 获取屏幕截图
             screenshot = pyautogui.screenshot()
-            
+
             # 创建临时文件
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
                 temp_filename = temp_file.name
                 screenshot.save(temp_filename)
-            
+
             try:
                 # 使用临时文件路径创建 ImagePath 对象
                 image_path = ImagePath(value=temp_filename)
-                
+
                 # 生成或修改代码
                 result = analyze_screen_and_generate_code.with_llm(vl_model).run(
                     image_path, action_desc, result if attempt > 1 else "", attempt
                 )
-                
-                console.print(Panel(Markdown(result), title=f"模型输出 (尝试 {attempt})", border_style="green"))
-                
+
+                console.print(
+                    Panel(
+                        Markdown(result),
+                        title=f"模型输出 (尝试 {attempt})",
+                        border_style="green",
+                    )
+                )
+
                 # 提取并执行代码
                 codes = code_utils.extract_code(result)
                 if not codes:
                     # 如果没有生成代码，可能是任务完成或无法继续
                     return result
-                
+
                 code = codes[0][1]
                 execution_result = run_python_code(code)
-                
-                console.print(Panel(execution_result, title=f"代码执行结果 (尝试 {attempt})", border_style="yellow"))
-                
+
+                console.print(
+                    Panel(
+                        execution_result,
+                        title=f"代码执行结果 (尝试 {attempt})",
+                        border_style="yellow",
+                    )
+                )
+
                 # 更新结果，包含代码和执行结果
                 result = execution_result
-            
-                
+
                 # 检查是否成功完成任务
                 if "成功" in execution_result.lower():
                     console.print("[bold green]任务成功完成！[/bold green]")
                     return result
-            
+
             finally:
                 # 删除临时文件
                 os.unlink(temp_filename)
-        
+
         console.print("[bold red]达到最大尝试次数，任务未能完成。[/bold red]")
         return result
-        
+
     from llama_index.core.tools import FunctionTool
 
     tools = [
@@ -285,6 +297,7 @@ class AutoTool:
     def run(self, query: str, max_iterations: int = 20):
         from byzerllm.apps.llama_index.byzerai import ByzerAI
         from llama_index.core.agent import ReActAgent
+
         agent = ReActAgent.from_tools(
             tools=self.tools,
             llm=ByzerAI(llm=self.code_model),

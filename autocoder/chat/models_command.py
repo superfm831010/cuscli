@@ -352,6 +352,13 @@ def handle_models_command(query: str):
                     meta={"action": "models", "input": {"query": query}},
                 )
                 printer.print_in_terminal("models_added", style="green", name=name)
+
+                # 检查 model 配置是否存在（合并视图：全局+项目），如果不存在则自动设置为刚激活的模型
+                if not memory_manager.has_config("model", source="merged"):
+                    memory_manager.set_config("model", name)
+                    printer.print_in_terminal(
+                        "models_auto_set_model", style="cyan", name=name
+                    )
             else:
                 result_manager.add_result(
                     content=f"models_activate_failed: {name}",
@@ -514,12 +521,40 @@ def handle_models_command(query: str):
                 """
                 return {}  # type: ignore
 
-            # Support custom llm_config parameters
-            result = chat_func.with_llm(llm).run(user_question)
+            # Support custom llm_config parameters using stream_chat_oai
+            result = llm.stream_chat_oai(
+                conversations=[{"role": "user", "content": user_question}],
+                delta_mode=True,
+            )
+
             output_text = ""
-            for res in result:
-                output_text += res
-                print(res, end="", flush=True)
+            in_thinking = False
+            for chunk in result:
+                reasoning_content = (
+                    chunk[1].reasoning_content if chunk[1].reasoning_content else ""
+                )
+                content = chunk[0] if chunk[0] else ""
+
+                if reasoning_content:
+                    if not in_thinking:
+                        print("<inner_thinking>", end="", flush=True)
+                        output_text += "<inner_thinking>"
+                        in_thinking = True
+                    print(reasoning_content, end="", flush=True)
+                    output_text += reasoning_content
+
+                if content:
+                    if in_thinking:
+                        print("</inner_thinking>", end="", flush=True)
+                        output_text += "</inner_thinking>"
+                        in_thinking = False
+                    print(content, end="", flush=True)
+                    output_text += content
+
+            if in_thinking:
+                print("</inner_thinking>", end="", flush=True)
+                output_text += "</inner_thinking>\n"
+
             print("\n")
 
             # Print the result

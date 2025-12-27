@@ -3,7 +3,7 @@ Workflow Agents - 子代理编排系统
 
 提供基于 YAML 配置的多子代理编排功能，支持：
 - DAG 拓扑顺序执行
-- 条件判断（正则/JSONPath）
+- 条件判断（正则/JSONPath/文本）
 - 输出映射与跨步骤数据传递
 - 会话共享策略
 - 基于 SdkRunner/TerminalRunner 的代理执行
@@ -17,6 +17,7 @@ from autocoder.workflow_agents.types import (
     AgentSpec,
     StepSpec,
     WhenConfig,
+    TextCondition,
     OutputConfig,
     StepResult,
     StepStatus,
@@ -44,6 +45,8 @@ from autocoder.workflow_agents.exceptions import (
     WorkflowConversationError,
     WorkflowConditionError,
     WorkflowOutputExtractionError,
+    WorkflowAgentResolutionError,
+    WorkflowModelValidationError,
 )
 
 __all__ = [
@@ -55,6 +58,7 @@ __all__ = [
     "AgentSpec",
     "StepSpec",
     "WhenConfig",
+    "TextCondition",
     "OutputConfig",
     "StepResult",
     "StepStatus",
@@ -81,4 +85,6 @@ __all__ = [
     "WorkflowConversationError",
     "WorkflowConditionError",
     "WorkflowOutputExtractionError",
+    "WorkflowAgentResolutionError",
+    "WorkflowModelValidationError",
 ]

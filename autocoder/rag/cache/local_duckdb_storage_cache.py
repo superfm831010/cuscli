@@ -43,7 +43,13 @@ else:
     fcntl = None
 
 
-default_ignore_dirs = ["__pycache__", "node_modules", "_images"]
+default_ignore_dirs = [
+    "__pycache__",
+    "node_modules",
+    "_images",
+    ".auto-coder",
+    ".cache",
+]
 
 
 def generate_file_md5(file_path: str) -> str:
@@ -67,8 +73,7 @@ class DuckDBLocalContext:
     def __enter__(self) -> "duckdb.DuckDBPyConnection":
         if not os.path.exists(os.path.dirname(self.database_path)):
             raise ValueError(
-                f"Directory {os.path.dirname(self.database_path)} "
-                f"does not exist."
+                f"Directory {os.path.dirname(self.database_path)} " f"does not exist."
             )
 
         self._conn = duckdb.connect(self.database_path)
@@ -99,12 +104,16 @@ class LocalDuckdbStorage:
         self.persist_dir = persist_dir
         self.cache_dir = os.path.join(self.persist_dir, ".cache")
         self.args = args
+
+        # 缓存投影矩阵，避免每次 embedding 都重新生成
+        self._projection_matrix_cache: Dict[Tuple[int, int], np.ndarray] = {}
+        # 写入锁，保护并发写入操作
+        self._write_lock = threading.Lock()
+
         logger.info("正在启动 DuckDBVectorStore.")
 
         if self.database_name != ":memory:":
-            self.database_path = os.path.join(
-                self.cache_dir, self.database_name
-            )
+            self.database_path = os.path.join(self.cache_dir, self.database_name)
 
         if self.database_name == ":memory:":
             self._conn = duckdb.connect(self.database_name)
@@ -136,15 +145,21 @@ class LocalDuckdbStorage:
             self._conn.install_extension(ext)
             self._conn.load_extension(ext)
 
-    @staticmethod
-    def _apply_pca(embedding, target_dim):
-        # 生成固定随机投影矩阵（避免每次调用重新生成）
-        np.random.seed(42)  # 固定随机种子保证一致性
-        source_dim = len(embedding)
-        projection_matrix = np.random.randn(source_dim, target_dim) / np.sqrt(
-            source_dim
-        )
+    def _get_projection_matrix(self, source_dim: int, target_dim: int) -> np.ndarray:
+        """获取或创建投影矩阵，使用缓存避免重复生成"""
+        cache_key = (source_dim, target_dim)
+        if cache_key not in self._projection_matrix_cache:
+            # 使用固定种子生成投影矩阵
+            rng = np.random.RandomState(42)
+            self._projection_matrix_cache[cache_key] = rng.randn(
+                source_dim, target_dim
+            ) / np.sqrt(source_dim)
+        return self._projection_matrix_cache[cache_key]
 
+    def _apply_pca(self, embedding, target_dim):
+        """使用随机投影降维，投影矩阵会被缓存复用"""
+        source_dim = len(embedding)
+        projection_matrix = self._get_projection_matrix(source_dim, target_dim)
         # 执行投影
         reduced = np.dot(embedding, projection_matrix)
         return reduced
@@ -152,22 +167,71 @@ class LocalDuckdbStorage:
     def _embedding(
         self, context: str, norm: bool = True, dim: int | None = None
     ) -> List[float]:
+        """
+        生成文本的向量嵌入
+
+        参数:
+            context: 要嵌入的文本
+            norm: 是否对向量进行归一化
+            dim: 目标维度（如果需要降维）
+
+        返回:
+            向量列表
+
+        异常:
+            RuntimeError: 多次重试后仍然失败
+        """
         max_retries = 3
         retry_count = 0
 
+        # 预处理：处理空文本和超长文本
+        if not context or not context.strip():
+            logger.warning("Empty context provided for embedding, using placeholder")
+            context = "[EMPTY]"
+
+        # 限制文本长度，避免超过模型限制
+        max_text_length = getattr(self.args, "rag_emb_max_text_length", 8000)
+        if len(context) > max_text_length:
+            logger.debug(
+                f"Text too long ({len(context)} chars), truncating to {max_text_length}"
+            )
+            context = context[:max_text_length]
+
         while retry_count < max_retries:
             try:
-                embedding = self.llm.emb_query(context)[0].output
+                result = self.llm.emb_query(context)
 
-                if dim:
-                    embedding = self._apply_pca(
-                        embedding, target_dim=dim
-                    )  # 降维后形状 (1024,)
+                # 验证结果
+                if not result or len(result) == 0:
+                    raise ValueError("Embedding API returned empty result")
+
+                embedding = result[0].output
+
+                # 验证 embedding 维度
+                if not embedding or len(embedding) == 0:
+                    raise ValueError("Embedding vector is empty")
+
+                # 转换为 numpy 数组以便处理
+                embedding = np.array(embedding)
+
+                # 检查是否包含 NaN 或 Inf
+                if np.any(np.isnan(embedding)) or np.any(np.isinf(embedding)):
+                    raise ValueError("Embedding contains NaN or Inf values")
+
+                if dim and dim < len(embedding):
+                    embedding = self._apply_pca(embedding, target_dim=dim)
 
                 if norm:
-                    embedding = embedding / np.linalg.norm(embedding)
+                    norm_value = np.linalg.norm(embedding)
+                    if norm_value > 0:
+                        embedding = embedding / norm_value
+                    else:
+                        logger.warning(
+                            "Zero norm vector detected, skipping normalization"
+                        )
 
                 return embedding.tolist()
+
             except Exception as e:
                 retry_count += 1
                 if retry_count >= max_retries:
@@ -175,16 +239,21 @@ class LocalDuckdbStorage:
                         f"Failed to get embedding after {max_retries} "
                         f"attempts: {str(e)}"
                     )
-                    raise
+                    raise RuntimeError(
+                        f"Embedding generation failed after {max_retries} retries: {str(e)}"
+                    ) from e
 
-                # Sleep between 1-5 seconds before retrying
-                sleep_time = 1 + (retry_count * 1.5)
+                # 指数退避重试
+                sleep_time = min(1 * (2**retry_count), 10)  # 最多等待10秒
                 logger.warning(
                     f"Embedding API call failed (attempt {retry_count}/"
                     f"{max_retries}). Error: {str(e)}. Retrying in "
                     f"{sleep_time:.1f} seconds..."
                 )
                 time.sleep(sleep_time)
+
+        # 理论上不会到达这里，但为了类型安全
+        raise RuntimeError("Unexpected error in embedding generation")
 
     def _initialize(self) -> None:
         if self.embed_dim is None:
@@ -248,42 +317,141 @@ class LocalDuckdbStorage:
     def _node_to_table_row(
         self, context_chunk: Dict[str, str | float], dim: int | None = None
     ) -> Any:
-        
-        if not context_chunk["raw_content"]:
-            context_chunk["raw_content"] = "empty"        
-        context_chunk["raw_content"] = context_chunk["raw_content"][
-            : self.args.rag_emb_text_size
-        ]
-            
+        """
+        将文档块转换为数据库行格式
+
+        参数:
+            context_chunk: 文档块字典
+            dim: 目标向量维度
+
+        返回:
+            数据库行元组
+        """
+        raw_content = context_chunk.get("raw_content", "")
+        if not raw_content or not raw_content.strip():
+            raw_content = "empty"
+
+        # 限制文本大小
+        max_size = getattr(self.args, "rag_emb_text_size", 8000)
+        raw_content = raw_content[:max_size]
+
+        try:
+            embedding = self._embedding(raw_content, norm=True, dim=dim)
+        except Exception as e:
+            logger.error(
+                f"Failed to generate embedding for chunk {context_chunk.get('_id', 'unknown')}: {str(e)}"
+            )
+            raise
+
         return (
-            context_chunk["_id"],
-            context_chunk["file_path"],
-            context_chunk["content"],
-            context_chunk["raw_content"],
-            self._embedding(context_chunk["raw_content"], norm=True, dim=dim),
-            context_chunk["mtime"],
+            context_chunk.get("_id", ""),
+            context_chunk.get("file_path", ""),
+            context_chunk.get("content", ""),
+            raw_content,
+            embedding,
+            context_chunk.get("mtime", 0.0),
         )
 
     def add_doc(self, context_chunk: Dict[str, str | float], dim: int | None = None):
         """
-        {
-            "_id": f"{doc.module_name}_{chunk_idx}",
-            "file_path": file_info.file_path,
-            "content": chunk,
-            "raw_content": chunk,
-            "vector": chunk,
-            "mtime": file_info.modify_time,
-        }
+        添加文档到向量存储
+
+        参数:
+            context_chunk: 文档块字典，包含以下字段：
+                - _id: 文档唯一标识
+                - file_path: 文件路径
+                - content: 文档内容
+                - raw_content: 原始内容（用于生成向量）
+                - mtime: 修改时间
+            dim: 目标向量维度（可选，用于降维）
         """
-        if self.database_name == ":memory:":
-            _table = self._conn.table(self.table_name)
-            _row = self._node_to_table_row(context_chunk, dim=dim)
-            _table.insert(_row)
-        elif self.database_path is not None:
-            with DuckDBLocalContext(self.database_path) as _conn:
-                _table = _conn.table(self.table_name)
+        # 使用写入锁保护并发写入
+        with self._write_lock:
+            try:
                 _row = self._node_to_table_row(context_chunk, dim=dim)
-                _table.insert(_row)
+
+                if self.database_name == ":memory:":
+                    _table = self._conn.table(self.table_name)
+                    _table.insert(_row)
+                elif self.database_path is not None:
+                    with DuckDBLocalContext(self.database_path) as _conn:
+                        _table = _conn.table(self.table_name)
+                        _table.insert(_row)
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to add document {context_chunk.get('_id', 'unknown')}: {str(e)}"
+                )
+                raise
+
+    def add_docs_batch(
+        self, context_chunks: List[Dict[str, str | float]], dim: int | None = None
+    ) -> Tuple[int, int]:
+        """
+        批量添加文档到向量存储，使用事务保证原子性
+
+        参数:
+            context_chunks: 文档块列表
+            dim: 目标向量维度
+
+        返回:
+            (成功数, 失败数) 元组
+        """
+        success_count = 0
+        failed_count = 0
+        failed_ids = []
+
+        with self._write_lock:
+            if self.database_name == ":memory:":
+                for chunk in context_chunks:
+                    try:
+                        _row = self._node_to_table_row(chunk, dim=dim)
+                        _table = self._conn.table(self.table_name)
+                        _table.insert(_row)
+                        success_count += 1
+                    except Exception as e:
+                        failed_count += 1
+                        failed_ids.append(chunk.get("_id", "unknown"))
+                        logger.warning(f"Failed to insert chunk: {str(e)}")
+            elif self.database_path is not None:
+                with DuckDBLocalContext(self.database_path) as _conn:
+                    try:
+                        # 开启事务
+                        _conn.execute("BEGIN TRANSACTION")
+
+                        for chunk in context_chunks:
+                            try:
+                                _row = self._node_to_table_row(chunk, dim=dim)
+                                _table = _conn.table(self.table_name)
+                                _table.insert(_row)
+                                success_count += 1
+                            except Exception as e:
+                                failed_count += 1
+                                failed_ids.append(chunk.get("_id", "unknown"))
+                                logger.warning(
+                                    f"Failed to insert chunk {chunk.get('_id', 'unknown')}: {str(e)}"
+                                )
+
+                        # 提交事务
+                        _conn.execute("COMMIT")
+
+                    except Exception as e:
+                        # 回滚事务
+                        try:
+                            _conn.execute("ROLLBACK")
+                        except Exception:
+                            pass
+                        logger.error(
+                            f"Batch insert failed, transaction rolled back: {str(e)}"
+                        )
+                        raise
+
+        if failed_ids:
+            logger.warning(
+                f"Failed to insert {failed_count} chunks: {failed_ids[:10]}..."
+            )
+
+        return success_count, failed_count
 
     def vector_search(
         self,
@@ -293,10 +461,27 @@ class LocalDuckdbStorage:
         query_dim: int | None = None,
     ):
         """
-        list_cosine_similarity: 计算两个列表之间的余弦相似度
-        list_cosine_distance: 计算两个列表之间的余弦距离
-        list_dot_product: 计算两个大小相同的数字列表的点积
+        向量相似度搜索
+
+        参数:
+            query: 查询文本
+            similarity_value: 相似度阈值 (0-1)
+            similarity_top_k: 返回的最大结果数
+            query_dim: 查询向量维度（降维用）
+
+        返回:
+            结果列表，每项为 (_id, file_path, mtime, score) 元组
         """
+        # 参数验证
+        similarity_value = max(0.0, min(1.0, similarity_value))
+        similarity_top_k = max(1, similarity_top_k)
+
+        try:
+            query_embedding = self._embedding(query, norm=True, dim=query_dim)
+        except Exception as e:
+            logger.error(f"Failed to generate query embedding: {str(e)}")
+            return []
+
         _db_query = f"""
             SELECT _id, file_path, mtime, score
             FROM (
@@ -308,21 +493,23 @@ class LocalDuckdbStorage:
             ORDER BY score DESC LIMIT ?;
         """
         query_params = [
-            self._embedding(query, norm=True, dim=query_dim),
+            query_embedding,
             similarity_value,
             similarity_top_k,
         ]
 
         _final_results = []
-        if self.database_name == ":memory:":
-            _final_results = self._conn.execute(_db_query, query_params).fetchall()
-        elif self.database_path is not None:
-            with DuckDBLocalContext(self.database_path) as _conn:
-                _final_results = _conn.execute(_db_query, query_params).fetchall()
+        try:
+            if self.database_name == ":memory:":
+                _final_results = self._conn.execute(_db_query, query_params).fetchall()
+            elif self.database_path is not None:
+                with DuckDBLocalContext(self.database_path) as _conn:
+                    _final_results = _conn.execute(_db_query, query_params).fetchall()
+        except Exception as e:
+            logger.error(f"Vector search query failed: {str(e)}")
+            return []
+
         return _final_results
-
-
-efault_ignore_dirs = ["__pycache__", "node_modules", "_images"]
 
 
 class LocalDuckDBStorageCache(BaseCacheManager):
@@ -342,6 +529,8 @@ class LocalDuckDBStorageCache(BaseCacheManager):
         self.extra_params = extra_params
         self.args = args
         self.llm = llm
+        self.model_file = args.model_file if args else None
+        self.product_mode = args.product_mode if args else "lite"
 
         self.storage = LocalDuckdbStorage(
             llm=emb_llm,
@@ -352,14 +541,11 @@ class LocalDuckDBStorageCache(BaseCacheManager):
         )
         self.queue = []
         self.chunk_size = 1000
-        self.max_output_tokens = (
-            extra_params.hybrid_index_max_output_tokens
-        )
+        self.max_output_tokens = extra_params.hybrid_index_max_output_tokens
 
         # 设置缓存文件路径
         self.cache_dir = os.path.join(self.path, ".cache")
-        self.cache_file = os.path.join(self.cache_dir,
-                                       "duckdb_storage_speedup.jsonl")
+        self.cache_file = os.path.join(self.cache_dir, "duckdb_storage_speedup.jsonl")
         self.cache: Dict[str, CacheItem] = {}
         # 创建缓存目录
         if not os.path.exists(self.cache_dir):
@@ -368,9 +554,7 @@ class LocalDuckDBStorageCache(BaseCacheManager):
         # failed files support
         from .failed_files_utils import load_failed_files
 
-        self.failed_files_path = os.path.join(
-            self.cache_dir, "failed_files.json"
-        )
+        self.failed_files_path = os.path.join(self.cache_dir, "failed_files.json")
         self.failed_files = load_failed_files(self.failed_files_path)
 
         self.lock = threading.Lock()
@@ -381,6 +565,24 @@ class LocalDuckDBStorageCache(BaseCacheManager):
 
         # 加载缓存
         self.cache = self._load_cache()
+
+        # 检测 embedding 功能是否正常
+        if emb_llm:
+            try:
+                logger.info("[INIT] Testing embedding functionality...")
+                test_embedding = emb_llm.emb_query("ping")[0].output
+                if not test_embedding or len(test_embedding) == 0:
+                    raise ValueError(
+                        "Embedding test failed: emb_query returned empty result"
+                    )
+                logger.info(
+                    f"[INIT] Embedding test successful, vector dimension: {len(test_embedding)}"
+                )
+            except Exception as e:
+                logger.error(f"[INIT] Embedding test failed: {str(e)}")
+                raise RuntimeError(
+                    f"Embedding functionality check failed: {str(e)}"
+                ) from e
 
     @staticmethod
     def _chunk_text(text, max_length=1000):
@@ -483,8 +685,16 @@ class LocalDuckDBStorageCache(BaseCacheManager):
 
         llm_name = get_llm_names(self.llm)[0] if self.llm else None
         product_mode = self.args.product_mode
+
+        # 计算实际使用的进程数
+        workers = self.args.rag_cache_build_workers if self.args else 0
+        if workers == 0:
+            workers = max(1, os.cpu_count() // 2)
+        # 进程数不超过待处理文件数，避免创建过多空闲进程
+        num_processes = min(workers, len(files_to_process))
+
         with Pool(
-            processes=os.cpu_count(),
+            processes=num_processes,
             initializer=initialize_tokenizer,
             initargs=(VariableHolder.TOKENIZER_PATH,),
         ) as pool:
@@ -492,7 +702,10 @@ class LocalDuckDBStorageCache(BaseCacheManager):
             for file_info in files_to_process:
                 target_files_to_process.append(self.fileinfo_to_tuple(file_info))
             worker_func = functools.partial(
-                process_file_in_multi_process, llm=llm_name, product_mode=product_mode
+                process_file_in_multi_process,
+                llm=llm_name,
+                product_mode=product_mode,
+                model_file=self.model_file,
             )
             results = pool.map(worker_func, target_files_to_process)
 
@@ -559,8 +772,11 @@ class LocalDuckDBStorageCache(BaseCacheManager):
             )
 
             def batch_add_doc(_batch):
-                for b in _batch:
-                    self.storage.add_doc(b, dim=self.extra_params.rag_duckdb_vector_dim)
+                """使用批量插入方法处理一批文档"""
+                success, failed = self.storage.add_docs_batch(
+                    _batch, dim=self.extra_params.rag_duckdb_vector_dim
+                )
+                return success, failed
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = []
@@ -569,9 +785,13 @@ class LocalDuckDBStorageCache(BaseCacheManager):
                     futures.append(executor.submit(batch_add_doc, batch))
 
                 # Wait for futures to complete
+                total_success = 0
+                total_failed = 0
                 for future in as_completed(futures):
                     try:
-                        future.result()
+                        success, failed = future.result()
+                        total_success += success
+                        total_failed += failed
                         completed_batches += 1
                         elapsed = time.time() - start_time
                         estimated_total = (
@@ -595,22 +815,19 @@ class LocalDuckDBStorageCache(BaseCacheManager):
                             logger.info(
                                 f"[BUILD CACHE] Progress: {completed_batches}/"
                                 f"{total_batches} ({progress_percent:.1f}%). "
+                                f"Success: {total_success}, Failed: {total_failed}. "
                                 f"ETA: {remaining:.1f}s"
                             )
                     except Exception as e:
+                        completed_batches += 1
                         logger.error(f"[BUILD CACHE] Error saving batch: {str(e)}")
-                        # Add more detailed error information
-                        batch_len_info = (
-                            len(batch) if "batch" in locals() else "unknown"
-                        )
-                        logger.error(
-                            f"[BUILD CACHE] Error details: batch size: {batch_len_info}"
-                        )
                         logger.exception(e)
 
             total_time = time.time() - start_time
             logger.info(
-                f"[BUILD CACHE] All chunks written, total time: {total_time:.2f}s"
+                f"[BUILD CACHE] Completed! Total time: {total_time:.2f}s, "
+                f"Success: {total_success}, Failed: {total_failed}, "
+                f"Success rate: {total_success / max(1, total_success + total_failed) * 100:.1f}%"
             )
 
     def update_storage(self, file_info: FileInfo, is_delete: bool):
@@ -646,6 +863,7 @@ class LocalDuckDBStorageCache(BaseCacheManager):
                         _chunk, dim=self.extra_params.rag_duckdb_vector_dim
                     )
                     time.sleep(self.extra_params.anti_quota_limit)
+                    logger.info(f"Saved chunk {_chunk['_id']} to DuckDB Storage ")
                 except Exception as err:
                     logger.error(f"Error in saving chunk: {str(err)}")
                     logger.exception(err)
@@ -675,6 +893,7 @@ class LocalDuckDBStorageCache(BaseCacheManager):
                             file_info.file_path,
                             llm=self.llm,
                             product_mode=self.product_mode,
+                            model_file=self.model_file,
                         )
                         if content:
                             self.cache[file_info.file_path] = CacheItem(
@@ -875,6 +1094,46 @@ class LocalDuckDBStorageCache(BaseCacheManager):
         """
         self.trigger_update()  # 检查更新
 
+        # Run-once 模式：同步完成增量更新（包括 DuckDB 向量索引）后再查询
+        if self.extra_params and self.extra_params.rag_run_once:
+            logger.info(
+                "[Run-once mode] Processing incremental updates synchronously for DuckDB storage..."
+            )
+            start_time = time.time()
+
+            # 同步处理队列，确保增量更新已刷入 DuckDB
+            max_iterations = 10
+            iteration = 0
+            while iteration < max_iterations:
+                queue_len_before = len(self.queue)
+                if queue_len_before == 0:
+                    break
+
+                logger.info(
+                    f"[Run-once mode] Processing queue (iteration {iteration + 1}, queue size: {queue_len_before})..."
+                )
+                self.process_queue()
+
+                queue_len_after = len(self.queue)
+                if queue_len_after == 0:
+                    elapsed = time.time() - start_time
+                    logger.info(
+                        f"[Run-once mode] Queue processed successfully in {elapsed:.2f}s, cache has {len(self.cache)} documents"
+                    )
+                    break
+                elif queue_len_after >= queue_len_before:
+                    logger.warning(
+                        f"[Run-once mode] Queue size not decreasing (before: {queue_len_before}, after: {queue_len_after}), stopping"
+                    )
+                    break
+
+                iteration += 1
+
+            if iteration >= max_iterations:
+                logger.warning(
+                    f"[Run-once mode] Reached max iterations ({max_iterations}), some updates may be pending"
+                )
+
         if options is None or "queries" not in options:
             return {
                 file_path: self.cache[file_path].model_dump()
@@ -943,3 +1202,37 @@ class LocalDuckDBStorageCache(BaseCacheManager):
 
         # 处理合并后的结果
         return self._process_search_results(merged_results)
+
+    def close(self):
+        """
+        关闭缓存管理器，释放所有资源
+
+        清理步骤:
+            1. 设置停止事件，通知后台线程退出
+            2. 等待后台线程结束（最多等待 5 秒）
+            3. 关闭 DuckDB 存储连接
+        """
+        logger.info("[CLOSE] Closing LocalDuckDBStorageCache...")
+
+        # 停止后台线程
+        self.stop_event.set()
+        if self.thread.is_alive():
+            self.thread.join(timeout=5)
+            if self.thread.is_alive():
+                logger.warning("[CLOSE] Background thread did not stop in time")
+
+        # 关闭存储
+        if hasattr(self.storage, "_conn") and self.storage._conn is not None:
+            try:
+                self.storage._conn.close()
+            except Exception as e:
+                logger.warning(f"[CLOSE] Error closing DuckDB connection: {str(e)}")
+
+        logger.info("[CLOSE] LocalDuckDBStorageCache closed")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False

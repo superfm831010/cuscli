@@ -571,3 +571,174 @@ class WorkflowOutputExtractionError(WorkflowError):
         lines.append(f"     {ensure_format}")
 
         return "\n".join(lines)
+
+
+class WorkflowAgentResolutionError(WorkflowError):
+    """Workflow 代理解析错误（代理文件无法解析）"""
+
+    def __init__(
+        self,
+        agent_id: str,
+        path: str,
+        searched_paths: list = None,
+        field_path: str = None,
+        suggestion: str = None,
+    ):
+        """
+        Args:
+            agent_id: 代理 ID
+            path: 代理路径
+            searched_paths: 已搜索的路径列表
+            field_path: 字段路径，如 "spec.agents[0].path"
+            suggestion: 修复建议
+        """
+        self.agent_id = agent_id
+        self.path = path
+        self.searched_paths = searched_paths or []
+        self.field_path = field_path
+        self.suggestion = suggestion
+
+        message = get_message("workflow.agent_resolution_failed")
+
+        details = {
+            "agent_id": agent_id,
+            "path": path,
+            "searched_paths": searched_paths,
+            "field_path": field_path,
+            "suggestion": suggestion,
+        }
+
+        super().__init__(message, details)
+
+    def __str__(self):
+        title = get_message("workflow.agent_resolution_error_title")
+        lines = [title]
+
+        agent_id_label = get_message("workflow.agent_id")
+        lines.append(f"   {agent_id_label}: {self.agent_id}")
+
+        path_label = get_message("workflow.agent_path")
+        lines.append(f"   {path_label}: {self.path}")
+
+        if self.field_path:
+            field_label = get_message("workflow.field_path")
+            lines.append(f"   {field_label}: {self.field_path}")
+
+        if self.searched_paths:
+            searched_label = get_message("workflow.searched_agent_paths")
+            lines.append(f"   {searched_label}:")
+            for search_path in self.searched_paths:
+                lines.append(f"     - {search_path}")
+
+        lines.append("")
+        suggestion_label = get_message("workflow.fix_suggestion")
+        lines.append(f"   {suggestion_label}:")
+
+        if self.suggestion:
+            lines.append(f"     {self.suggestion}")
+        else:
+            check_exists = get_message("workflow.check_agent_path_exists")
+            lines.append(f"     {check_exists}")
+
+            verify_path = get_message("workflow.verify_agent_path_correct")
+            lines.append(f"     {verify_path}")
+
+        return "\n".join(lines)
+
+
+class WorkflowModelValidationError(WorkflowError):
+    """Workflow 模型验证错误（模型不存在或密钥未配置）"""
+
+    def __init__(
+        self,
+        message: str,
+        step_id: str = None,
+        agent_id: str = None,
+        model: str = None,
+        suggestion: str = None,
+    ):
+        """
+        Args:
+            message: 错误消息
+            step_id: 步骤 ID
+            agent_id: 代理 ID
+            model: 模型名称
+            suggestion: 修复建议
+        """
+        self.step_id = step_id
+        self.agent_id = agent_id
+        self.model = model
+        self.suggestion = suggestion
+
+        details = {
+            "step_id": step_id,
+            "agent_id": agent_id,
+            "model": model,
+            "suggestion": suggestion,
+        }
+
+        super().__init__(message, details)
+
+    @classmethod
+    def for_model_not_found(
+        cls, step_id: str, agent_id: str, model: str
+    ) -> "WorkflowModelValidationError":
+        """创建模型不存在错误"""
+        message = get_message("workflow.model_not_found")
+        suggestion = get_message("workflow.check_model_registered")
+        return cls(
+            message=f"{message}: {model}",
+            step_id=step_id,
+            agent_id=agent_id,
+            model=model,
+            suggestion=suggestion,
+        )
+
+    @classmethod
+    def for_key_missing(
+        cls, step_id: str, agent_id: str, model: str
+    ) -> "WorkflowModelValidationError":
+        """创建密钥未配置错误"""
+        message = get_message("workflow.model_key_missing")
+        suggestion = get_message("workflow.check_api_key_configured")
+        return cls(
+            message=f"{message}: {model}",
+            step_id=step_id,
+            agent_id=agent_id,
+            model=model,
+            suggestion=suggestion,
+        )
+
+    def __str__(self):
+        title = get_message("workflow.model_validation_error_title")
+        lines = [f"{title}: {self.message}"]
+
+        if self.step_id:
+            step_label = get_message("workflow.step_id")
+            lines.append(f"   {step_label}: {self.step_id}")
+
+        if self.agent_id:
+            agent_label = get_message("workflow.agent_id")
+            lines.append(f"   {agent_label}: {self.agent_id}")
+
+        if self.model:
+            model_label = get_message("workflow.model_name")
+            lines.append(f"   {model_label}: {self.model}")
+
+        lines.append("")
+        suggestion_label = get_message("workflow.fix_suggestion")
+        lines.append(f"   {suggestion_label}:")
+
+        if self.suggestion:
+            lines.append(f"     {self.suggestion}")
+        else:
+            check_registered = get_message("workflow.check_model_registered")
+            lines.append(f"     {check_registered}")
+
+            check_key = get_message("workflow.check_api_key_configured")
+            lines.append(f"     {check_key}")
+
+            check_spelling = get_message("workflow.check_model_name_spelling")
+            lines.append(f"     {check_spelling}")
+
+        return "\n".join(lines)

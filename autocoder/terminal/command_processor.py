@@ -16,6 +16,7 @@ from autocoder.workflow_agents import (
     print_workflow_result,
     list_available_workflows,
 )
+from autocoder.remote_service.manager import handle_remote_command
 
 
 class CommandProcessor:
@@ -445,6 +446,62 @@ class CommandProcessor:
         source_dir = str(Path.cwd())
 
         # 运行 workflow
+        self._run_workflow(workflow_name, kwargs, source_dir, event_file)
+        return True
+
+    async def handle_workflow_shortcut(self, user_input: str, context: dict) -> bool:
+        """处理 $ 开头的 workflow 快捷命令
+
+        格式: $workflow-name '''需求'''
+        等价于: /workflow workflow-name query='''需求'''
+        """
+        # 去掉 $ 前缀
+        content = user_input[1:].strip()
+
+        if not content:
+            self._print_workflow_help()
+            return True
+
+        # 解析 workflow 名称和查询内容
+        # 支持格式: $workflow-name '''需求''' 或 $workflow-name 需求内容
+        parts = content.split(maxsplit=1)
+        workflow_name = parts[0]
+        query_content = parts[1].strip() if len(parts) > 1 else ""
+
+        # 如果是帮助命令
+        if workflow_name in ("/help", "help", "-h", "--help"):
+            self._print_workflow_help()
+            return True
+
+        event_file, _ = gengerate_event_file_path()
+        self.global_cancel.register_token(event_file)
+        self.configure(f"event_file:{event_file}")
+
+        # 获取当前目录
+        source_dir = str(Path.cwd())
+
+        # 构建 kwargs，如果有查询内容则添加到 query 参数
+        kwargs = {}
+        if query_content:
+            # 去掉可能存在的三引号包裹
+            if query_content.startswith("'''") and query_content.endswith("'''"):
+                query_content = query_content[3:-3]
+            elif query_content.startswith('"""') and query_content.endswith('"""'):
+                query_content = query_content[3:-3]
+            elif query_content.startswith("'") and query_content.endswith("'"):
+                query_content = query_content[1:-1]
+            elif query_content.startswith('"') and query_content.endswith('"'):
+                query_content = query_content[1:-1]
+            kwargs["query"] = query_content
+
+        # 运行 workflow
+        self._run_workflow(workflow_name, kwargs, source_dir, event_file)
+        return True
+
+    def _run_workflow(
+        self, workflow_name: str, kwargs: dict, source_dir: str, event_file: str
+    ):
+        """运行 workflow 的共用逻辑"""
         try:
             print(
                 f"\n🚀 {get_message_with_format('workflow_running', workflow_name=workflow_name)}"
@@ -465,7 +522,7 @@ class CommandProcessor:
             # 打印结果
             print_workflow_result(result)
 
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             print(
                 f"\033[91m❌ {get_message_with_format('workflow_not_found', workflow_name=workflow_name)}\033[0m"
             )
@@ -485,8 +542,6 @@ class CommandProcessor:
 
                 traceback.print_exc()
 
-        return True
-
     def _print_workflow_help(self):
         """打印 workflow 命令帮助信息"""
         # 使用国际化的帮助文本
@@ -505,6 +560,13 @@ class CommandProcessor:
             print(f"\n⚠️  {get_message('workflow_no_workflows_found')}")
 
         print()
+
+    def handle_remote(self, user_input: str, context: dict) -> bool:
+        """/remote 命令 - 远程资源管理"""
+        command_args = user_input[len("/remote") :].strip()
+        source_dir = str(Path.cwd())
+        handle_remote_command(command_args, project_root=source_dir)
+        return True
 
     def handle_unknown_or_fallback(self, user_input: str, context: dict) -> bool:
         """处理未知命令或非命令输入"""

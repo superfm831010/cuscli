@@ -3,7 +3,7 @@ from autocoder.rag.cache.base_cache import (
     DeleteEvent,
     AddOrUpdateEvent,
     FileInfo,
-    CacheItem
+    CacheItem,
 )
 from typing import Generator, List, Dict, Any, Optional, Tuple
 from autocoder.common import SourceCode
@@ -31,7 +31,7 @@ from typing import Union
 from byzerllm import SimpleByzerLLM, ByzerLLM
 from autocoder.rag.cache.cache_result_merge import CacheResultMerger, MergeStrategy
 import time
-from typing import Optional,Union
+from typing import Optional, Union
 from .failed_files_utils import save_failed_files, load_failed_files
 from autocoder.utils.llms import get_llm_names
 
@@ -60,7 +60,9 @@ def generate_content_md5(content: Union[str, bytes]) -> str:
 default_ignore_dirs = [
     "__pycache__",
     "node_modules",
-    "_images"
+    "_images",
+    ".cache",
+    ".auto-coder",
 ]
 
 
@@ -74,8 +76,8 @@ class LocalByzerStorageCache(BaseCacheManager):
         emb_llm: Union[ByzerLLM, SimpleByzerLLM] = None,
         host: str = "127.0.0.1",
         port: int = 33333,
-        args:Optional[AutoCoderArgs]=None,
-        llm:Optional[Union[ByzerLLM,SimpleByzerLLM,str]]=None,
+        args: Optional[AutoCoderArgs] = None,
+        llm: Optional[Union[ByzerLLM, SimpleByzerLLM, str]] = None,
     ):
         """
         初始化基于 Byzer Storage 的 RAG 缓存管理器。
@@ -85,9 +87,17 @@ class LocalByzerStorageCache(BaseCacheManager):
         self.required_exts = required_exts
         self.args = args
         self.llm = llm
+        self.model_file = args.model_file if args else None
+        self.product_mode = args.product_mode if args else "lite"
         self.rag_build_name = extra_params.rag_build_name
-        self.storage = LocalByzerStorage("byzerai_store",
-            "rag_test", self.rag_build_name, host=host, port=port,emb_llm=emb_llm)
+        self.storage = LocalByzerStorage(
+            "byzerai_store",
+            "rag_test",
+            self.rag_build_name,
+            host=host,
+            port=port,
+            emb_llm=emb_llm,
+        )
         self.queue = []
         self.chunk_size = 1000
         self._init_schema()
@@ -99,8 +109,7 @@ class LocalByzerStorageCache(BaseCacheManager):
 
         # 设置缓存文件路径
         self.cache_dir = os.path.join(self.path, ".cache")
-        self.cache_file = os.path.join(
-            self.cache_dir, "byzer_storage_speedup.jsonl")
+        self.cache_file = os.path.join(self.cache_dir, "byzer_storage_speedup.jsonl")
         self.cache: Dict[str, CacheItem] = {}
 
         # 创建缓存目录
@@ -119,6 +128,24 @@ class LocalByzerStorageCache(BaseCacheManager):
 
         # 加载缓存
         self.cache = self._load_cache()
+
+        # 检测 embedding 功能是否正常
+        if emb_llm:
+            try:
+                logger.info("[INIT] Testing embedding functionality...")
+                test_embedding = emb_llm.emb_query("ping")[0].output
+                if not test_embedding or len(test_embedding) == 0:
+                    raise ValueError(
+                        "Embedding test failed: emb_query returned empty result"
+                    )
+                logger.info(
+                    f"[INIT] Embedding test successful, vector dimension: {len(test_embedding)}"
+                )
+            except Exception as e:
+                logger.error(f"[INIT] Embedding test failed: {str(e)}")
+                raise RuntimeError(
+                    f"Embedding functionality check failed: {str(e)}"
+                ) from e
 
     def _chunk_text(self, text, max_length=1000):
         """Split text into chunks"""
@@ -182,8 +209,7 @@ class LocalByzerStorageCache(BaseCacheManager):
                 with open(cache_file, "w", encoding="utf-8") as f:
                     for cache_item in self.cache.values():
                         # 确保序列化 Pydantic 模型
-                        json.dump(cache_item.model_dump(),
-                                  f, ensure_ascii=False)
+                        json.dump(cache_item.model_dump(), f, ensure_ascii=False)
                         f.write("\n")
             except IOError as e:
                 logger.error(f"Error writing cache file: {str(e)}")
@@ -197,8 +223,7 @@ class LocalByzerStorageCache(BaseCacheManager):
                     with open(cache_file, "w", encoding="utf-8") as f:
                         for cache_item in self.cache.values():
                             # 确保序列化 Pydantic 模型
-                            json.dump(cache_item.model_dump(),
-                                      f, ensure_ascii=False)
+                            json.dump(cache_item.model_dump(), f, ensure_ascii=False)
                             f.write("\n")
 
                 finally:
@@ -206,7 +231,12 @@ class LocalByzerStorageCache(BaseCacheManager):
                     fcntl.flock(lockf, fcntl.LOCK_UN)
 
     def fileinfo_to_tuple(self, file_info: FileInfo) -> Tuple[str, str, float, str]:
-        return (file_info.file_path, file_info.relative_path, file_info.modify_time, file_info.file_md5)
+        return (
+            file_info.file_path,
+            file_info.relative_path,
+            file_info.modify_time,
+            file_info.file_md5,
+        )
 
     def build_cache(self):
         """Build the cache by reading files and storing in Byzer Storage"""
@@ -231,20 +261,34 @@ class LocalByzerStorageCache(BaseCacheManager):
         llm_name = get_llm_names(self.llm)[0] if self.llm else None
         product_mode = self.args.product_mode
         start_time = time.time()
+
+        # 计算实际使用的进程数
+        workers = self.args.rag_cache_build_workers if self.args else 0
+        if workers == 0:
+            workers = max(1, os.cpu_count() // 2)
+        # 进程数不超过待处理文件数，避免创建过多空闲进程
+        num_processes = min(workers, len(files_to_process))
+
         with Pool(
-            processes=os.cpu_count(),
+            processes=num_processes,
             initializer=initialize_tokenizer,
             initargs=(VariableHolder.TOKENIZER_PATH,),
         ) as pool:
             target_files_to_process = []
             for file_info in files_to_process:
-                target_files_to_process.append(
-                    self.fileinfo_to_tuple(file_info))
-            worker_func = functools.partial(process_file_in_multi_process, llm=llm_name, product_mode=product_mode)
+                target_files_to_process.append(self.fileinfo_to_tuple(file_info))
+            worker_func = functools.partial(
+                process_file_in_multi_process,
+                llm=llm_name,
+                product_mode=product_mode,
+                model_file=self.model_file,
+            )
             results = pool.map(worker_func, target_files_to_process)
-        
+
         processing_time = time.time() - start_time
-        logger.info(f"[BUILD CACHE] File processing completed, time elapsed: {processing_time:.2f}s")
+        logger.info(
+            f"[BUILD CACHE] File processing completed, time elapsed: {processing_time:.2f}s"
+        )
 
         items = []
         for file_info, result in zip(files_to_process, results):
@@ -261,42 +305,54 @@ class LocalByzerStorageCache(BaseCacheManager):
                 logger.info(f"[BUILD CACHE] Processing file: {doc.module_name}")
                 doc.module_name
                 chunks = self._chunk_text(doc.source_code, self.chunk_size)
-                logger.info(f"[BUILD CACHE] File {doc.module_name} chunking completed, total chunks: {len(chunks)}")
+                logger.info(
+                    f"[BUILD CACHE] File {doc.module_name} chunking completed, total chunks: {len(chunks)}"
+                )
                 # 可能chunk 会超出 chunk size, 为了防止出现问题，我们会做截断
                 for chunk_idx, chunk in enumerate(chunks):
                     chunk_item = {
                         "_id": f"{doc.module_name}_{chunk_idx}",
                         "file_path": file_info.file_path,
-                        "content": chunk[0:self.chunk_size*2],
-                        "raw_content": chunk[0:self.chunk_size*2],
-                        "vector": chunk[0:self.args.rag_emb_text_size],
+                        "content": chunk[0 : self.chunk_size * 2],
+                        "raw_content": chunk[0 : self.chunk_size * 2],
+                        "vector": chunk[0 : self.args.rag_emb_text_size],
                         "mtime": file_info.modify_time,
                     }
                     items.append(chunk_item)
 
         # Save to local cache
         logger.info("[BUILD CACHE] Saving cache to local file")
-        self.write_cache()        
+        self.write_cache()
 
-        if items:            
+        if items:
             logger.info("[BUILD CACHE] Clearing existing cache from Byzer Storage")
-            self.storage.truncate_table()        
-            logger.info(f"[BUILD CACHE] Preparing to write to Byzer Storage, total chunks: {len(items)}, total files: {len(files_to_process)}")
-            
+            self.storage.truncate_table()
+            logger.info(
+                f"[BUILD CACHE] Preparing to write to Byzer Storage, total chunks: {len(items)}, total files: {len(files_to_process)}"
+            )
+
             # Use a fixed optimal batch size instead of dividing by worker count
             batch_size = 100  # Optimal batch size for Byzer Storage
-            item_batches = [items[i:i + batch_size] for i in range(0, len(items), batch_size)]
-            
+            item_batches = [
+                items[i : i + batch_size] for i in range(0, len(items), batch_size)
+            ]
+
             total_batches = len(item_batches)
             completed_batches = 0
 
-            logger.info(f"[BUILD CACHE] Starting to write to Byzer Storage using {batch_size} items per batch, "
-                       f"total batches: {total_batches}")
+            logger.info(
+                f"[BUILD CACHE] Starting to write to Byzer Storage using {batch_size} items per batch, "
+                f"total batches: {total_batches}"
+            )
             start_time = time.time()
 
             # Use more workers to process the smaller batches efficiently
-            max_workers = min(self.extra_params.rag_index_build_workers, total_batches)  # Cap at 10 workers or total batch count
-            logger.info(f"[BUILD CACHE] Using {max_workers} parallel workers for processing")
+            max_workers = min(
+                self.extra_params.rag_index_build_workers, total_batches
+            )  # Cap at 10 workers or total batch count
+            logger.info(
+                f"[BUILD CACHE] Using {max_workers} parallel workers for processing"
+            )
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = []
@@ -304,24 +360,34 @@ class LocalByzerStorageCache(BaseCacheManager):
                 for batch in item_batches:
                     futures.append(
                         executor.submit(
-                            lambda x: self.storage.write_builder().add_items(
+                            lambda x: self.storage.write_builder()
+                            .add_items(
                                 x, vector_fields=["vector"], search_fields=["content"]
-                            ).execute(),
-                            batch
+                            )
+                            .execute(),
+                            batch,
                         )
                     )
-                
+
                 # Wait for futures to complete
                 for future in as_completed(futures):
                     try:
                         future.result()
                         completed_batches += 1
                         elapsed = time.time() - start_time
-                        estimated_total = elapsed / completed_batches * total_batches if completed_batches > 0 else 0
+                        estimated_total = (
+                            elapsed / completed_batches * total_batches
+                            if completed_batches > 0
+                            else 0
+                        )
                         remaining = estimated_total - elapsed
-                        
+
                         # Only log progress at reasonable intervals to reduce log spam
-                        if completed_batches == 1 or completed_batches == total_batches or completed_batches % max(1, total_batches // 10) == 0:
+                        if (
+                            completed_batches == 1
+                            or completed_batches == total_batches
+                            or completed_batches % max(1, total_batches // 10) == 0
+                        ):
                             logger.info(
                                 f"[BUILD CACHE] Progress: {completed_batches}/{total_batches} batches completed "
                                 f"({(completed_batches/total_batches*100):.1f}%) "
@@ -330,21 +396,25 @@ class LocalByzerStorageCache(BaseCacheManager):
                     except Exception as e:
                         logger.error(f"[BUILD CACHE] Error saving batch: {str(e)}")
                         # Add more detailed error information
-                        logger.error(f"[BUILD CACHE] Error details: batch size: {len(batch) if 'batch' in locals() else 'unknown'}")
+                        logger.error(
+                            f"[BUILD CACHE] Error details: batch size: {len(batch) if 'batch' in locals() else 'unknown'}"
+                        )
 
             total_time = time.time() - start_time
-            logger.info(f"[BUILD CACHE] All chunks written, total time: {total_time:.2f}s")
+            logger.info(
+                f"[BUILD CACHE] All chunks written, total time: {total_time:.2f}s"
+            )
             self.storage.commit()
             logger.info("[BUILD CACHE] Changes committed to Byzer Storage")
 
     def update_storage(self, file_info: FileInfo, is_delete: bool):
         """
         Updates file content in the Byzer Storage vector database.
-        
+
         Parameters:
             file_info: FileInfo object containing file path, relative path, modify time, and MD5 hash
             is_delete: Whether this is a delete operation, True means all records for this file will be removed
-            
+
         Process:
             1. First query and delete all existing records for this file path from the vector database
             2. If not a delete operation:
@@ -360,25 +430,31 @@ class LocalByzerStorageCache(BaseCacheManager):
                   - Modify time
             3. Write all items to Byzer Storage with vector and search fields specified
             4. Commit changes to ensure data persistence
-            
+
         Notes:
             - This method removes all records for a file before updating to avoid leftovers
             - File content is processed in chunks, each stored and indexed separately
             - Vector fields are used for similarity search, content field for full-text search
         """
-        logger.info(f"[UPDATE STORAGE] Starting update for file: {file_info.file_path}, is delete: {is_delete}")
-        
+        logger.info(
+            f"[UPDATE STORAGE] Starting update for file: {file_info.file_path}, is delete: {is_delete}"
+        )
+
         query = self.storage.query_builder()
         query.and_filter().add_condition("file_path", file_info.file_path).build()
         results = query.execute()
         if results:
-            logger.info(f"[UPDATE STORAGE] Deleting existing records from Byzer Storage: {len(results)} records")
+            logger.info(
+                f"[UPDATE STORAGE] Deleting existing records from Byzer Storage: {len(results)} records"
+            )
             for result in results:
                 self.storage.delete_by_ids([result["_id"]])
         items = []
 
         if not is_delete:
-            logger.info(f"[UPDATE STORAGE] Getting file content from cache and preparing update")
+            logger.info(
+                f"[UPDATE STORAGE] Getting file content from cache and preparing update"
+            )
             content = [
                 SourceCode.model_validate(doc)
                 for doc in self.cache[file_info.file_path].content
@@ -388,42 +464,54 @@ class LocalByzerStorageCache(BaseCacheManager):
                 logger.info(f"[UPDATE STORAGE] Processing file: {doc.module_name}")
                 doc.module_name
                 chunks = self._chunk_text(doc.source_code, self.chunk_size)
-                logger.info(f"[UPDATE STORAGE] File {doc.module_name} chunking completed, total chunks: {len(chunks)}")
+                logger.info(
+                    f"[UPDATE STORAGE] File {doc.module_name} chunking completed, total chunks: {len(chunks)}"
+                )
                 for chunk_idx, chunk in enumerate(chunks):
                     chunk_item = {
                         "_id": f"{doc.module_name}_{chunk_idx}",
                         "file_path": file_info.file_path,
-                        "content": chunk[0:self.chunk_size*2],
-                        "raw_content": chunk[0:self.chunk_size*2],
-                        "vector": chunk[0:self.chunk_size*2],
+                        "content": chunk[0 : self.chunk_size * 2],
+                        "raw_content": chunk[0 : self.chunk_size * 2],
+                        "vector": chunk[0 : self.chunk_size * 2],
                         "mtime": modify_time,
                     }
                     items.append(chunk_item)
         if items:
-            logger.info(f"[UPDATE STORAGE] Starting to write {len(items)} chunks to Byzer Storage")
+            logger.info(
+                f"[UPDATE STORAGE] Starting to write {len(items)} chunks to Byzer Storage"
+            )
             start_time = time.time()
-            
+
             # Use optimal batch size here too
             batch_size = 100
             if len(items) > batch_size:
-                logger.info(f"[UPDATE STORAGE] Using batched writes with {batch_size} items per batch")
-                batches = [items[i:i + batch_size] for i in range(0, len(items), batch_size)]
+                logger.info(
+                    f"[UPDATE STORAGE] Using batched writes with {batch_size} items per batch"
+                )
+                batches = [
+                    items[i : i + batch_size] for i in range(0, len(items), batch_size)
+                ]
                 total_batches = len(batches)
-                
+
                 for i, batch in enumerate(batches):
                     self.storage.write_builder().add_items(
                         batch, vector_fields=["vector"], search_fields=["content"]
                     ).execute()
-                    logger.info(f"[UPDATE STORAGE] Progress: {i+1}/{total_batches} batches written")
+                    logger.info(
+                        f"[UPDATE STORAGE] Progress: {i+1}/{total_batches} batches written"
+                    )
             else:
                 # For small item counts, just use a single write operation
                 self.storage.write_builder().add_items(
                     items, vector_fields=["vector"], search_fields=["content"]
                 ).execute()
-            
+
             self.storage.commit()
             elapsed = time.time() - start_time
-            logger.info(f"[UPDATE STORAGE] Write completed, time elapsed: {elapsed:.2f}s")
+            logger.info(
+                f"[UPDATE STORAGE] Write completed, time elapsed: {elapsed:.2f}s"
+            )
         else:
             logger.info(f"[UPDATE STORAGE] No content to write")
 
@@ -431,34 +519,46 @@ class LocalByzerStorageCache(BaseCacheManager):
         if not self.queue:
             logger.info("[QUEUE PROCESSING] Queue is empty, nothing to process")
             return
-            
-        logger.info(f"[QUEUE PROCESSING] Starting queue processing, queue length: {len(self.queue)}")
+
+        logger.info(
+            f"[QUEUE PROCESSING] Starting queue processing, queue length: {len(self.queue)}"
+        )
         start_time = time.time()
-        
+
         while self.queue:
             file_list = self.queue.pop(0)
             if isinstance(file_list, DeleteEvent):
-                logger.info(f"[QUEUE PROCESSING] Processing delete event, total files: {len(file_list.file_paths)}")
+                logger.info(
+                    f"[QUEUE PROCESSING] Processing delete event, total files: {len(file_list.file_paths)}"
+                )
                 for item in file_list.file_paths:
                     logger.info(f"[QUEUE PROCESSING] Processing file deletion: {item}")
                     del self.cache[item]
                     # remove from failed files if present
                     if item in self.failed_files:
-                        self.failed_files.remove(item)                        
+                        self.failed_files.remove(item)
                         save_failed_files(self.failed_files_path, self.failed_files)
                     # Create a temporary FileInfo object
                     file_info = FileInfo(
-                        file_path=item, relative_path="", modify_time=0, file_md5="")
+                        file_path=item, relative_path="", modify_time=0, file_md5=""
+                    )
                     self.update_storage(file_info, is_delete=True)
 
             elif isinstance(file_list, AddOrUpdateEvent):
-                logger.info(f"[QUEUE PROCESSING] Processing add/update event, total files: {len(file_list.file_infos)}")
+                logger.info(
+                    f"[QUEUE PROCESSING] Processing add/update event, total files: {len(file_list.file_infos)}"
+                )
                 for file_info in file_list.file_infos:
                     logger.info(
-                        f"[QUEUE PROCESSING] Processing file update: {file_info.file_path}")
+                        f"[QUEUE PROCESSING] Processing file update: {file_info.file_path}"
+                    )
                     try:
                         content = process_file_local(
-                            self.fileinfo_to_tuple(file_info), llm=self.llm, product_mode=self.product_mode)
+                            file_info.file_path,
+                            llm=self.llm,
+                            product_mode=self.product_mode,
+                            model_file=self.model_file,
+                        )
                         if content:
                             self.cache[file_info.file_path] = CacheItem(
                                 file_path=file_info.file_path,
@@ -470,25 +570,31 @@ class LocalByzerStorageCache(BaseCacheManager):
                             self.update_storage(file_info, is_delete=False)
                             # remove from failed files if present
                             if file_info.file_path in self.failed_files:
-                                self.failed_files.remove(file_info.file_path)                                
-                                save_failed_files(self.failed_files_path, self.failed_files)
+                                self.failed_files.remove(file_info.file_path)
+                                save_failed_files(
+                                    self.failed_files_path, self.failed_files
+                                )
                         else:
-                            logger.warning(f"Empty result for file: {file_info.file_path}, treat as parse failed, skipping cache update")
-                            self.failed_files.add(file_info.file_path)                            
+                            logger.warning(
+                                f"Empty result for file: {file_info.file_path}, treat as parse failed, skipping cache update"
+                            )
+                            self.failed_files.add(file_info.file_path)
                             save_failed_files(self.failed_files_path, self.failed_files)
                     except Exception as e:
                         logger.error(f"Error in process_queue: {e}")
-                        self.failed_files.add(file_info.file_path)                        
+                        self.failed_files.add(file_info.file_path)
                         save_failed_files(self.failed_files_path, self.failed_files)
             self.write_cache()
-        
+
         elapsed = time.time() - start_time
-        logger.info(f"[QUEUE PROCESSING] Queue processing completed, time elapsed: {elapsed:.2f}s")
+        logger.info(
+            f"[QUEUE PROCESSING] Queue processing completed, time elapsed: {elapsed:.2f}s"
+        )
 
     def trigger_update(self):
         logger.info("[TRIGGER UPDATE] Starting file update check...")
         start_time = time.time()
-        
+
         files_to_process = []
         current_files = set()
         for file_info in self.get_all_files():
@@ -504,10 +610,10 @@ class LocalByzerStorageCache(BaseCacheManager):
                 files_to_process.append(file_info)
 
         deleted_files = set(self.cache.keys()) - current_files
-        
+
         logger.info(f"[TRIGGER UPDATE] Files to process: {len(files_to_process)}")
         logger.info(f"[TRIGGER UPDATE] Files deleted: {len(deleted_files)}")
-        
+
         if deleted_files:
             logger.info(f"[TRIGGER UPDATE] Adding delete event to queue")
             with self.lock:
@@ -515,15 +621,14 @@ class LocalByzerStorageCache(BaseCacheManager):
         if files_to_process:
             logger.info(f"[TRIGGER UPDATE] Adding update event to queue")
             with self.lock:
-                self.queue.append(AddOrUpdateEvent(
-                    file_infos=files_to_process))
-        
+                self.queue.append(AddOrUpdateEvent(file_infos=files_to_process))
+
         elapsed = time.time() - start_time
         logger.info(f"[TRIGGER UPDATE] Check completed, time elapsed: {elapsed:.2f}s")
 
     def get_single_cache(self, query: str, options: Dict[str, Any]) -> Dict[str, Dict]:
         """Search cached documents using query"""
-        
+
         total_tokens = 0
         logger.info(f"Querying cache, query: {query}")
         # Build query with both vector search and text search
@@ -545,65 +650,121 @@ class LocalByzerStorageCache(BaseCacheManager):
         preview_results = []
         for r in results[:5]:
             # Create a copy of the entire result
-            preview = r.copy()            
+            preview = r.copy()
             # Similarly limit raw_content if it exists
             if "raw_content" in preview and isinstance(preview["raw_content"], str):
-                preview["raw_content"] = preview["raw_content"][:100] + "..." if len(preview["raw_content"]) > 100 else preview["raw_content"]
+                preview["raw_content"] = (
+                    preview["raw_content"][:100] + "..."
+                    if len(preview["raw_content"]) > 100
+                    else preview["raw_content"]
+                )
             preview_results.append(preview)
         logger.info(f"Previewing first 5 records:")
-        
+
         for r in preview_results:
-            logger.info(f"File path: {r['file_path']}")            
+            logger.info(f"File path: {r['file_path']}")
             logger.info(f"Raw content: {r['raw_content']}")
             # Print other fields
             for k, v in r.items():
                 if k not in ["file_path", "raw_content"]:
                     logger.info(f"{k}: {v}")
-            logger.info("-"*100)
+            logger.info("-" * 100)
 
-        return results                       
-
+        return results
 
     def get_cache(self, options: Dict[str, Any]) -> Dict[str, Dict]:
         """
         获取缓存中的文档信息
-        
+
         如果options中包含query，则根据query搜索；否则返回所有缓存
         """
         # options是一个词典，词典的key是搜索参数，value是具体值
-        
+
         # 触发更新
-        self.trigger_update()        
+        self.trigger_update()
+
+        # Run-once 模式：同步完成增量更新（包括 Byzer Storage 向量索引）后再查询
+        if self.args and self.args.rag_run_once:
+            logger.info(
+                "[Run-once mode] Processing incremental updates synchronously for Byzer Storage..."
+            )
+            start_time = time.time()
+
+            # 同步处理队列，确保增量更新已刷入 Byzer Storage
+            max_iterations = 10
+            iteration = 0
+            while iteration < max_iterations:
+                queue_len_before = len(self.queue)
+                if queue_len_before == 0:
+                    break
+
+                logger.info(
+                    f"[Run-once mode] Processing queue (iteration {iteration + 1}, queue size: {queue_len_before})..."
+                )
+                self.process_queue()
+
+                queue_len_after = len(self.queue)
+                if queue_len_after == 0:
+                    elapsed = time.time() - start_time
+                    logger.info(
+                        f"[Run-once mode] Queue processed successfully in {elapsed:.2f}s, cache has {len(self.cache)} documents"
+                    )
+                    break
+                elif queue_len_after >= queue_len_before:
+                    logger.warning(
+                        f"[Run-once mode] Queue size not decreasing (before: {queue_len_before}, after: {queue_len_after}), stopping"
+                    )
+                    break
+
+                iteration += 1
+
+            if iteration >= max_iterations:
+                logger.warning(
+                    f"[Run-once mode] Reached max iterations ({max_iterations}), some updates may be pending"
+                )
 
         # 如果没有查询参数，则返回所有缓存
         if options is None or "queries" not in options:
-            return {file_path: self.cache[file_path].model_dump() for file_path in self.cache}
-        
+            return {
+                file_path: self.cache[file_path].model_dump()
+                for file_path in self.cache
+            }
+
         queries = options.get("queries", [])
-        
+
         # 如果没有查询或只有一个查询，使用原来的方法
         if not queries:
-            return {file_path: self.cache[file_path].model_dump() for file_path in self.cache}
+            return {
+                file_path: self.cache[file_path].model_dump()
+                for file_path in self.cache
+            }
         elif len(queries) == 1:
             results = self.get_single_cache(queries[0], options)
             return self._process_search_results(results)
-        
+
         # 获取合并策略
-        merge_strategy_name = options.get("merge_strategy", MergeStrategy.WEIGHTED_RANK.value)
+        merge_strategy_name = options.get(
+            "merge_strategy", MergeStrategy.WEIGHTED_RANK.value
+        )
         try:
             merge_strategy = MergeStrategy(merge_strategy_name)
         except ValueError:
-            logger.warning(f"Unknown merge strategy: {merge_strategy_name}, using default strategy")
+            logger.warning(
+                f"Unknown merge strategy: {merge_strategy_name}, using default strategy"
+            )
             merge_strategy = MergeStrategy.WEIGHTED_RANK
-        
+
         # 限制最大结果数
         max_results = options.get("max_results", None)
         merger = CacheResultMerger(max_results=max_results)
-        
+
         # 并发处理多个查询
         query_results = []
         with ThreadPoolExecutor(max_workers=min(len(queries), 10)) as executor:
-            future_to_query = {executor.submit(self.get_single_cache, query, options): query for query in queries}
+            future_to_query = {
+                executor.submit(self.get_single_cache, query, options): query
+                for query in queries
+            }
             for future in as_completed(future_to_query):
                 query = future_to_query[future]
                 try:
@@ -612,20 +773,22 @@ class LocalByzerStorageCache(BaseCacheManager):
                     query_results.append((query, query_result))
                 except Exception as e:
                     logger.error(f"Error processing query '{query}': {str(e)}")
-        
-        logger.info(f"All queries returned {sum(len(r) for _, r in query_results)} records")
+
+        logger.info(
+            f"All queries returned {sum(len(r) for _, r in query_results)} records"
+        )
         logger.info(f"Using merge strategy: {merge_strategy}")
-        
+
         # 使用策略合并结果
         merged_results = merger.merge(query_results, strategy=merge_strategy)
-        
+
         return self._process_search_results(merged_results)
-    
+
     def _process_search_results(self, results):
         """处理搜索结果，提取文件路径并构建结果字典"""
         # 记录被处理的总tokens数
         total_tokens = 0
-        
+
         # Group results by file_path and reconstruct documents while preserving order
         # 这里还可以有排序优化，综合考虑一篇内容出现的次数以及排序位置
         file_paths = []
@@ -643,19 +806,26 @@ class LocalByzerStorageCache(BaseCacheManager):
                 cached_data = self.cache[file_path]
                 for doc in cached_data.content:
                     if total_tokens + doc["tokens"] > self.max_output_tokens:
-                        logger.info(f"User tokens set to: {self.max_output_tokens}, cumulative tokens: {total_tokens} current file: {file_path} tokens: {doc['tokens']}, data record count change: {len(results)} -> {len(result)}")
+                        logger.info(
+                            f"User tokens set to: {self.max_output_tokens}, cumulative tokens: {total_tokens} current file: {file_path} tokens: {doc['tokens']}, data record count change: {len(results)} -> {len(result)}"
+                        )
                         return result
                     total_tokens += doc["tokens"]
                 result[file_path] = cached_data.model_dump()
-        
-        logger.info(f"User tokens set to: {self.max_output_tokens}, cumulative tokens: {total_tokens}, data record count change: {len(results)} -> {len(result)}")
+
+        logger.info(
+            f"User tokens set to: {self.max_output_tokens}, cumulative tokens: {total_tokens}, data record count change: {len(results)} -> {len(result)}"
+        )
         return result
 
     def get_all_files(self) -> List[FileInfo]:
         all_files = []
         for root, dirs, files in os.walk(self.path, followlinks=True):
-            dirs[:] = [d for d in dirs if not d.startswith(
-                ".") and d not in default_ignore_dirs]
+            dirs[:] = [
+                d
+                for d in dirs
+                if not d.startswith(".") and d not in default_ignore_dirs
+            ]
 
             if self.ignore_spec:
                 relative_root = os.path.relpath(root, self.path)
@@ -680,9 +850,40 @@ class LocalByzerStorageCache(BaseCacheManager):
                 relative_path = os.path.relpath(file_path, self.path)
                 modify_time = os.path.getmtime(file_path)
                 file_md5 = generate_file_md5(file_path)
-                all_files.append(FileInfo(file_path=file_path,
-                                          relative_path=relative_path,
-                                          modify_time=modify_time,
-                                          file_md5=file_md5))
+                all_files.append(
+                    FileInfo(
+                        file_path=file_path,
+                        relative_path=relative_path,
+                        modify_time=modify_time,
+                        file_md5=file_md5,
+                    )
+                )
 
         return all_files
+
+    def close(self):
+        """
+        关闭缓存管理器，释放所有资源
+
+        清理步骤:
+            1. 设置停止事件，通知后台线程退出
+            2. 等待后台线程结束（最多等待 5 秒）
+            3. 关闭存储连接
+        """
+        logger.info("[CLOSE] Closing LocalByzerStorageCache...")
+
+        # 停止后台线程
+        self.stop_event.set()
+        if self.thread.is_alive():
+            self.thread.join(timeout=5)
+            if self.thread.is_alive():
+                logger.warning("[CLOSE] Background thread did not stop in time")
+
+        # 关闭存储
+        if hasattr(self.storage, "close"):
+            try:
+                self.storage.close()
+            except Exception as e:
+                logger.warning(f"[CLOSE] Error closing storage: {str(e)}")
+
+        logger.info("[CLOSE] LocalByzerStorageCache closed")  

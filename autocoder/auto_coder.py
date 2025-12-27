@@ -38,12 +38,25 @@ console = Console()
 
 def get_model_info_with_check(model_name: str, product_mode: str):
     """获取模型信息并检查是否为None，如果为None则抛出友好的异常"""
-    model_info = LLMManager().get_model_info(model_name, product_mode)
+    llm_manager = LLMManager()
+    model_info = llm_manager.get_model_info(model_name, product_mode)
     if model_info is None:
-        from autocoder.common.international import get_message_with_format
-        error_message = get_message_with_format("model_info_not_found", 
-                                               model_name=model_name, 
-                                               product_mode=product_mode)
+        # 检查是否有任何可用模型
+        all_models = llm_manager.get_all_models()
+        if not all_models:
+            # 没有任何模型配置
+            error_message = (
+                f"错误：未找到任何模型配置。\n"
+                f"这是首次运行，请使用以下方式之一配置模型：\n"
+                f"  1. 运行 chat-auto-coder 命令，系统将自动引导您配置模型\n"
+                f"  2. 在 chat-auto-coder 中使用 /models /add 命令手动添加模型\n"
+            )
+        else:
+            # 有模型但找不到指定的模型
+            from autocoder.common.international import get_message_with_format
+            error_message = get_message_with_format("model_info_not_found",
+                                                   model_name=model_name,
+                                                   product_mode=product_mode)
         raise ValueError(error_message)
     return model_info
 

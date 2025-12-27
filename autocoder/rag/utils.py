@@ -2,7 +2,7 @@ from autocoder.common import SourceCode
 from autocoder.rag.token_counter import count_tokens_worker, count_tokens
 from autocoder.rag.loaders.pdf_loader import extract_text_from_pdf
 from autocoder.rag.loaders.docx_loader import extract_text_from_docx
-from autocoder.rag.loaders.excel_loader import extract_text_from_excel 
+from autocoder.rag.loaders.excel_loader import extract_text_from_excel
 from autocoder.rag.loaders.ppt_loader import extract_text_from_ppt
 from autocoder.rag.loaders.image_loader import ImageLoader
 from typing import List, Tuple, Optional, Union
@@ -17,12 +17,13 @@ def process_file_in_multi_process(
     file_info: Tuple[str, str, float, str],
     llm: Optional[Union[ByzerLLM, SimpleByzerLLM, str]] = None,
     product_mode="lite",
+    model_file: Optional[str] = None,
 ) -> List[SourceCode]:
     if llm and isinstance(llm, str):
-        llm = get_single_llm(llm,product_mode)
+        llm = get_single_llm(llm, product_mode, model_file=model_file)
 
     start_time = time.time()
-    file_path, relative_path, _, _ = file_info    
+    file_path, relative_path, _, _ = file_info
     try:
         if file_path.endswith(".pdf"):
             content = extract_text_from_pdf(file_path, llm, product_mode)
@@ -63,7 +64,9 @@ def process_file_in_multi_process(
                 )
             ]
         elif file_path.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".gif")):
-            content = ImageLoader.image_to_markdown(file_path, llm=llm, product_mode=product_mode)
+            content = ImageLoader.image_to_markdown(
+                file_path, llm=llm, product_mode=product_mode
+            )
             v = [
                 SourceCode(
                     module_name=f"##File: {file_path}",
@@ -93,10 +96,11 @@ def process_file_local(
     file_path: str,
     llm: Optional[Union[ByzerLLM, SimpleByzerLLM, str]] = None,
     product_mode="lite",
+    model_file: Optional[str] = None,
 ) -> List[SourceCode]:
     start_time = time.time()
     if llm and isinstance(llm, str):
-        llm = get_single_llm(llm,product_mode)
+        llm = get_single_llm(llm, product_mode, model_file=model_file)
     try:
         if file_path.endswith(".pdf"):
             content = extract_text_from_pdf(file_path, llm, product_mode)
@@ -137,7 +141,9 @@ def process_file_local(
                 )
             ]
         elif file_path.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".gif")):
-            content = ImageLoader.image_to_markdown(file_path, llm=llm, product_mode=product_mode)
+            content = ImageLoader.image_to_markdown(
+                file_path, llm=llm, product_mode=product_mode
+            )
             v = [
                 SourceCode(
                     module_name=f"##File: {file_path}",
