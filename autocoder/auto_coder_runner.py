@@ -17,6 +17,7 @@ from typing import List, Dict, Any, Optional
 from autocoder.common import AutoCoderArgs
 from autocoder.common.autocoderargs_parser import AutoCoderArgsParser
 from pydantic import BaseModel
+from pathlib import Path
 from autocoder.common.result_manager import ResultManager
 from autocoder.version import __version__
 from autocoder.auto_coder import main as auto_coder_main
@@ -186,7 +187,7 @@ commands = [
     "/conf/import",
     "/exclude_dirs",
     "/queue",
-    "/workflow"
+    "/workflow",
 ]
 
 
@@ -351,7 +352,6 @@ def stop():
 def initialize_system(args: InitializeSystemRequest):
     from autocoder.utils.model_provider_selector import ModelProviderSelector
     from autocoder.common.llms import LLMManager
-    from autocoder.common.llms.guided_setup import guide_first_model_setup
 
     print(f"\n\033[1;34m{get_message('initializing')}\033[0m")
 
@@ -368,47 +368,35 @@ def initialize_system(args: InitializeSystemRequest):
         else:
             print(f"  {message}")
 
-    if not os.path.exists(base_persist_dir):
-        os.makedirs(base_persist_dir, exist_ok=True)
-        print_status(
-            get_message_with_format("created_dir", path=base_persist_dir), "success"
-        )
+        if not os.path.exists(base_persist_dir):
+            os.makedirs(base_persist_dir, exist_ok=True)
+            print_status(
+                get_message_with_format("created_dir", path=base_persist_dir), "success"
+            )
 
-    if first_time[0]:
-        configure("project_type:*", skip_print=True)
-        configure_success[0] = True
+        if first_time[0]:
+            configure("project_type:*", skip_print=True)
+            configure_success[0] = True
 
-    print_status(get_message("init_complete"), "success")
+        print_status(get_message("init_complete"), "success")
 
     init_project_if_required(target_dir=project_root, project_type="*")
 
-    if not args.skip_provider_selection:
+    if not args.skip_provider_selection and first_time[0]:
         if args.product_mode == "lite":
-            # 检查是否有任何可用模型
-            llm_manager = LLMManager()
-            all_models = llm_manager.get_all_models()
-
-            # 如果没有任何模型配置，触发自定义引导配置向导
-            if not all_models:
-                print_status("未检测到任何模型配置", "warning")
-                configured_model_name = guide_first_model_setup()
-
-                # 如果配置成功，立即激活该模型为默认模型
-                if configured_model_name:
-                    configure(f"model:{configured_model_name}", skip_print=True)
-                    print_status(f"已将模型 {configured_model_name} 设置为默认模型", "success")
-            else:
-                # 如果有模型配置，自动将第一个模型设置为默认模型
-                first_model = llm_manager.get_first_available_model()
-                if first_model:
-                    # 检查当前配置中是否已经有 model 设置
-                    memory_manager = get_memory_manager()
-                    current_model = memory_manager.get_config("model", None)
-
-                    # 如果没有配置或配置的模型不存在，则使用第一个可用模型
-                    if not current_model or not llm_manager.check_model_exists(current_model):
-                        configure(f"model:{first_model.name}", skip_print=True)
-                        print_status(f"自动设置默认模型: {first_model.name}", "success")
+            # 如果已经是配置过的项目，就无需再选择
+            if first_time[0]:
+                llm_manager = LLMManager()
+                if not llm_manager.check_model_exists(
+                    "v3_chat"
+                ) or not llm_manager.check_model_exists("r1_chat"):
+                    model_provider_selector = ModelProviderSelector()
+                    model_provider_info = model_provider_selector.select_provider()
+                    if model_provider_info is not None:
+                        models_json_list = model_provider_selector.to_models_json(
+                            model_provider_info
+                        )
+                        llm_manager.add_models(models_json_list)
 
         if args.product_mode == "pro":
             # Check if Ray is running
@@ -838,7 +826,7 @@ def init_project_if_required(target_dir: str, project_type: str):
             ".autocodercommands",
             ".autocoderagents",
             ".autocoderlinters",
-            ".autocoderworkflow"
+            ".autocoderworkflow",
         ]
 
         try:
@@ -1711,6 +1699,7 @@ def index_query(query: str):
     from autocoder.pyproject import PyProject
     from autocoder.tsproject import TSProject
     from autocoder.suffixproject import SuffixProject
+    from autocoder.default_project import DefaultProject
 
     config = get_final_config()
     config.query = query
@@ -1723,6 +1712,8 @@ def index_query(query: str):
         pp = TSProject(args=config, llm=llm)
     elif config.project_type == "py":
         pp = PyProject(args=config, llm=llm)
+    elif not config.project_type or config.project_type == "*":
+        pp = DefaultProject(args=config, llm=llm, file_filter=None)
     else:
         pp = SuffixProject(args=config, llm=llm, file_filter=None)
     pp.run()
@@ -1961,6 +1952,47 @@ def run_auto_command(
         yield event
 
 
+def run_workflow(
+    workflow: str,
+    prompt: Optional[str] = None,
+    model: Optional[str] = None,
+    vars_override: Optional[Dict[str, Any]] = None,
+):
+    """
+    运行指定的 workflow
+
+    Args:
+        workflow: workflow 名称或文件路径
+        prompt: 可选的提示内容，会注入到 workflow 的 vars.query 中
+        model: 可选的模型名称，覆盖 workflow 配置中的模型
+        vars_override: 可选的变量覆盖字典
+
+    Returns:
+        WorkflowResult: workflow 执行结果
+    """
+    from autocoder.workflow_agents import run_workflow_from_yaml
+    from autocoder.events.event_manager_singleton import gengerate_event_file_path
+
+    # 准备变量覆盖
+    final_vars = dict(vars_override or {})
+    if prompt:
+        final_vars["query"] = prompt
+
+    # 获取当前目录作为 source_dir
+    source_dir = str(Path.cwd())
+
+    # 调用 workflow 运行器
+    result = run_workflow_from_yaml(
+        yaml_path=workflow,
+        source_dir=source_dir,
+        model=model,
+        vars_override=final_vars,
+        cancel_token=None,
+    )
+
+    return result
+
+
 # used in auto-coder.web
 def auto_command(query: str, extra_args: Dict[str, Any] = {}):
     """处理/auto指令"""
@@ -2194,18 +2226,23 @@ def render_command_file_with_variables(command_infos: Dict[str, Any]) -> str:
 
         # 获取关键字参数作为渲染参数
         kwargs = first_command.get("kwargs", {})
+        render_variables = {
+            "kwargs":kwargs,
+            "args":args[1:],
+            **kwargs,
+        }
 
         # 初始化 CommandManager
         command_manager = CommandManager()
 
         # 使用 read_command_file_with_render 直接读取并渲染命令文件
         rendered_content = command_manager.read_command_file_with_render(
-            file_path, kwargs
+            file_path, render_variables
         )
         if rendered_content is None:
             raise ValueError(f"无法读取或渲染命令文件: {file_path}")
 
-        global_logger.info(f"成功渲染命令文件: {file_path}, 使用参数: {kwargs}")
+        global_logger.info(f"成功渲染命令文件: {file_path}, 使用参数: {render_variables}")
         return rendered_content
 
     except Exception as e:
