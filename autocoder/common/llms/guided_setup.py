@@ -10,8 +10,7 @@ from rich.table import Table
 from rich.prompt import Confirm, Prompt
 from typing import Optional, Dict
 from .manager import LLMManager
-from .connection_test import ModelConnectionTester
-from .schema import DEFAULT_API_KEY
+from .connection_test import ModelConnectionTester, DEFAULT_API_KEY
 
 
 def guide_first_model_setup() -> Optional[str]:
