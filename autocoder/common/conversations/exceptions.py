@@ -67,47 +67,6 @@ class BackupError(ConversationManagerError):
 
 class RestoreError(ConversationManagerError):
     """恢复操作异常"""
-
+    
     def __init__(self, message="恢复操作失败"):
-        super().__init__(message, error_code="RESTORE_ERROR")
-
-
-class EmptyMessageError(ConversationManagerError):
-    """空消息内容异常"""
-
-    def __init__(
-        self,
-        conversation_id: str = None,
-        role: str = None,
-        content_preview: str = None,
-        call_location: str = None,
-        additional_context: dict = None
-    ):
-        # 构建详细的错误消息
-        details = ["尝试添加空消息到对话历史"]
-
-        if conversation_id:
-            details.append(f"对话ID: {conversation_id}")
-
-        if role:
-            details.append(f"消息角色: {role}")
-
-        if content_preview:
-            details.append(f"内容预览: {content_preview}")
-
-        if call_location:
-            details.append(f"调用位置: {call_location}")
-
-        if additional_context:
-            for key, value in additional_context.items():
-                details.append(f"{key}: {value}")
-
-        message = "\n  ".join(details)
-        super().__init__(message, error_code="EMPTY_MESSAGE_ERROR")
-
-        # 保存详细信息供调试使用
-        self.conversation_id = conversation_id
-        self.role = role
-        self.content_preview = content_preview
-        self.call_location = call_location
-        self.additional_context = additional_context or {}
+        super().__init__(message, error_code="RESTORE_ERROR") 

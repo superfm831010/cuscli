@@ -19,7 +19,7 @@ from .exceptions import (
     ConversationNotFoundError,
     MessageNotFoundError,
     ConcurrencyError,
-    DataIntegrityError
+    DataIntegrityError,
 )
 from .models import Conversation, ConversationMessage
 from .llm_stats_models import LLMCallMetadata
@@ -32,88 +32,90 @@ from .search import TextSearcher, FilterManager
 class PersistConversationManager:
     """
     Main conversation manager integrating all subsystems.
-    
+
     This class provides a unified interface for conversation and message management,
     with integrated storage, caching, search, and filtering capabilities.
     """
-    
+
     def __init__(self, config: Optional[ConversationManagerConfig] = None):
         """
         Initialize the conversation manager.
-        
+
         Args:
             config: Configuration object for the manager
         """
         self.config = config or ConversationManagerConfig()
-        
+
         # Initialize components
         self._init_storage()
         self._init_cache()
         self._init_search()
         self._init_locks()
-        
+
         # Statistics tracking
         self._stats = {
-            'conversations_created': 0,
-            'conversations_loaded': 0,
-            'messages_added': 0,
-            'cache_hits': 0,
-            'cache_misses': 0
+            "conversations_created": 0,
+            "conversations_loaded": 0,
+            "messages_added": 0,
+            "cache_hits": 0,
+            "cache_misses": 0,
         }
-    
+
     def _init_storage(self):
         """Initialize storage components."""
         # Ensure storage directory exists
         storage_path = Path(self.config.storage_path)
         storage_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Initialize storage backend
         self.storage = FileStorage(str(storage_path / "conversations"))
-        
+
         # Initialize index manager
         self.index_manager = IndexManager(str(storage_path / "index"))
-    
+
     def _init_cache(self):
         """Initialize cache system."""
         from .cache import MemoryCache
-        
+
         # Use simple dictionary-based caching for conversations and messages
         self.conversation_cache = MemoryCache(
-            max_size=self.config.max_cache_size,
-            default_ttl=self.config.cache_ttl
+            max_size=self.config.max_cache_size, default_ttl=self.config.cache_ttl
         )
         self.message_cache = MemoryCache(
-            max_size=self.config.max_cache_size * 10,  # More messages than conversations
-            default_ttl=self.config.cache_ttl
+            max_size=self.config.max_cache_size
+            * 10,  # More messages than conversations
+            default_ttl=self.config.cache_ttl,
         )
-    
+
     def _init_search(self):
         """Initialize search and filtering systems."""
         self.text_searcher = TextSearcher()
         self.filter_manager = FilterManager()
-    
+
     def _init_locks(self):
         """Initialize locking system."""
         lock_dir = Path(self.config.storage_path) / "locks"
         lock_dir.mkdir(parents=True, exist_ok=True)
         self._lock_dir = str(lock_dir)
-    
+
     def _get_conversation_lock_file(self, conversation_id: str) -> str:
         """Get lock file path for a conversation."""
         return os.path.join(self._lock_dir, f"{conversation_id}.lock")
-    
+
     @contextlib.contextmanager
-    def _conversation_lock(self, conversation_id: str, exclusive: bool = True) -> Generator[None, None, None]:
+    def _conversation_lock(
+        self, conversation_id: str, exclusive: bool = True
+    ) -> Generator[None, None, None]:
         """
         Acquire lock for conversation operations.
-        
+
         Args:
             conversation_id: ID of the conversation to lock
             exclusive: Whether to acquire exclusive (write) lock
         """
         lock_file = self._get_conversation_lock_file(conversation_id)
         locker = FileLocker(lock_file, timeout=self.config.lock_timeout)
-        
+
         try:
             if exclusive:
                 with locker.acquire_write_lock():
@@ -125,31 +127,33 @@ class PersistConversationManager:
             # Re-raise these exceptions as-is (don't wrap in ConcurrencyError)
             raise
         except Exception as e:
-            raise ConcurrencyError(f"Failed to acquire lock for conversation {conversation_id}: {e}")
-    
+            raise ConcurrencyError(
+                f"Failed to acquire lock for conversation {conversation_id}: {e}"
+            )
+
     # Conversation Management Methods
-    
+
     def create_conversation(
         self,
         name: str,
         description: Optional[str] = None,
         initial_messages: Optional[List[Dict[str, Any]]] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        conversation_id: Optional[str] = None
+        conversation_id: Optional[str] = None,
     ) -> str:
         """
         Create a new conversation.
-        
+
         Args:
             name: Name of the conversation
             description: Optional description
             initial_messages: Optional list of initial messages
             metadata: Optional metadata dictionary
             conversation_id: Optional conversation ID. If not provided, will be auto-generated
-            
+
         Returns:
             ID of the created conversation
-            
+
         Raises:
             ConversationManagerError: If conversation creation fails
         """
@@ -158,57 +162,74 @@ class PersistConversationManager:
             if conversation_id:
                 # Check if conversation ID already exists
                 if self.storage.conversation_exists(conversation_id):
-                    raise ConversationManagerError(f"Conversation with ID {conversation_id} already exists")
-                
+                    raise ConversationManagerError(
+                        f"Conversation with ID {conversation_id} already exists"
+                    )
+
                 conversation = Conversation(
                     name=name,
                     description=description,
                     metadata=metadata or {},
-                    conversation_id=conversation_id
+                    conversation_id=conversation_id,
                 )
             else:
                 conversation = Conversation(
-                    name=name,
-                    description=description,
-                    metadata=metadata or {}
+                    name=name, description=description, metadata=metadata or {}
                 )
-            
+
             # Add initial messages if provided
             if initial_messages:
                 for msg_data in initial_messages:
+                    # 支持从 initial_messages 中读取并保留 LLM 元数据
+                    llm_md_raw = msg_data.get("llm_metadata")
+                    llm_md: Optional[LLMCallMetadata] = None
+                    if llm_md_raw is not None:
+                        if isinstance(llm_md_raw, LLMCallMetadata):
+                            llm_md = llm_md_raw
+                        elif isinstance(llm_md_raw, dict):
+                            # 从存储字典恢复为强类型对象
+                            llm_md = LLMCallMetadata.from_dict(llm_md_raw)
+
                     message = ConversationMessage(
-                        role=msg_data['role'],
-                        content=msg_data['content'],
-                        metadata=msg_data.get('metadata', {})
+                        role=msg_data["role"],
+                        content=msg_data["content"],
+                        metadata=msg_data.get("metadata", {}),
+                        llm_metadata=llm_md,
                     )
                     conversation.add_message(message)
-            
+
             # Save conversation with locking
             with self._conversation_lock(conversation.conversation_id):
+                # Prepare conversation data with message_count
+                conversation_data = conversation.to_dict()
+                conversation_data["message_count"] = len(conversation.messages)
+
                 # Save to storage
-                self.storage.save_conversation(conversation.to_dict())
-                
+                self.storage.save_conversation(conversation_data)
+
                 # Update index
-                self.index_manager.add_conversation(conversation.to_dict())
-                
+                self.index_manager.add_conversation(conversation_data)
+
                 # Cache the conversation
-                self.conversation_cache.set(conversation.conversation_id, conversation.to_dict())
-            
+                self.conversation_cache.set(
+                    conversation.conversation_id, conversation_data
+                )
+
             # Update statistics
-            self._stats['conversations_created'] += 1
-            
+            self._stats["conversations_created"] += 1
+
             return conversation.conversation_id
-            
+
         except Exception as e:
             raise ConversationManagerError(f"Failed to create conversation: {e}")
-    
+
     def get_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
         """
         Get a conversation by ID.
-        
+
         Args:
             conversation_id: ID of the conversation
-            
+
         Returns:
             Conversation data or None if not found
         """
@@ -216,45 +237,47 @@ class PersistConversationManager:
             # Try cache first
             cached_conversation = self.conversation_cache.get(conversation_id)
             if cached_conversation:
-                self._stats['cache_hits'] += 1
+                self._stats["cache_hits"] += 1
                 return cached_conversation
-            
-            self._stats['cache_misses'] += 1
-            
+
+            self._stats["cache_misses"] += 1
+
             # Load from storage with read lock
             with self._conversation_lock(conversation_id, exclusive=False):
                 conversation_data = self.storage.load_conversation(conversation_id)
-                
+
                 if conversation_data:
                     # Cache the loaded conversation
                     self.conversation_cache.set(conversation_id, conversation_data)
-                    self._stats['conversations_loaded'] += 1
+                    self._stats["conversations_loaded"] += 1
                     return conversation_data
-                
+
                 return None
-                
+
         except Exception as e:
-            raise ConversationManagerError(f"Failed to get conversation {conversation_id}: {e}")
-    
+            raise ConversationManagerError(
+                f"Failed to get conversation {conversation_id}: {e}"
+            )
+
     def update_conversation(
         self,
         conversation_id: str,
         name: Optional[str] = None,
         description: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Update conversation metadata.
-        
+
         Args:
             conversation_id: ID of the conversation to update
             name: New name (optional)
             description: New description (optional)
             metadata: New metadata (optional)
-            
+
         Returns:
             True if update was successful
-            
+
         Raises:
             ConversationNotFoundError: If conversation doesn't exist
         """
@@ -264,10 +287,10 @@ class PersistConversationManager:
                 conversation_data = self.storage.load_conversation(conversation_id)
                 if not conversation_data:
                     raise ConversationNotFoundError(conversation_id)
-                
+
                 # Create conversation object and update fields
                 conversation = Conversation.from_dict(conversation_data)
-                
+
                 if name is not None:
                     conversation.name = name
                 if description is not None:
@@ -276,33 +299,36 @@ class PersistConversationManager:
                     if conversation.metadata is None:
                         conversation.metadata = {}
                     conversation.metadata.update(metadata)
-                
+
                 conversation.updated_at = time.time()
-                
-                # Save updated conversation
+
+                # Save updated conversation with message_count
                 updated_data = conversation.to_dict()
+                updated_data["message_count"] = len(conversation.messages)
                 self.storage.save_conversation(updated_data)
-                
+
                 # Update index
                 self.index_manager.update_conversation(updated_data)
-                
+
                 # Update cache
                 self.conversation_cache.set(conversation_id, updated_data)
-                
+
                 return True
-                
+
         except ConversationNotFoundError:
             raise
         except Exception as e:
-            raise ConversationManagerError(f"Failed to update conversation {conversation_id}: {e}")
-    
+            raise ConversationManagerError(
+                f"Failed to update conversation {conversation_id}: {e}"
+            )
+
     def delete_conversation(self, conversation_id: str) -> bool:
         """
         Delete a conversation.
-        
+
         Args:
             conversation_id: ID of the conversation to delete
-            
+
         Returns:
             True if deletion was successful
         """
@@ -311,86 +337,185 @@ class PersistConversationManager:
                 # Check if conversation exists
                 if not self.storage.conversation_exists(conversation_id):
                     return False
-                
+
                 # Delete from storage
                 self.storage.delete_conversation(conversation_id)
-                
+
                 # Remove from index
                 self.index_manager.remove_conversation(conversation_id)
-                
+
                 # Remove from cache
                 self.conversation_cache.delete(conversation_id)
-                
+
                 return True
-                
+
         except Exception as e:
-            raise ConversationManagerError(f"Failed to delete conversation {conversation_id}: {e}")
-    
+            raise ConversationManagerError(
+                f"Failed to delete conversation {conversation_id}: {e}"
+            )
+
+    def copy_conversation(
+        self,
+        source_conversation_id: str,
+        new_name: Optional[str] = None,
+        new_description: Optional[str] = None,
+        new_conversation_id: Optional[str] = None,
+        copy_messages: bool = True,
+        copy_metadata: bool = True,
+    ) -> str:
+        """
+        复制一个会话，生成新的会话ID。
+
+        Args:
+            source_conversation_id: 源会话ID
+            new_name: 新会话名称，如果为None则使用 "源会话名称 (副本)"
+            new_description: 新会话描述，如果为None则复制源会话描述
+            new_conversation_id: 可选的新会话ID，如果为None则自动生成
+            copy_messages: 是否复制消息，默认True
+            copy_metadata: 是否复制元数据，默认True
+
+        Returns:
+            新会话的ID
+
+        Raises:
+            ConversationNotFoundError: 如果源会话不存在
+            ConversationManagerError: 如果复制失败或新会话ID已存在
+        """
+        try:
+            # 获取源会话数据
+            source_conversation = self.get_conversation(source_conversation_id)
+            if not source_conversation:
+                raise ConversationNotFoundError(source_conversation_id)
+
+            # 确定新会话名称
+            if new_name is None:
+                source_name = source_conversation.get("name", "未命名会话")
+                new_name = f"{source_name} (副本)"
+
+            # 确定新会话描述
+            if new_description is None:
+                new_description = source_conversation.get("description")
+
+            # 准备元数据
+            new_metadata = None
+            if copy_metadata:
+                source_metadata = source_conversation.get("metadata")
+                if source_metadata:
+                    # 深拷贝元数据
+                    import copy
+
+                    new_metadata = copy.deepcopy(source_metadata)
+
+            # 准备初始消息
+            initial_messages = None
+            if copy_messages:
+                source_messages = source_conversation.get("messages", [])
+                if source_messages:
+                    # 复制消息内容，但不复制消息ID（会自动生成新的）
+                    initial_messages = []
+                    for msg in source_messages:
+                        msg_copy = {
+                            "role": msg.get("role"),
+                            "content": msg.get("content"),
+                        }
+                        # 复制消息元数据
+                        if msg.get("metadata"):
+                            import copy
+
+                            msg_copy["metadata"] = copy.deepcopy(msg.get("metadata"))
+                        # 复制 LLM 元数据
+                        if msg.get("llm_metadata"):
+                            import copy
+
+                            msg_copy["llm_metadata"] = copy.deepcopy(
+                                msg.get("llm_metadata")
+                            )
+                        initial_messages.append(msg_copy)
+
+            # 创建新会话
+            new_id = self.create_conversation(
+                name=new_name,
+                description=new_description,
+                initial_messages=initial_messages,
+                metadata=new_metadata,
+                conversation_id=new_conversation_id,
+            )
+
+            return new_id
+
+        except ConversationNotFoundError:
+            raise
+        except ConversationManagerError:
+            raise
+        except Exception as e:
+            raise ConversationManagerError(
+                f"Failed to copy conversation {source_conversation_id}: {e}"
+            )
+
     def list_conversations(
         self,
         limit: Optional[int] = None,
         offset: int = 0,
         filters: Optional[Dict[str, Any]] = None,
-        sort_by: str = 'updated_at',
-        sort_desc: bool = True
+        sort_by: str = "updated_at",
+        sort_desc: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         List conversations with optional filtering and sorting.
-        
+
         Args:
             limit: Maximum number of conversations to return
             offset: Number of conversations to skip
             filters: Optional filter criteria
             sort_by: Field to sort by
             sort_desc: Whether to sort in descending order
-            
+
         Returns:
             List of conversation data
         """
         try:
             # Convert sort_desc boolean to sort_order string
-            sort_order = 'desc' if sort_desc else 'asc'
-            
+            sort_order = "desc" if sort_desc else "asc"
+
             # Get conversations from index with sorting and pagination
             conversations = self.index_manager.list_conversations(
-                limit=limit,
-                offset=offset,
-                sort_by=sort_by,
-                sort_order=sort_order
+                limit=limit, offset=offset, sort_by=sort_by, sort_order=sort_order
             )
-            
+
             # Apply filters if provided
             if filters:
-                conversations = self.filter_manager.apply_filters(conversations, filters)
-            
+                conversations = self.filter_manager.apply_filters(
+                    conversations, filters
+                )
+
             return conversations
-            
+
         except Exception as e:
             raise ConversationManagerError(f"Failed to list conversations: {e}")
-    
+
     # Message Management Methods
-    
+
     def append_message(
         self,
         conversation_id: str,
         role: str,
         content: Union[str, Dict[str, Any], List[Any]],
         metadata: Optional[Dict[str, Any]] = None,
-        llm_metadata: Optional['LLMCallMetadata'] = None
+        llm_metadata: Optional["LLMCallMetadata"] = None,
     ) -> str:
         """
         Append a message to a conversation.
-        
+
         Args:
             conversation_id: ID of the conversation
             role: Role of the message sender
             content: Message content
             metadata: Optional message metadata
             llm_metadata: Optional LLM call metadata (tokens, cache info, etc.)
-            
+
         Returns:
             ID of the added message
-            
+
         Raises:
             ConversationNotFoundError: If conversation doesn't exist
         """
@@ -400,48 +525,51 @@ class PersistConversationManager:
                 role=role,
                 content=content,
                 metadata=metadata or {},
-                llm_metadata=llm_metadata
+                llm_metadata=llm_metadata,
             )
-            
+
             with self._conversation_lock(conversation_id):
                 # Load conversation
                 conversation_data = self.storage.load_conversation(conversation_id)
                 if not conversation_data:
                     raise ConversationNotFoundError(conversation_id)
-                
+
                 # Add message to conversation
                 conversation = Conversation.from_dict(conversation_data)
                 conversation.add_message(message)
-                
-                # Save updated conversation
+
+                # Save updated conversation with message_count
                 updated_data = conversation.to_dict()
+                updated_data["message_count"] = len(conversation.messages)
                 self.storage.save_conversation(updated_data)
-                
+
                 # Update index
                 self.index_manager.update_conversation(updated_data)
-                
+
                 # Update cache
                 self.conversation_cache.set(conversation_id, updated_data)
-                self.message_cache.set(f"{conversation_id}:{message.message_id}", message.to_dict())
-            
+                self.message_cache.set(
+                    f"{conversation_id}:{message.message_id}", message.to_dict()
+                )
+
             # Update statistics
-            self._stats['messages_added'] += 1
-            
+            self._stats["messages_added"] += 1
+
             return message.message_id
-            
+
         except ConversationNotFoundError:
             raise
         except Exception as e:
-            raise ConversationManagerError(f"Failed to append message to conversation {conversation_id}: {e}")
-    
+            raise ConversationManagerError(
+                f"Failed to append message to conversation {conversation_id}: {e}"
+            )
+
     def append_messages(
-        self,
-        conversation_id: str,
-        messages: List[Dict[str, Any]]
+        self, conversation_id: str, messages: List[Dict[str, Any]]
     ) -> List[str]:
         """
         Append multiple messages to a conversation.
-        
+
         Args:
             conversation_id: ID of the conversation
             messages: List of message data dictionaries. Each dictionary can contain:
@@ -449,40 +577,40 @@ class PersistConversationManager:
                 - content: Message content (required)
                 - metadata: Message metadata (optional)
                 - llm_metadata: LLM call metadata (optional)
-            
+
         Returns:
             List of message IDs
         """
         message_ids = []
-        
+
         for msg_data in messages:
             message_id = self.append_message(
                 conversation_id,
-                msg_data['role'],
-                msg_data['content'],
-                msg_data.get('metadata'),
-                msg_data.get('llm_metadata')
+                msg_data["role"],
+                msg_data["content"],
+                msg_data.get("metadata"),
+                msg_data.get("llm_metadata"),
             )
             message_ids.append(message_id)
-        
+
         return message_ids
-    
+
     def get_messages(
         self,
         conversation_id: str,
         limit: Optional[int] = None,
         offset: int = 0,
-        message_ids: Optional[List[str]] = None
+        message_ids: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Get messages from a conversation.
-        
+
         Args:
             conversation_id: ID of the conversation
             limit: Maximum number of messages to return
             offset: Number of messages to skip
             message_ids: Optional list of specific message IDs
-            
+
         Returns:
             List of message data
         """
@@ -491,35 +619,35 @@ class PersistConversationManager:
             conversation_data = self.get_conversation(conversation_id)
             if not conversation_data:
                 raise ConversationNotFoundError(conversation_id)
-            
-            messages = conversation_data.get('messages', [])
-            
+
+            messages = conversation_data.get("messages", [])
+
             # Filter by message IDs if provided
             if message_ids:
                 id_set = set(message_ids)
-                messages = [msg for msg in messages if msg.get('message_id') in id_set]
-            
+                messages = [msg for msg in messages if msg.get("message_id") in id_set]
+
             # Apply pagination
             end_idx = offset + limit if limit else None
             return messages[offset:end_idx]
-            
+
         except ConversationNotFoundError:
             raise
         except Exception as e:
-            raise ConversationManagerError(f"Failed to get messages from conversation {conversation_id}: {e}")
-    
+            raise ConversationManagerError(
+                f"Failed to get messages from conversation {conversation_id}: {e}"
+            )
+
     def get_message(
-        self,
-        conversation_id: str,
-        message_id: str
+        self, conversation_id: str, message_id: str
     ) -> Optional[Dict[str, Any]]:
         """
         Get a specific message.
-        
+
         Args:
             conversation_id: ID of the conversation
             message_id: ID of the message
-            
+
         Returns:
             Message data or None if not found
         """
@@ -528,42 +656,87 @@ class PersistConversationManager:
             cached_message = self.message_cache.get(f"{conversation_id}:{message_id}")
             if cached_message:
                 return cached_message
-            
+
             # Get from conversation
             conversation_data = self.get_conversation(conversation_id)
             if not conversation_data:
                 return None
-            
+
             # Find message
-            for message in conversation_data.get('messages', []):
-                if message.get('message_id') == message_id:
+            for message in conversation_data.get("messages", []):
+                if message.get("message_id") == message_id:
                     # Cache the message
                     self.message_cache.set(f"{conversation_id}:{message_id}", message)
                     return message
-            
+
             return None
-            
+
         except Exception as e:
             raise ConversationManagerError(f"Failed to get message {message_id}: {e}")
-    
+
+    def get_message_count(self, conversation_id: str) -> int:
+        """
+        Get the number of messages in a conversation.
+
+        Args:
+            conversation_id: ID of the conversation
+
+        Returns:
+            Number of messages in the conversation
+
+        Raises:
+            ConversationNotFoundError: If conversation doesn't exist
+        """
+        try:
+            # Try cache first
+            cached_conversation = self.conversation_cache.get(conversation_id)
+            if cached_conversation:
+                return len(cached_conversation.get("messages", []))
+
+            # Try index for message count
+            index_data = self.index_manager.get_conversation(conversation_id)
+            if index_data:
+                # Check if message_count is available in index
+                if "message_count" in index_data and isinstance(
+                    index_data["message_count"], int
+                ):
+                    return index_data["message_count"]
+                # Check if messages are included in index (for backward compatibility)
+                if "messages" in index_data:
+                    return len(index_data.get("messages", []))
+
+            # Fallback: load full conversation
+            conversation_data = self.get_conversation(conversation_id)
+            if not conversation_data:
+                raise ConversationNotFoundError(conversation_id)
+
+            return len(conversation_data.get("messages", []))
+
+        except ConversationNotFoundError:
+            raise
+        except Exception as e:
+            raise ConversationManagerError(
+                f"Failed to get message count for conversation {conversation_id}: {e}"
+            )
+
     def update_message(
         self,
         conversation_id: str,
         message_id: str,
         content: Optional[Union[str, Dict[str, Any], List[Any]]] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        llm_metadata: Optional["LLMCallMetadata"] = None
+        llm_metadata: Optional["LLMCallMetadata"] = None,
     ) -> bool:
         """
         Update a message.
-        
+
         Args:
             conversation_id: ID of the conversation
             message_id: ID of the message to update
             content: New content (optional)
             metadata: New metadata (optional)
             llm_metadata: LLM call metadata (optional)
-            
+
         Returns:
             True if update was successful
         """
@@ -573,9 +746,9 @@ class PersistConversationManager:
                 conversation_data = self.storage.load_conversation(conversation_id)
                 if not conversation_data:
                     raise ConversationNotFoundError(conversation_id)
-                
+
                 conversation = Conversation.from_dict(conversation_data)
-                
+
                 # Find and update message
                 for i, message_data in enumerate(conversation.messages):
                     msg = ConversationMessage.from_dict(message_data)
@@ -589,46 +762,47 @@ class PersistConversationManager:
                             msg.metadata.update(metadata)
                         if llm_metadata is not None:
                             msg.llm_metadata = llm_metadata
-                        
+
                         # Update timestamp
                         msg.timestamp = time.time()
-                        
+
                         # Replace in conversation
                         conversation.messages[i] = msg.to_dict()
                         conversation.updated_at = time.time()
-                        
-                        # Save updated conversation
+
+                        # Save updated conversation with message_count
                         updated_data = conversation.to_dict()
+                        updated_data["message_count"] = len(conversation.messages)
                         self.storage.save_conversation(updated_data)
-                        
+
                         # Update index
                         self.index_manager.update_conversation(updated_data)
-                        
+
                         # Update caches
                         self.conversation_cache.set(conversation_id, updated_data)
-                        self.message_cache.set(f"{conversation_id}:{message_id}", msg.to_dict())
-                        
+                        self.message_cache.set(
+                            f"{conversation_id}:{message_id}", msg.to_dict()
+                        )
+
                         return True
-                
+
                 raise MessageNotFoundError(message_id)
-                
+
         except (ConversationNotFoundError, MessageNotFoundError):
             raise
         except Exception as e:
-            raise ConversationManagerError(f"Failed to update message {message_id}: {e}")
-    
-    def delete_message(
-        self,
-        conversation_id: str,
-        message_id: str
-    ) -> bool:
+            raise ConversationManagerError(
+                f"Failed to update message {message_id}: {e}"
+            )
+
+    def delete_message(self, conversation_id: str, message_id: str) -> bool:
         """
         Delete a message from a conversation.
-        
+
         Args:
             conversation_id: ID of the conversation
             message_id: ID of the message to delete
-            
+
         Returns:
             True if deletion was successful
         """
@@ -638,51 +812,51 @@ class PersistConversationManager:
                 conversation_data = self.storage.load_conversation(conversation_id)
                 if not conversation_data:
                     raise ConversationNotFoundError(conversation_id)
-                
+
                 conversation = Conversation.from_dict(conversation_data)
-                
+
                 # Find and remove message
                 original_count = len(conversation.messages)
                 conversation.messages = [
-                    msg for msg in conversation.messages
-                    if msg.get('message_id') != message_id
+                    msg
+                    for msg in conversation.messages
+                    if msg.get("message_id") != message_id
                 ]
-                
+
                 if len(conversation.messages) == original_count:
                     raise MessageNotFoundError(message_id)
-                
+
                 conversation.updated_at = time.time()
-                
-                # Save updated conversation
+
+                # Save updated conversation with message_count
                 updated_data = conversation.to_dict()
+                updated_data["message_count"] = len(conversation.messages)
                 self.storage.save_conversation(updated_data)
-                
+
                 # Update index
                 self.index_manager.update_conversation(updated_data)
-                
-                # Update caches
+
+                # Update cache
                 self.conversation_cache.set(conversation_id, updated_data)
                 self.message_cache.delete(f"{conversation_id}:{message_id}")
-                
+
                 return True
-                
+
         except (ConversationNotFoundError, MessageNotFoundError):
             raise
         except Exception as e:
-            raise ConversationManagerError(f"Failed to delete message {message_id}: {e}")
-    
-    def delete_message_pair(
-        self,
-        conversation_id: str,
-        user_message_id: str
-    ) -> bool:
+            raise ConversationManagerError(
+                f"Failed to delete message {message_id}: {e}"
+            )
+
+    def delete_message_pair(self, conversation_id: str, user_message_id: str) -> bool:
         """
         Delete a user message and its corresponding assistant reply.
-        
+
         Args:
             conversation_id: ID of the conversation
             user_message_id: ID of the user message
-            
+
         Returns:
             True if deletion was successful
         """
@@ -692,222 +866,243 @@ class PersistConversationManager:
                 conversation_data = self.storage.load_conversation(conversation_id)
                 if not conversation_data:
                     raise ConversationNotFoundError(conversation_id)
-                
+
                 conversation = Conversation.from_dict(conversation_data)
-                
+
                 # Find user message and next assistant message
                 messages_to_remove = []
                 for i, message in enumerate(conversation.messages):
-                    if message.get('message_id') == user_message_id:
+                    if message.get("message_id") == user_message_id:
                         messages_to_remove.append(i)
                         # Check if next message is assistant reply
-                        if (i + 1 < len(conversation.messages) and
-                            conversation.messages[i + 1].get('role') == 'assistant'):
+                        if (
+                            i + 1 < len(conversation.messages)
+                            and conversation.messages[i + 1].get("role") == "assistant"
+                        ):
                             messages_to_remove.append(i + 1)
                         break
-                
+
                 if not messages_to_remove:
                     raise MessageNotFoundError(user_message_id)
-                
+
                 # Remove messages (in reverse order to maintain indices)
                 assistant_message_id = None
                 for idx in reversed(messages_to_remove):
                     if idx == messages_to_remove[-1] and len(messages_to_remove) > 1:
-                        assistant_message_id = conversation.messages[idx].get('message_id')
+                        assistant_message_id = conversation.messages[idx].get(
+                            "message_id"
+                        )
                     del conversation.messages[idx]
-                
+
                 conversation.updated_at = time.time()
-                
-                # Save updated conversation
+
+                # Save updated conversation with message_count
                 updated_data = conversation.to_dict()
+                updated_data["message_count"] = len(conversation.messages)
                 self.storage.save_conversation(updated_data)
-                
+
                 # Update index
                 self.index_manager.update_conversation(updated_data)
-                
+
                 # Update caches
                 self.conversation_cache.set(conversation_id, updated_data)
                 self.message_cache.delete(f"{conversation_id}:{user_message_id}")
                 if assistant_message_id:
-                    self.message_cache.delete(f"{conversation_id}:{assistant_message_id}")
-                
+                    self.message_cache.delete(
+                        f"{conversation_id}:{assistant_message_id}"
+                    )
+
                 return True
-                
+
         except (ConversationNotFoundError, MessageNotFoundError):
             raise
         except Exception as e:
-            raise ConversationManagerError(f"Failed to delete message pair {user_message_id}: {e}")
-    
+            raise ConversationManagerError(
+                f"Failed to delete message pair {user_message_id}: {e}"
+            )
+
     # Search and Filter Methods
-    
+
     def search_conversations(
         self,
         query: str,
         search_in_messages: bool = True,
         filters: Optional[Dict[str, Any]] = None,
         max_results: Optional[int] = None,
-        min_score: float = 0.0
+        min_score: float = 0.0,
     ) -> List[Dict[str, Any]]:
         """
         Search conversations.
-        
+
         Args:
             query: Search query
             search_in_messages: Whether to search in message content
             filters: Optional filter criteria
             max_results: Maximum number of results
             min_score: Minimum relevance score
-            
+
         Returns:
             List of matching conversations with scores
         """
         try:
             # Get all conversations
             conversations = self.index_manager.list_conversations()
-            
+
             # Apply filters first if provided
             if filters:
-                conversations = self.filter_manager.apply_filters(conversations, filters)
-            
+                conversations = self.filter_manager.apply_filters(
+                    conversations, filters
+                )
+
             # If search_in_messages is True, load full conversation data
             if search_in_messages:
                 full_conversations = []
                 for conv in conversations:
-                    conv_id = conv.get('conversation_id')
+                    conv_id = conv.get("conversation_id")
                     if conv_id:
                         full_conv = self.get_conversation(conv_id)
                         if full_conv:
                             full_conversations.append(full_conv)
                 conversations = full_conversations
-            
+
             # Perform text search
             results = self.text_searcher.search_conversations(
                 query, conversations, max_results, min_score
             )
-            
-            return [{'conversation': conv, 'score': score} for conv, score in results]
-            
+
+            return [{"conversation": conv, "score": score} for conv, score in results]
+
         except Exception as e:
             raise ConversationManagerError(f"Failed to search conversations: {e}")
-    
+
     def search_messages(
         self,
         conversation_id: str,
         query: str,
         filters: Optional[Dict[str, Any]] = None,
         max_results: Optional[int] = None,
-        min_score: float = 0.0
+        min_score: float = 0.0,
     ) -> List[Dict[str, Any]]:
         """
         Search messages in a conversation.
-        
+
         Args:
             conversation_id: ID of the conversation
             query: Search query
             filters: Optional filter criteria
             max_results: Maximum number of results
             min_score: Minimum relevance score
-            
+
         Returns:
             List of matching messages with scores
         """
         try:
             # Get conversation messages
             messages = self.get_messages(conversation_id)
-            
+
             # Apply filters if provided
             if filters:
                 messages = self.filter_manager.apply_filters(messages, filters)
-            
+
             # Perform text search
             results = self.text_searcher.search_messages(
                 query, messages, max_results, min_score
             )
-            
-            return [{'message': msg, 'score': score} for msg, score in results]
-            
+
+            return [{"message": msg, "score": score} for msg, score in results]
+
         except Exception as e:
             raise ConversationManagerError(f"Failed to search messages: {e}")
-    
+
     # Utility and Management Methods
-    
+
     def get_statistics(self) -> Dict[str, Any]:
         """
         Get manager statistics.
-        
+
         Returns:
             Dictionary with statistics
         """
         cache_stats = {
-            'conversation_cache_size': self.conversation_cache.size(),
-            'message_cache_size': self.message_cache.size()
+            "conversation_cache_size": self.conversation_cache.size(),
+            "message_cache_size": self.message_cache.size(),
         }
-        
+
         return {
             **self._stats,
-            'cache_stats': cache_stats,
-            'total_conversations': len(self.index_manager.list_conversations()),
-            'current_conversation_id': self.get_current_conversation_id(),
-            'all_current_conversations': self.get_all_current_conversations(),
-            'namespaces': self.list_namespaces(),
-            'default_namespace': self.config.default_namespace,
-            'storage_path': self.config.storage_path
+            "cache_stats": cache_stats,
+            "total_conversations": len(self.index_manager.list_conversations()),
+            "current_conversation_id": self.get_current_conversation_id(),
+            "all_current_conversations": self.get_all_current_conversations(),
+            "namespaces": self.list_namespaces(),
+            "default_namespace": self.config.default_namespace,
+            "storage_path": self.config.storage_path,
         }
-    
+
     def health_check(self) -> Dict[str, Any]:
         """
         Perform health check of all components.
-        
+
         Returns:
             Health status dictionary
         """
         health_status = {
-            'status': 'healthy',
-            'storage': True,
-            'cache': True,
-            'index': True,
-            'search': True,
-            'issues': []
+            "status": "healthy",
+            "storage": True,
+            "cache": True,
+            "index": True,
+            "search": True,
+            "issues": [],
         }
-        
+
         try:
             # Check storage
             if not os.path.exists(self.config.storage_path):
-                health_status['storage'] = False
-                health_status['issues'].append('Storage directory not accessible')
-            
+                health_status["storage"] = False
+                health_status["issues"].append("Storage directory not accessible")
+
             # Check cache
             conv_cache_size = self.conversation_cache.size()
             if conv_cache_size > self.config.max_cache_size:
-                health_status['issues'].append('Conversation cache size exceeds limit')
-            
+                health_status["issues"].append("Conversation cache size exceeds limit")
+
             # Check index consistency
             try:
                 conversations = self.index_manager.list_conversations()
-                health_status['total_conversations'] = len(conversations)
+                health_status["total_conversations"] = len(conversations)
             except Exception as e:
-                health_status['index'] = False
-                health_status['issues'].append(f'Index error: {e}')
-            
+                health_status["index"] = False
+                health_status["issues"].append(f"Index error: {e}")
+
             # Determine overall status
-            if not all([health_status['storage'], health_status['cache'], 
-                       health_status['index'], health_status['search']]):
-                health_status['status'] = 'degraded'
-            
-            if health_status['issues']:
-                health_status['status'] = 'warning' if health_status['status'] == 'healthy' else health_status['status']
-                
+            if not all(
+                [
+                    health_status["storage"],
+                    health_status["cache"],
+                    health_status["index"],
+                    health_status["search"],
+                ]
+            ):
+                health_status["status"] = "degraded"
+
+            if health_status["issues"]:
+                health_status["status"] = (
+                    "warning"
+                    if health_status["status"] == "healthy"
+                    else health_status["status"]
+                )
+
         except Exception as e:
-            health_status['status'] = 'unhealthy'
-            health_status['issues'].append(f'Health check failed: {e}')
-        
+            health_status["status"] = "unhealthy"
+            health_status["issues"].append(f"Health check failed: {e}")
+
         return health_status
-    
+
     @contextlib.contextmanager
     def transaction(self, conversation_id: str) -> Generator[None, None, None]:
         """
         Transaction context manager for atomic operations.
-        
+
         Args:
             conversation_id: ID of the conversation for the transaction
         """
@@ -918,52 +1113,54 @@ class PersistConversationManager:
                 # In a full implementation, we would rollback changes here
                 # For now, we just re-raise the exception
                 raise
-    
+
     def clear_cache(self):
         """Clear all caches."""
         self.conversation_cache.clear()
         self.message_cache.clear()
-    
+
     def rebuild_index(self):
         """Rebuild the conversation index from storage."""
         try:
             # Clear existing index
             self.index_manager._index_data.clear()
-            
+
             # Load all conversations from storage and rebuild index
             conversations = self.storage.list_conversations()
-            
+
             for conversation_data in conversations:
-                if conversation_data and conversation_data.get('conversation_id'):
+                if conversation_data and conversation_data.get("conversation_id"):
                     self.index_manager.add_conversation(conversation_data)
-            
+
         except Exception as e:
             raise ConversationManagerError(f"Failed to rebuild index: {e}")
-    
+
     def close(self):
         """Clean up resources."""
         # Clear caches
         self.clear_cache()
-        
+
         # Save any pending index changes
         try:
             self.index_manager._save_index()
         except Exception:
-            pass  # Ignore errors during cleanup 
+            pass  # Ignore errors during cleanup
 
     # Current Conversation Management Methods
-    
-    def set_current_conversation(self, conversation_id: str, namespace: Optional[str] = None) -> bool:
+
+    def set_current_conversation(
+        self, conversation_id: str, namespace: Optional[str] = None
+    ) -> bool:
         """
         设置当前对话。
-        
+
         Args:
             conversation_id: 要设置为当前对话的ID
             namespace: 命名空间，None表示使用默认命名空间
-            
+
         Returns:
             True if setting was successful
-            
+
         Raises:
             ConversationNotFoundError: 如果对话不存在
         """
@@ -971,31 +1168,39 @@ class PersistConversationManager:
             # 如果没有指定命名空间，使用配置中的默认命名空间
             if namespace is None:
                 namespace = self.config.default_namespace
-            
+
             # 验证对话是否存在
             conversation_data = self.get_conversation(conversation_id)
             if not conversation_data:
                 raise ConversationNotFoundError(conversation_id)
-            
+
             # 设置当前对话
-            success = self.index_manager.set_current_conversation(conversation_id, namespace)
+            success = self.index_manager.set_current_conversation(
+                conversation_id, namespace
+            )
             if not success:
-                raise ConversationManagerError(f"Failed to set current conversation: {conversation_id}")
-            
+                raise ConversationManagerError(
+                    f"Failed to set current conversation: {conversation_id}"
+                )
+
             return True
-            
+
         except ConversationNotFoundError:
             raise
         except Exception as e:
-            raise ConversationManagerError(f"Failed to set current conversation {conversation_id}: {e}")
-    
-    def get_current_conversation_id(self, namespace: Optional[str] = None) -> Optional[str]:
+            raise ConversationManagerError(
+                f"Failed to set current conversation {conversation_id}: {e}"
+            )
+
+    def get_current_conversation_id(
+        self, namespace: Optional[str] = None
+    ) -> Optional[str]:
         """
         获取当前对话ID。
-        
+
         Args:
             namespace: 命名空间，None表示使用默认命名空间
-            
+
         Returns:
             当前对话ID，如果未设置返回None
         """
@@ -1003,18 +1208,22 @@ class PersistConversationManager:
             # 如果没有指定命名空间，使用配置中的默认命名空间
             if namespace is None:
                 namespace = self.config.default_namespace
-            
+
             return self.index_manager.get_current_conversation_id(namespace)
         except Exception as e:
-            raise ConversationManagerError(f"Failed to get current conversation ID: {e}")
-    
-    def get_current_conversation(self, namespace: Optional[str] = None) -> Optional[Dict[str, Any]]:
+            raise ConversationManagerError(
+                f"Failed to get current conversation ID: {e}"
+            )
+
+    def get_current_conversation(
+        self, namespace: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         获取当前对话的完整数据。
-        
+
         Args:
             namespace: 命名空间，None表示使用默认命名空间
-            
+
         Returns:
             当前对话的数据字典，如果未设置或对话不存在返回None
         """
@@ -1022,19 +1231,19 @@ class PersistConversationManager:
             current_id = self.get_current_conversation_id(namespace)
             if not current_id:
                 return None
-            
+
             return self.get_conversation(current_id)
-            
+
         except Exception as e:
             raise ConversationManagerError(f"Failed to get current conversation: {e}")
-    
+
     def clear_current_conversation(self, namespace: Optional[str] = None) -> bool:
         """
         清除当前对话设置。
-        
+
         Args:
             namespace: 命名空间，None表示使用默认命名空间
-            
+
         Returns:
             True if clearing was successful
         """
@@ -1042,55 +1251,63 @@ class PersistConversationManager:
             # 如果没有指定命名空间，使用配置中的默认命名空间
             if namespace is None:
                 namespace = self.config.default_namespace
-            
+
             success = self.index_manager.clear_current_conversation(namespace)
             if not success:
                 raise ConversationManagerError("Failed to clear current conversation")
-            
+
             return True
-            
+
         except Exception as e:
             raise ConversationManagerError(f"Failed to clear current conversation: {e}")
-    
+
     def append_message_to_current(
         self,
         role: str,
         content: Union[str, Dict[str, Any], List[Any]],
         metadata: Optional[Dict[str, Any]] = None,
         llm_metadata: Optional[LLMCallMetadata] = None,
-        namespace: Optional[str] = None
+        namespace: Optional[str] = None,
     ) -> str:
         """
         向当前对话添加消息。
-        
+
         Args:
             role: 消息角色
             content: 消息内容
             metadata: 可选的消息元数据
             llm_metadata: 可选的 LLM 调用元数据
             namespace: 命名空间，None表示使用默认命名空间
-            
+
         Returns:
             消息ID
-            
+
         Raises:
             ConversationManagerError: 如果没有设置当前对话或添加失败
         """
         try:
             current_id = self.get_current_conversation_id(namespace)
             if not current_id:
-                ns_desc = f"namespace '{namespace}'" if namespace else "default namespace"
-                raise ConversationManagerError(f"No current conversation set for {ns_desc}")
-            
-            return self.append_message(current_id, role, content, metadata, llm_metadata)
-            
+                ns_desc = (
+                    f"namespace '{namespace}'" if namespace else "default namespace"
+                )
+                raise ConversationManagerError(
+                    f"No current conversation set for {ns_desc}"
+                )
+
+            return self.append_message(
+                current_id, role, content, metadata, llm_metadata
+            )
+
         except Exception as e:
-            raise ConversationManagerError(f"Failed to append message to current conversation: {e}")
-    
+            raise ConversationManagerError(
+                f"Failed to append message to current conversation: {e}"
+            )
+
     def list_namespaces(self) -> List[Optional[str]]:
         """
         列出所有已使用的命名空间。
-        
+
         Returns:
             命名空间列表，None 表示默认命名空间
         """
@@ -1098,15 +1315,17 @@ class PersistConversationManager:
             return self.index_manager.list_namespaces()
         except Exception as e:
             raise ConversationManagerError(f"Failed to list namespaces: {e}")
-    
+
     def get_all_current_conversations(self) -> Dict[Optional[str], str]:
         """
         获取所有命名空间的当前对话ID。
-        
+
         Returns:
             命名空间到对话ID的映射
         """
         try:
             return self.index_manager.get_all_current_conversations()
         except Exception as e:
-            raise ConversationManagerError(f"Failed to get all current conversations: {e}")
+            raise ConversationManagerError(
+                f"Failed to get all current conversations: {e}"
+            )
