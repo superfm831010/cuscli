@@ -13,7 +13,10 @@ from rich.live import Live
 
 import byzerllm
 
-from .schema import LLMModel, DEFAULT_API_KEY
+from .schema import LLMModel
+
+# 默认 API KEY 占位符
+DEFAULT_API_KEY = "your_api_key_here"
 from .factory import LLMFactory
 
 
