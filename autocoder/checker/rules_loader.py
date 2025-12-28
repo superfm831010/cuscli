@@ -220,7 +220,7 @@ class RulesLoader:
 
                 # 初始化规则字段
                 title = ""
-                severity = Severity.INFO
+                severity = Severity.LOW
                 description = ""
                 explanation = ""
                 examples = ""
