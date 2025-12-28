@@ -238,8 +238,8 @@ class RulesLoader:
                     if line.startswith('**标题**:'):
                         title = line.split(':', 1)[1].strip()
                     elif line.startswith('**严重程度**:'):
-                        severity_str = line.split(':', 1)[1].strip().lower()
-                        severity = Severity(severity_str)
+                        severity_str = line.split(':', 1)[1].strip()
+                        severity = Severity.from_string(severity_str)
                     elif line.startswith('**描述**:'):
                         description = line.split(':', 1)[1].strip()
                     elif line.startswith('**说明**:'):
@@ -413,11 +413,16 @@ class RulesLoader:
         disabled_rules: Set[str] = set(config.get("disabled_rules", []))
 
         # 获取严重程度阈值
-        severity_threshold = config.get("severity_threshold", "info")
+        severity_threshold = config.get("severity_threshold", "低级")
         severity_order = {
+            # 新格式
+            "高级": 1,
+            "中级": 2,
+            "低级": 3,
+            # 旧格式（向后兼容）
             "error": 1,
             "warning": 2,
-            "info": 3
+            "info": 3,
         }
         threshold_level = severity_order.get(severity_threshold, 3)
 

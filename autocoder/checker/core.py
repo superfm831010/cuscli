@@ -554,11 +554,11 @@ class CodeChecker:
                 progress_callback(step="merge_done")
 
             # 5. 统计
-            error_count = sum(1 for i in filtered_issues if i.severity == Severity.ERROR)
-            warning_count = sum(1 for i in filtered_issues if i.severity == Severity.WARNING)
-            info_count = sum(1 for i in filtered_issues if i.severity == Severity.INFO)
+            error_count = sum(1 for i in filtered_issues if i.severity == Severity.HIGH)
+            warning_count = sum(1 for i in filtered_issues if i.severity == Severity.MEDIUM)
+            info_count = sum(1 for i in filtered_issues if i.severity == Severity.LOW)
 
-            logger.info(f"文件 {file_path} 检查完成: 错误={error_count}, 警告={warning_count}, 提示={info_count}")
+            logger.info(f"文件 {file_path} 检查完成: 高级={error_count}, 中级={warning_count}, 低级={info_count}")
 
             # Phase 5: 计算审核模式和统计信息
             audit_mode = "diff-only" if (diff_info and diff_info.has_modifications()) else "full"
@@ -1376,16 +1376,14 @@ class CodeChecker:
                         logger.warning(f"问题 {i} 缺少必需字段: {issue_dict}")
                         continue
 
-                    # 转换 severity 为 Severity 枚举
-                    severity_str = issue_dict['severity'].lower()
-                    if severity_str not in ['error', 'warning', 'info']:
-                        logger.warning(f"无效的 severity 值: {severity_str}，默认为 info")
-                        severity_str = 'info'
+                    # 转换 severity 为 Severity 枚举（支持新旧格式）
+                    severity_str = issue_dict['severity']
+                    severity = Severity.from_string(severity_str)
 
                     # 创建 Issue 对象
                     issue = Issue(
                         rule_id=issue_dict['rule_id'],
-                        severity=Severity(severity_str),
+                        severity=severity,
                         line_start=int(issue_dict['line_start']),
                         line_end=int(issue_dict['line_end']),
                         description=issue_dict['description'],

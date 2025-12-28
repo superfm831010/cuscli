@@ -55,9 +55,14 @@ class ReportGenerator:
 
     # 严重程度颜色（浅色背景，便于阅读）
     SEVERITY_FILLS = {
-        "error": PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid"),    # 浅红色
-        "warning": PatternFill(start_color="FFEBCC", end_color="FFEBCC", fill_type="solid"),  # 浅橙色
-        "info": PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid"),     # 浅蓝色
+        # 新格式
+        "高级": PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid"),    # 浅红色
+        "中级": PatternFill(start_color="FFEBCC", end_color="FFEBCC", fill_type="solid"),    # 浅橙色
+        "低级": PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid"),    # 浅蓝色
+        # 旧格式（向后兼容）
+        "error": PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid"),
+        "warning": PatternFill(start_color="FFEBCC", end_color="FFEBCC", fill_type="solid"),
+        "info": PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid"),
     }
 
     # 表头样式（深蓝背景 + 白色加粗字体）
@@ -437,13 +442,13 @@ class ReportGenerator:
             return md
 
         # 按严重程度分组
-        errors = [i for i in result.issues if i.severity == Severity.ERROR]
-        warnings = [i for i in result.issues if i.severity == Severity.WARNING]
-        infos = [i for i in result.issues if i.severity == Severity.INFO]
+        errors = [i for i in result.issues if i.severity == Severity.HIGH]
+        warnings = [i for i in result.issues if i.severity == Severity.MEDIUM]
+        infos = [i for i in result.issues if i.severity == Severity.LOW]
 
-        # 显示错误
+        # 显示高级问题
         if errors:
-            md += f"## ❌ 错误 ({len(errors)})\n\n"
+            md += f"## ❌ 高级 ({len(errors)})\n\n"
             md += "以下问题必须修复，可能导致系统崩溃、安全漏洞或数据丢失：\n\n"
             for idx, issue in enumerate(errors, 1):
                 md += self._format_issue_markdown(idx, issue)
@@ -692,9 +697,9 @@ class ReportGenerator:
             md += f"ℹ️ {file_result.info_count})\n\n"
 
             # 按严重程度分组问题
-            errors = [i for i in file_result.issues if i.severity == Severity.ERROR]
-            warnings = [i for i in file_result.issues if i.severity == Severity.WARNING]
-            infos = [i for i in file_result.issues if i.severity == Severity.INFO]
+            errors = [i for i in file_result.issues if i.severity == Severity.HIGH]
+            warnings = [i for i in file_result.issues if i.severity == Severity.MEDIUM]
+            infos = [i for i in file_result.issues if i.severity == Severity.LOW]
 
             # 显示问题列表（简化版）
             for issue in errors[:3]:  # 最多显示 3 个错误

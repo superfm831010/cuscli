@@ -97,10 +97,14 @@ def parse_xlsx(xlsx_path: str) -> List[Rule]:
             if not rule_id or not rule_id.startswith(('backend_', 'frontend_')):
                 continue
 
+            # 处理严重程度，保持原值（高级/中级/低级）
+            raw_severity = cells.get('D', '').strip()
+            severity = raw_severity if raw_severity in ('高级', '中级', '低级') else '低级'
+
             rule = Rule(
                 id=rule_id,
                 title=cells.get('B', '').strip(),
-                severity=cells.get('D', 'warning').strip().lower() or 'warning',
+                severity=severity,
                 description=cells.get('E', '').strip(),
                 explanation=cells.get('F', '').strip(),
                 bad_example=cells.get('G', '').strip(),

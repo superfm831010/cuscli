@@ -14,13 +14,28 @@ class Severity(str, Enum):
     """
     问题严重程度枚举
 
-    - ERROR: 必须修复的严重问题，可能导致系统崩溃、安全漏洞或数据丢失
-    - WARNING: 强烈建议修复的问题，影响代码质量、性能或可维护性
-    - INFO: 建议改进的问题，主要是命名规范、注释建议等
+    - HIGH (高级): 必须修复的严重问题，可能导致系统崩溃、安全漏洞或数据丢失
+    - MEDIUM (中级): 强烈建议修复的问题，影响代码质量、性能或可维护性
+    - LOW (低级): 建议改进的问题，主要是命名规范、注释建议等
     """
-    ERROR = "error"
-    WARNING = "warning"
-    INFO = "info"
+    HIGH = "高级"      # 原 ERROR
+    MEDIUM = "中级"    # 原 WARNING
+    LOW = "低级"       # 原 INFO
+
+    @classmethod
+    def from_string(cls, value: str) -> "Severity":
+        """从字符串解析严重程度，支持新旧两种格式"""
+        mapping = {
+            # 新格式
+            "高级": cls.HIGH,
+            "中级": cls.MEDIUM,
+            "低级": cls.LOW,
+            # 旧格式（向后兼容）
+            "error": cls.HIGH,
+            "warning": cls.MEDIUM,
+            "info": cls.LOW,
+        }
+        return mapping.get(value.lower() if value else "", cls.LOW)
 
 
 class Rule(BaseModel):

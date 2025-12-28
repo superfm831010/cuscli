@@ -8,7 +8,7 @@
         "**/*.py",
         "**/*.java"
       ],
-      "severity_threshold": "warning",
+      "severity_threshold": "中级",
       "disabled_rules": [],
       "description": "Python/Java 后端代码检查规则，共52条",
       "categories": [
@@ -33,7 +33,7 @@
         "**/*.tsx",
         "**/*.vue"
       ],
-      "severity_threshold": "warning",
+      "severity_threshold": "中级",
       "disabled_rules": [],
       "description": "前端代码检查规则（Vue/TypeScript），共110条",
       "categories": [
@@ -74,15 +74,15 @@
     "enable_resume": true
   },
   "severity_levels": {
-    "error": {
+    "高级": {
       "priority": 1,
       "description": "必须修复的严重问题，可能导致系统崩溃、安全漏洞或数据丢失"
     },
-    "warning": {
+    "中级": {
       "priority": 2,
       "description": "强烈建议修复的问题，影响代码质量、性能或可维护性"
     },
-    "info": {
+    "低级": {
       "priority": 3,
       "description": "建议改进的问题，主要是命名规范、注释建议等"
     }
