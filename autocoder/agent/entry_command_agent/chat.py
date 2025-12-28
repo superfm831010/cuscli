@@ -126,12 +126,15 @@ class ChatAgent:
         if last_meta:
             self._print_stats(last_meta, start_time, model_name)
 
-        # 更新聊天历史 - 添加助手回复到当前会话
-        self.conversation_manager.append_message_to_current(
-            role="assistant",
-            content=assistant_response,
-            namespace=self.namespace
-        )
+        # 更新聊天历史 - 添加助手回复到当前会话（参考 agentic_edit.py:3046 的空检查逻辑）
+        if assistant_response and assistant_response.strip():
+            self.conversation_manager.append_message_to_current(
+                role="assistant",
+                content=assistant_response,
+                namespace=self.namespace
+            )
+        else:
+            logger.warning("Assistant response is empty, skipping conversation history update")
 
         # 处理后续命令
         self._handle_post_commands(commands_info, assistant_response)

@@ -2377,6 +2377,7 @@ class AgenticEdit:
          7. You are excelent at using Sub Agent/Shell Command to accomplish the user's task.
          8. You should **NEVER** generate any contentn like "TOOL OUTPUT HINT" in YOUR RESPONSE.
          9. When using the sub agent(throught the auto-coder.run command), you can only use the model {{ current_model }} or models specified in the available_agent section.
+         10. **LANGUAGE REQUIREMENT**: You MUST respond in Chinese (中文). All your thinking process (<thinking> blocks), explanations, and output should be in Chinese. Only code, technical terms, and command examples can remain in English.
         """
 
         env_info = detect_env()
