@@ -108,6 +108,7 @@ class ChatAgent:
             request_id=self.args.request_id,
             console=self.console,
             model_name=model_name,
+            title=f"Chat[ {model_name} ]",
             args=self.args
         )
 
@@ -415,7 +416,7 @@ class ChatAgent:
             return stream_chat_with_continue(
                 llm=chat_llm,
                 conversations=pruned_conversations,
-                llm_config={},
+                llm_config={"human_as_model": self.args.human_as_model},
                 args=self.args
             )
 
