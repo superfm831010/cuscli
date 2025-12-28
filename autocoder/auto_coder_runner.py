@@ -47,6 +47,7 @@ from copy import deepcopy
 from rich.markdown import Markdown
 from byzerllm.utils.nontext import Image
 from autocoder.inner.agentic import RunAgentic
+from autocoder.common.llms.guided_setup import guide_first_model_setup
 
 # 延迟导入git模块以避免启动异常
 try:
@@ -379,6 +380,31 @@ def initialize_system(args: InitializeSystemRequest):
             configure_success[0] = True
 
         print_status(get_message("init_complete"), "success")
+
+    # 检查是否有模型配置，如果没有则引导用户配置
+    llm_manager = LLMManager()
+    all_models = llm_manager.get_all_models()
+
+    if not all_models:  # 没有任何模型配置
+        print_status("未检测到任何模型配置", "warning")
+        configured_model_name = guide_first_model_setup()
+
+        # 如果配置成功，立即激活该模型为默认模型
+        if configured_model_name:
+            configure(f"model:{configured_model_name}", skip_print=True)
+            print_status(f"已将模型 {configured_model_name} 设置为默认模型", "success")
+    else:
+        # 如果有模型配置，自动将第一个模型设置为默认模型
+        first_model = llm_manager.get_first_available_model()
+        if first_model:
+            # 检查当前配置中是否已经有 model 设置
+            memory_manager = get_memory_manager()
+            current_model = memory_manager.get_config("model", None)
+
+            # 如果没有配置或配置的模型不存在，则使用第一个可用模型
+            if not current_model or not llm_manager.check_model_exists(current_model):
+                configure(f"model:{first_model.name}", skip_print=True)
+                print_status(f"自动设置默认模型: {first_model.name}", "success")
 
     init_project_if_required(target_dir=project_root, project_type="*")
 
