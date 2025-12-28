@@ -191,11 +191,10 @@ class ChatAgent:
             pre_conversations.append(
                 {
                     "role": "user",
-                    "content": f"请阅读下面的代码和文档：\n\n <files>\n{context_content}\n</files>",
+                    "content": f"以下是相关的代码和文档上下文，请在回答问题时参考：\n\n<files>\n{context_content}\n</files>",
                 },
             )
-            pre_conversations.append(
-                {"role": "assistant", "content": "read"})
+            # 移除虚拟响应 "read"，避免模型认为已经回答完毕
             source_count += 1
 
         # 构建索引和过滤文件
@@ -238,11 +237,10 @@ class ChatAgent:
                 pre_conversations.append(
                     {
                         "role": "user",
-                        "content": f"请阅读下面的代码和文档：\n\n <files>\n{s}\n</files>",
+                        "content": f"以下是相关的代码和文档上下文，请在回答问题时参考：\n\n<files>\n{s}\n</files>",
                     }
                 )
-                pre_conversations.append(
-                    {"role": "assistant", "content": "read"})
+                # 移除虚拟响应 "read"，避免模型认为已经回答完毕
                 source_count += 1
 
         # 获取当前会话的历史消息
