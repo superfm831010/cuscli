@@ -1132,11 +1132,12 @@ class ReportGenerator:
             for result in results:
                 for issue in result.issues:
                     if issue.rule_id not in rule_stats:
-                        rule_stats[issue.rule_id] = {"error": 0, "warning": 0, "info": 0}
-                    severity_key = issue.severity.value.lower() if hasattr(issue.severity, 'value') else str(issue.severity).lower()
-                    rule_stats[issue.rule_id][severity_key] += 1
+                        rule_stats[issue.rule_id] = {"高级": 0, "中级": 0, "低级": 0}
+                    severity_key = issue.severity.value if hasattr(issue.severity, 'value') else str(issue.severity)
+                    if severity_key in rule_stats[issue.rule_id]:
+                        rule_stats[issue.rule_id][severity_key] += 1
 
-            dist_headers = ["规则ID", "ERROR", "WARNING", "INFO", "总计"]
+            dist_headers = ["规则ID", "高级", "中级", "低级", "总计"]
             for col_idx, header in enumerate(dist_headers, start=1):
                 ws_dist.cell(row=1, column=col_idx, value=header)
             self._apply_header_style(ws_dist, row=1)
@@ -1147,9 +1148,9 @@ class ReportGenerator:
             for row_idx, (rule_id, counts) in enumerate(sorted_rules, start=2):
                 total = sum(counts.values())
                 ws_dist.cell(row=row_idx, column=1, value=rule_id)
-                ws_dist.cell(row=row_idx, column=2, value=counts["error"])
-                ws_dist.cell(row=row_idx, column=3, value=counts["warning"])
-                ws_dist.cell(row=row_idx, column=4, value=counts["info"])
+                ws_dist.cell(row=row_idx, column=2, value=counts["高级"])
+                ws_dist.cell(row=row_idx, column=3, value=counts["中级"])
+                ws_dist.cell(row=row_idx, column=4, value=counts["低级"])
                 ws_dist.cell(row=row_idx, column=5, value=total)
 
             if rule_stats:

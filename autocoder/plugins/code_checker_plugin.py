@@ -1888,7 +1888,8 @@ Git 引用格式 (commit/diff 命令支持):
         files_no_issues_count = len([r for r in results if len(r.issues) == 0])
 
         print(f"📄 详细报告: {report_dir}/")
-        print(f"   - 汇总报告: {os.path.join(report_dir, 'summary.md')}")
+        format_ext = getattr(self.report_generator, 'export_format', 'xlsx')
+        print(f"   - 汇总报告: {os.path.join(report_dir, f'summary.{format_ext}')}")
         print(f"   - 有问题的文件 ({files_with_issues_count} 个): {os.path.join(report_dir, 'files', 'with_issues/')}")
         print(f"   - 无问题的文件 ({files_no_issues_count} 个): {os.path.join(report_dir, 'files', 'no_issues/')}")
 
