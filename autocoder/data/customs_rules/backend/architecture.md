@@ -12,7 +12,7 @@ alwaysApply: true
 
 ### 1. 项目目录结构规范
 
-- **backend_004**: 项目包/目录结构符合脚手架生成项目的基本结构，包路径匹配cn.customs.*，对应的功能类应该放在指定目录下：配置（config）、常量（constant）、调用服务（proxy）、接口（controller）、业务逻辑（service）、数据库Mapper接口（dao）、实体（pojo）、工具类（util）
+- **backend_004**: 项目包/目录结构符合脚手架生成项目的基本结构，包路径匹配cn.gov.customs.*，对应的功能类应该放在指定目录下：配置（config）、常量（constant）、调用服务（proxy）、接口（controller）、业务逻辑（service）、数据库Mapper接口（dao）、实体（pojo）、工具类（util）
 - 来源：backend_rules修订版.xlsx 第5行
 - 说明：遵循统一的项目结构，便于代码维护和团队协作
 

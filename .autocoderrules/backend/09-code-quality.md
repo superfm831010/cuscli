@@ -66,7 +66,7 @@ public void doIt() {}  // ❌ 方法名无意义
 - 方法名：小驼峰（createUser、queryOrders）
 - 变量名：小驼峰（userName、totalAmount）
 - 常量：大写下划线（MAX_SIZE、DEFAULT_VALUE）
-- 包名：小写（cn.customs.user）
+- 包名：小写（cn.gov.customs.user）
 
 ---
 

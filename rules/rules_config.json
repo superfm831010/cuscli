@@ -10,7 +10,7 @@
       ],
       "severity_threshold": "warning",
       "disabled_rules": [],
-      "description": "Python/Java 后端代码检查规则，共63条",
+      "description": "Python/Java 后端代码检查规则，共52条",
       "categories": [
         "应用开发架构使用",
         "代码结构",
@@ -35,7 +35,7 @@
       ],
       "severity_threshold": "warning",
       "disabled_rules": [],
-      "description": "前端代码检查规则（Vue/TypeScript），共105条",
+      "description": "前端代码检查规则（Vue/TypeScript），共110条",
       "categories": [
         "应用开发架构使用",
         "代码结构",

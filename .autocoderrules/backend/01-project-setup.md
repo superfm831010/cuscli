@@ -33,7 +33,7 @@ priority: high
 
 ```xml
 <parent>
-    <groupId>cn.customs.cacp</groupId>
+    <groupId>cn.gov.customs.cacp</groupId>
     <artifactId>cacp-spring-boot-parent</artifactId>
     <version>${cacp.version}</version>
 </parent>
@@ -52,11 +52,11 @@ priority: high
 
 ```xml
 <dependency>
-    <groupId>cn.customs.cacp</groupId>
+    <groupId>cn.gov.customs.cacp</groupId>
     <artifactId>cacp-spring-boot-starter-web</artifactId>
 </dependency>
 <dependency>
-    <groupId>cn.customs.cacp</groupId>
+    <groupId>cn.gov.customs.cacp</groupId>
     <artifactId>cacp-spring-boot-starter-data</artifactId>
 </dependency>
 ```
@@ -75,7 +75,7 @@ priority: high
 
 ```xml
 <dependency>
-    <groupId>cn.customs.cacp</groupId>
+    <groupId>cn.gov.customs.cacp</groupId>
     <artifactId>cacp-datasource</artifactId>
 </dependency>
 ```
@@ -89,10 +89,10 @@ priority: high
 
 ### ✅ 遵循标准目录结构
 
-**指令**：项目包路径必须以 `cn.customs.` 开头，后跟业务域或应用简称。
+**指令**：项目包路径必须以 `cn.gov.customs.` 开头，后跟业务域或应用简称。
 
 ```
-cn.customs.{应用简称}
+cn.gov.customs.{应用简称}
 ├── controller      # 控制器层
 ├── service         # 服务层
 │   └── impl       # 服务实现
@@ -107,8 +107,8 @@ cn.customs.{应用简称}
 ```
 
 **示例**：
-- TIR运输系统：`cn.customs.tir.*`
-- 舱单管理系统：`cn.customs.manifest.*`
+- TIR运输系统：`cn.gov.customs.tir.*`
+- 舱单管理系统：`cn.gov.customs.manifest.*`
 
 ---
 
@@ -158,7 +158,7 @@ spring:
 
 **AI应生成**：
 1. 使用CACP父依赖的pom.xml
-2. 标准目录结构：`cn.customs.usermgmt.*`
+2. 标准目录结构：`cn.gov.customs.usermgmt.*`
 3. 引入web、data、security starter
 4. 创建application.yml with profiles
 5. 配置HikariCP数据源
@@ -176,7 +176,7 @@ customs-app-parent/
 └── customs-app-dao/       # 数据访问模块
 ```
 
-每个模块都遵循 `cn.customs.app.*` 包结构。
+每个模块都遵循 `cn.gov.customs.app.*` 包结构。
 
 ---
 
@@ -200,12 +200,12 @@ customs-app-parent/
 
 ```java
 // 错误示例
-package cn.customs.yonghu;  // ❌ 拼音
-package cn.customs.yhgl;    // ❌ 拼音首字母
+package cn.gov.customs.yonghu;  // ❌ 拼音
+package cn.gov.customs.yhgl;    // ❌ 拼音首字母
 
 // 正确示例
-package cn.customs.user;         // ✅ 标准英文
-package cn.customs.usermgmt;     // ✅ 标准英文缩写
+package cn.gov.customs.user;         // ✅ 标准英文
+package cn.gov.customs.usermgmt;     // ✅ 标准英文缩写
 ```
 
 ---
@@ -213,14 +213,14 @@ package cn.customs.usermgmt;     // ✅ 标准英文缩写
 ### ❌ 禁止混乱的包结构
 
 ```java
-// 错误示例：包名不以cn.customs开头
+// 错误示例：包名不以cn.gov.customs开头
 package com.example.myapp;  // ❌
 
 // 错误示例：包名包含特殊字符
-package cn.customs.user-mgmt;  // ❌ 包名不能有短横线
+package cn.gov.customs.user-mgmt;  // ❌ 包名不能有短横线
 
 // 正确示例
-package cn.customs.usermgmt;   // ✅
+package cn.gov.customs.usermgmt;   // ✅
 ```
 
 ---
@@ -231,7 +231,7 @@ package cn.customs.usermgmt;   // ✅
 
 - [ ] pom.xml中已配置CACP父依赖
 - [ ] 引入了必要的CACP核心依赖
-- [ ] 包路径以 `cn.customs.` 开头
+- [ ] 包路径以 `cn.gov.customs.` 开头
 - [ ] 目录结构符合标准规范
 - [ ] 配置文件使用YAML格式
 - [ ] 字符集设置为UTF-8
