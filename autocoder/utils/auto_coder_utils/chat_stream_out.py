@@ -11,6 +11,7 @@ from autocoder.events.event_types import EventType
 from autocoder.utils.request_queue import RequestValue, RequestOption, StreamValue
 from autocoder.utils.request_queue import request_queue
 import time
+from loguru import logger
 from byzerllm.utils.types import SingleOutputMeta
 from autocoder.common import AutoCoderArgs
 from autocoder.common.global_cancel import global_cancel, CancelRequestedException
@@ -230,14 +231,21 @@ def stream_out(
             refresh_per_second=4,
             console=console
         ) as live:
-            for res in stream_generator:  
-                global_cancel.check_and_raise(cancel_token or args.cancel_token)                                  
-                last_meta = res[1]                
+            for res in stream_generator:
+                global_cancel.check_and_raise(cancel_token or args.cancel_token)
+                last_meta = res[1]
                 content = res[0]
 
                 reasoning_content = ""
                 if last_meta:
-                    reasoning_content = last_meta.reasoning_content
+                    reasoning_content = last_meta.reasoning_content or ""
+
+                # 调试日志：记录每个流式响应的内容
+                logger.debug(
+                    f"stream_out: content='{content[:50] if content else ''}...', "
+                    f"reasoning_content='{reasoning_content[:50] if reasoning_content else ''}...', "
+                    f"finish_reason={last_meta.finish_reason if last_meta else 'N/A'}"
+                )
 
                 if reasoning_content == "" and content == "":
                     continue             
@@ -352,6 +360,17 @@ def stream_out(
             border_style="yellow"
         ))                
         raise cancel_exc          
+
+    # 诊断空响应
+    if not assistant_response:
+        if last_meta:
+            logger.warning(
+                f"Empty response from model. input_tokens={last_meta.input_tokens_count}, "
+                f"output_tokens={last_meta.generated_tokens_count}, "
+                f"finish_reason={last_meta.finish_reason}"
+            )
+        else:
+            logger.warning("Empty response and no metadata received from model")
 
     if last_meta:
         last_meta.first_token_time = first_token_time
