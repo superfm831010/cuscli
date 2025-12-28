@@ -248,15 +248,15 @@ class CodeCheckerPlugin(Plugin):
         """
         return {
             "/check": ["/file", "/folder", "/resume", "/report", "/config", "/git"],
-            "/check /folder": ["/path", "/ext", "/ignore", "/workers", "/repeat", "/consensus"],
+            "/check /folder": ["/path", "/ext", "/ignore", "/workers", "/repeat", "/consensus", "/format"],
             "/check /config": ["/repeat", "/consensus"],
             "/check /git": ["/staged", "/unstaged", "/commit", "/diff", "/repo", "/repo-diff"],
-            "/check /git /staged": ["/repeat", "/consensus", "/workers", "/diff-only"],
-            "/check /git /unstaged": ["/repeat", "/consensus", "/workers", "/diff-only"],
-            "/check /git /commit": ["/repeat", "/consensus", "/workers", "/diff-only"],
-            "/check /git /diff": ["/repeat", "/consensus", "/workers", "/diff-only"],
-            "/check /git /repo": ["/branch", "/tag", "/commit", "/dir", "/full", "/status", "/reset", "/repeat", "/consensus", "/workers"],
-            "/check /git /repo-diff": ["/dir", "/repeat", "/consensus", "/workers"],
+            "/check /git /staged": ["/repeat", "/consensus", "/workers", "/diff-only", "/format"],
+            "/check /git /unstaged": ["/repeat", "/consensus", "/workers", "/diff-only", "/format"],
+            "/check /git /commit": ["/repeat", "/consensus", "/workers", "/diff-only", "/format"],
+            "/check /git /diff": ["/repeat", "/consensus", "/workers", "/diff-only", "/format"],
+            "/check /git /repo": ["/branch", "/tag", "/commit", "/dir", "/full", "/status", "/reset", "/repeat", "/consensus", "/workers", "/format"],
+            "/check /git /repo-diff": ["/dir", "/repeat", "/consensus", "/workers", "/format"],
         }
 
     def _get_option_completions(
@@ -1060,11 +1060,13 @@ Git 引用格式 (commit/diff 命令支持):
   /workers <5>                         - 并发数（默认: 5）
   /repeat <1>                          - LLM 调用次数（默认: 1）
   /consensus <1.0>                     - 共识阈值 0~1（默认: 1.0）
+  /format <xlsx|json|md>               - 报告格式（默认: xlsx）
 
 /check /git 通用选项:
   /repeat <1>                          - LLM 调用次数（默认: 1）
   /consensus <1.0>                     - 共识阈值 0~1（默认: 1.0）
   /workers <5>                         - 并发数（默认: 5）
+  /format <xlsx|json|md>               - 报告格式（默认: xlsx）
 
 示例:
   /check /file autocoder/auto_coder.py
@@ -1098,7 +1100,7 @@ Git 引用格式 (commit/diff 命令支持):
         tokens = shlex.split(args)
         if not tokens:
             print("❌ 请指定文件路径")
-            print("用法: /check /file <filepath> [/repeat <次数>] [/consensus <0-1>]")
+            print("用法: /check /file <filepath> [/repeat <次数>] [/consensus <0-1>] [/format xlsx|json|md]")
             return
 
         file_path = tokens[0]
@@ -1107,7 +1109,7 @@ Git 引用格式 (commit/diff 命令支持):
 
         if not file_path:
             print("❌ 请指定文件路径")
-            print("用法: /check /file <filepath> [/repeat <次数>] [/consensus <0-1>]")
+            print("用法: /check /file <filepath> [/repeat <次数>] [/consensus <0-1>] [/format xlsx|json|md]")
             return
 
         # 标准化路径（处理 Windows 下 .\file.py 等相对路径）
@@ -1165,37 +1167,35 @@ Git 引用格式 (commit/diff 命令支持):
                 report_dir = self._create_report_dir(check_id)
 
                 try:
+                    # 设置报告导出格式（默认 xlsx）
+                    export_format = common_options.get("format") or "xlsx"
+                    self.report_generator.set_export_format(export_format)
+
                     self.report_generator.generate_file_report(result, report_dir)
 
                     # 根据是否有问题决定显示哪个目录
                     has_issues = len(result.issues) > 0
                     subdir = "with_issues" if has_issues else "no_issues"
 
-                    # 构建文件路径
+                    # 构建文件路径（根据导出格式）
                     safe_filename = self.report_generator._safe_path(file_path)
-                    md_path = os.path.join(report_dir, 'files', subdir, f"{safe_filename}.md")
-                    json_path = os.path.join(report_dir, 'files', subdir, f"{safe_filename}.json")
+                    report_path = os.path.join(report_dir, 'files', subdir, f"{safe_filename}.{export_format}")
 
                     # 验证文件是否真的存在
-                    md_exists = os.path.exists(md_path)
-                    json_exists = os.path.exists(json_path)
+                    report_exists = os.path.exists(report_path)
 
                     print()
-                    if md_exists and json_exists:
+                    if report_exists:
                         print(f"📄 报告已保存到: {report_dir}")
-                        print(f"   - {md_path}")
-                        print(f"   - {json_path}")
+                        print(f"   - {report_path}")
 
                         # 提示日志文件位置
                         log_path = os.path.join(report_dir, 'check.log')
                         if os.path.exists(log_path):
                             print(f"📋 详细日志: {log_path}")
                     else:
-                        print("⚠️  报告生成部分失败:")
-                        if not md_exists:
-                            print(f"   ❌ Markdown 报告未创建: {md_path}")
-                        if not json_exists:
-                            print(f"   ❌ JSON 报告未创建: {json_path}")
+                        print("⚠️  报告生成失败:")
+                        print(f"   ❌ 报告未创建: {report_path}")
                         print()
                         print("💡 可能的原因:")
                         print("   - 磁盘空间不足")
@@ -1337,6 +1337,10 @@ Git 引用格式 (commit/diff 命令支持):
             # 生成 check_id 并创建报告目录
             check_id = self._create_check_id()
             report_dir = self._create_report_dir(check_id)
+
+            # 设置报告导出格式（默认 xlsx）
+            export_format = options.get("format") or "xlsx"
+            self.report_generator.set_export_format(export_format)
 
             # 启动任务日志记录
             from autocoder.checker.task_logger import TaskLogger
@@ -1609,6 +1613,7 @@ Git 引用格式 (commit/diff 命令支持):
             "workers": 5,
             "repeat": None,
             "consensus": None,
+            "format": None,  # 报告导出格式：xlsx（默认）、json、md
         }
 
         if not args.strip():
@@ -1651,6 +1656,13 @@ Git 引用格式 (commit/diff 命令支持):
                     options["consensus"] = float(parts[i + 1])
                 except ValueError:
                     print(f"⚠️  无效的共识阈值: {parts[i + 1]}，使用默认值 1.0")
+                i += 2
+            elif part == "/format" and i + 1 < len(parts):
+                format_value = parts[i + 1].lower()
+                if format_value in ("xlsx", "json", "md"):
+                    options["format"] = format_value
+                else:
+                    print(f"⚠️  无效的报告格式: {parts[i + 1]}，可选: xlsx, json, md，使用默认值 xlsx")
                 i += 2
             else:
                 # 跳过未知选项
@@ -1737,8 +1749,8 @@ Git 引用格式 (commit/diff 命令支持):
             print(f"  consensus = {self.checker_defaults['consensus']}")
 
     def _parse_common_options(self, tokens: List[str]) -> Dict[str, Optional[Any]]:
-        """解析通用的 LLM 共识相关选项"""
-        options: Dict[str, Optional[Any]] = {"repeat": None, "consensus": None}
+        """解析通用的 LLM 共识相关选项和报告格式选项"""
+        options: Dict[str, Optional[Any]] = {"repeat": None, "consensus": None, "format": None}
 
         if not tokens:
             return options
@@ -1760,6 +1772,15 @@ Git 引用格式 (commit/diff 命令支持):
                 except ValueError:
                     print(
                         f"⚠️  无效的共识阈值: {tokens[i + 1]}，保持当前默认值"
+                    )
+                i += 2
+            elif token == "/format" and i + 1 < len(tokens):
+                format_value = tokens[i + 1].lower()
+                if format_value in ("xlsx", "json", "md"):
+                    options["format"] = format_value
+                else:
+                    print(
+                        f"⚠️  无效的报告格式: {tokens[i + 1]}，可选: xlsx, json, md，使用默认值 xlsx"
                     )
                 i += 2
             else:
@@ -2581,13 +2602,14 @@ Git 引用格式 (commit/diff 命令支持):
             args: 参数列表
 
         Returns:
-            选项字典 {repeat, consensus, workers, diff_only}
+            选项字典 {repeat, consensus, workers, diff_only, format}
         """
         options = {
             "repeat": None,
             "consensus": None,
             "workers": 5,  # 默认并发数
-            "diff_only": False  # Phase 3: diff-only 模式
+            "diff_only": False,  # Phase 3: diff-only 模式
+            "format": None,  # 报告导出格式：xlsx（默认）、json、md
         }
 
         i = 0
@@ -2616,6 +2638,13 @@ Git 引用格式 (commit/diff 命令支持):
                 # Phase 3: 启用 diff-only 模式
                 options["diff_only"] = True
                 i += 1
+            elif arg == "/format" and i + 1 < len(args):
+                format_value = args[i + 1].lower()
+                if format_value in ("xlsx", "json", "md"):
+                    options["format"] = format_value
+                else:
+                    print(f"⚠️  无效的报告格式: {args[i + 1]}，可选: xlsx, json, md，使用默认值 xlsx")
+                i += 2
             else:
                 i += 1
 
@@ -2787,6 +2816,10 @@ Git 引用格式 (commit/diff 命令支持):
         # 生成 check_id
         check_id = self._create_check_id_with_prefix(check_type)
         report_dir = self._create_report_dir(check_id)
+
+        # 设置报告导出格式（默认 xlsx）
+        export_format = options.get("format") or "xlsx"
+        self.report_generator.set_export_format(export_format)
 
         # 启动任务日志
         from autocoder.checker.task_logger import TaskLogger

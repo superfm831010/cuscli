@@ -1,7 +1,7 @@
 """
 代码检查报告生成器
 
-支持生成 JSON 和 Markdown 格式的检查报告。
+支持生成 JSON、Markdown 和 Excel (xlsx) 格式的检查报告。
 """
 
 import json
@@ -11,6 +11,11 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from loguru import logger
+
+# Excel 导出支持
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 from autocoder.checker.types import (
     FileCheckResult,
@@ -25,27 +30,55 @@ class ReportGenerator:
     """
     报告生成器
 
-    支持生成单文件报告和批量检查汇总报告，支持 JSON 和 Markdown 两种格式。
+    支持生成单文件报告和批量检查汇总报告，支持 JSON、Markdown 和 Excel 三种格式。
+    默认使用 Excel 格式，可通过 set_export_format() 方法切换。
 
     报告目录结构:
         codecheck/
         └── {check_id}_YYYYMMDD_HHMMSS/
             ├── check.log             # 检查任务日志（详细执行过程）
-            ├── summary.json          # 批量检查汇总（JSON）
-            ├── summary.md            # 批量检查汇总（Markdown）
+            ├── summary.xlsx          # 批量检查汇总（Excel，默认）
             └── files/
                 ├── with_issues/      # 有问题的文件报告
-                │   ├── file1_py.json
-                │   ├── file1_py.md
+                │   ├── file1_py.xlsx
                 │   └── ...
                 └── no_issues/        # 无问题的文件报告
-                    ├── file2_py.json
-                    ├── file2_py.md
+                    ├── file2_py.xlsx
                     └── ...
 
     Attributes:
         output_dir: 报告输出根目录
+        export_format: 导出格式 ("xlsx"、"json" 或 "md")
     """
+
+    # ==================== Excel 样式定义 ====================
+
+    # 严重程度颜色（浅色背景，便于阅读）
+    SEVERITY_FILLS = {
+        "error": PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid"),    # 浅红色
+        "warning": PatternFill(start_color="FFEBCC", end_color="FFEBCC", fill_type="solid"),  # 浅橙色
+        "info": PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid"),     # 浅蓝色
+    }
+
+    # 表头样式（深蓝背景 + 白色加粗字体）
+    HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    HEADER_FONT = Font(color="FFFFFF", bold=True)
+
+    # 检查状态颜色
+    STATUS_FILLS = {
+        "success": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),  # 浅绿色
+        "failed": PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"),   # 浅红色
+        "skipped": PatternFill(start_color="EBEBEB", end_color="EBEBEB", fill_type="solid"),  # 浅灰色
+        "timeout": PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"),  # 浅黄色
+    }
+
+    # 细边框样式
+    THIN_BORDER = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
 
     def __init__(self, output_dir: str = "codecheck"):
         """
@@ -55,13 +88,36 @@ class ReportGenerator:
             output_dir: 报告输出根目录，默认为 "codecheck"
         """
         self.output_dir = output_dir
-        logger.info(f"报告生成器已初始化，输出目录: {output_dir}")
+        # 默认导出格式为 Excel
+        self.export_format = "xlsx"
+        logger.info(f"报告生成器已初始化，输出目录: {output_dir}, 格式: {self.export_format}")
+
+    def set_export_format(self, format_type: str) -> None:
+        """
+        设置导出格式
+
+        Args:
+            format_type: 导出格式，可选 "xlsx"（默认）、"json" 或 "md"
+
+        Raises:
+            ValueError: 如果格式不支持
+        """
+        format_type = format_type.lower()
+        if format_type not in ("xlsx", "json", "md"):
+            raise ValueError(f"不支持的导出格式: {format_type}，可选: xlsx, json, md")
+        self.export_format = format_type
+        logger.info(f"报告导出格式已设置为: {format_type}")
 
     def generate_file_report(
         self, result: FileCheckResult, report_dir: str
     ) -> None:
         """
-        生成单个文件的检查报告（JSON + Markdown）
+        生成单个文件的检查报告
+
+        根据 export_format 设置选择输出格式：
+        - "xlsx": Excel 格式（默认）
+        - "json": JSON 格式
+        - "md": Markdown 格式
 
         Args:
             result: 文件检查结果
@@ -82,30 +138,39 @@ class ReportGenerator:
             # 生成安全的文件名
             safe_filename = self._safe_path(result.file_path)
 
-            # 生成 JSON 报告
-            json_path = os.path.join(files_dir, f"{safe_filename}.json")
-            self._generate_json_report(result, json_path)
+            # 根据导出格式生成对应的报告
+            if self.export_format == "xlsx":
+                # Excel 格式（默认）
+                xlsx_path = os.path.join(files_dir, f"{safe_filename}.xlsx")
+                self._generate_excel_file_report(result, xlsx_path)
+                logger.info(f"已生成 Excel 文件报告: {result.file_path} -> {subdir}")
 
-            # 验证 JSON 文件是否真的创建成功
-            if not os.path.exists(json_path):
-                raise RuntimeError(
-                    f"JSON 报告文件未创建成功: {json_path}\n"
-                    f"可能原因：权限不足、磁盘空间不足或路径包含特殊字符"
-                )
+            elif self.export_format == "json":
+                # JSON 格式
+                json_path = os.path.join(files_dir, f"{safe_filename}.json")
+                self._generate_json_report(result, json_path)
 
-            # 生成 Markdown 报告
-            md_path = os.path.join(files_dir, f"{safe_filename}.md")
-            md_content = self._format_file_markdown(result)
-            self._generate_markdown_report(md_content, md_path)
+                # 验证 JSON 文件是否真的创建成功
+                if not os.path.exists(json_path):
+                    raise RuntimeError(
+                        f"JSON 报告文件未创建成功: {json_path}\n"
+                        f"可能原因：权限不足、磁盘空间不足或路径包含特殊字符"
+                    )
+                logger.info(f"已生成 JSON 文件报告: {result.file_path} -> {subdir}")
 
-            # 验证 Markdown 文件是否真的创建成功
-            if not os.path.exists(md_path):
-                raise RuntimeError(
-                    f"Markdown 报告文件未创建成功: {md_path}\n"
-                    f"可能原因：权限不足、磁盘空间不足或路径包含特殊字符"
-                )
+            elif self.export_format == "md":
+                # Markdown 格式
+                md_path = os.path.join(files_dir, f"{safe_filename}.md")
+                md_content = self._format_file_markdown(result)
+                self._generate_markdown_report(md_content, md_path)
 
-            logger.info(f"已生成文件报告: {result.file_path} -> {subdir}")
+                # 验证 Markdown 文件是否真的创建成功
+                if not os.path.exists(md_path):
+                    raise RuntimeError(
+                        f"Markdown 报告文件未创建成功: {md_path}\n"
+                        f"可能原因：权限不足、磁盘空间不足或路径包含特殊字符"
+                    )
+                logger.info(f"已生成 Markdown 文件报告: {result.file_path} -> {subdir}")
 
         except Exception as e:
             error_msg = f"生成文件报告失败 {result.file_path}: {e}"
@@ -117,7 +182,12 @@ class ReportGenerator:
         self, results: List[FileCheckResult], report_dir: str, git_info: Optional[GitInfo] = None
     ) -> None:
         """
-        生成批量检查的汇总报告（JSON + Markdown）
+        生成批量检查的汇总报告
+
+        根据 export_format 设置选择输出格式：
+        - "xlsx": Excel 格式（默认）
+        - "json": JSON 格式
+        - "md": Markdown 格式
 
         Args:
             results: 所有文件的检查结果列表
@@ -128,39 +198,69 @@ class ReportGenerator:
             # 确保报告目录存在
             os.makedirs(report_dir, exist_ok=True)
 
-            # 构建批量检查结果
-            start_time = datetime.now().isoformat()
-            end_time = datetime.now().isoformat()
+            # 根据导出格式生成对应的报告
+            if self.export_format == "xlsx":
+                # Excel 格式（默认）
+                xlsx_path = os.path.join(report_dir, "summary.xlsx")
+                self._generate_excel_summary_report(results, xlsx_path, git_info)
+                logger.info(f"已生成 Excel 汇总报告: {report_dir}")
 
-            total_issues = sum(len(r.issues) for r in results)
-            total_errors = sum(r.error_count for r in results)
-            total_warnings = sum(r.warning_count for r in results)
-            total_infos = sum(r.info_count for r in results)
+            elif self.export_format == "json":
+                # JSON 格式 - 需要构建 BatchCheckResult
+                start_time = datetime.now().isoformat()
+                end_time = datetime.now().isoformat()
 
-            batch_result = BatchCheckResult(
-                check_id=os.path.basename(report_dir),
-                start_time=start_time,
-                end_time=end_time,
-                total_files=len(results),
-                checked_files=len([r for r in results if r.status == "success"]),
-                total_issues=total_issues,
-                total_errors=total_errors,
-                total_warnings=total_warnings,
-                total_infos=total_infos,
-                file_results=results,
-                git_info=git_info  # Phase 4: 传递 Git 信息
-            )
+                total_issues = sum(len(r.issues) for r in results)
+                total_errors = sum(r.error_count for r in results)
+                total_warnings = sum(r.warning_count for r in results)
+                total_infos = sum(r.info_count for r in results)
 
-            # 生成 JSON 汇总报告
-            json_path = os.path.join(report_dir, "summary.json")
-            self._generate_json_report(batch_result, json_path)
+                batch_result = BatchCheckResult(
+                    check_id=os.path.basename(report_dir),
+                    start_time=start_time,
+                    end_time=end_time,
+                    total_files=len(results),
+                    checked_files=len([r for r in results if r.status == "success"]),
+                    total_issues=total_issues,
+                    total_errors=total_errors,
+                    total_warnings=total_warnings,
+                    total_infos=total_infos,
+                    file_results=results,
+                    git_info=git_info
+                )
 
-            # 生成 Markdown 汇总报告
-            md_path = os.path.join(report_dir, "summary.md")
-            md_content = self._format_summary_markdown(batch_result)
-            self._generate_markdown_report(md_content, md_path)
+                json_path = os.path.join(report_dir, "summary.json")
+                self._generate_json_report(batch_result, json_path)
+                logger.info(f"已生成 JSON 汇总报告: {report_dir}")
 
-            logger.info(f"已生成汇总报告: {report_dir}")
+            elif self.export_format == "md":
+                # Markdown 格式 - 需要构建 BatchCheckResult
+                start_time = datetime.now().isoformat()
+                end_time = datetime.now().isoformat()
+
+                total_issues = sum(len(r.issues) for r in results)
+                total_errors = sum(r.error_count for r in results)
+                total_warnings = sum(r.warning_count for r in results)
+                total_infos = sum(r.info_count for r in results)
+
+                batch_result = BatchCheckResult(
+                    check_id=os.path.basename(report_dir),
+                    start_time=start_time,
+                    end_time=end_time,
+                    total_files=len(results),
+                    checked_files=len([r for r in results if r.status == "success"]),
+                    total_issues=total_issues,
+                    total_errors=total_errors,
+                    total_warnings=total_warnings,
+                    total_infos=total_infos,
+                    file_results=results,
+                    git_info=git_info
+                )
+
+                md_path = os.path.join(report_dir, "summary.md")
+                md_content = self._format_summary_markdown(batch_result)
+                self._generate_markdown_report(md_content, md_path)
+                logger.info(f"已生成 Markdown 汇总报告: {report_dir}")
 
         except Exception as e:
             logger.error(f"生成汇总报告失败: {e}", exc_info=True)
@@ -730,3 +830,390 @@ class ReportGenerator:
                 safe_filename = f"{clean_base_name[:max_base_len]}_{path_hash}"
 
         return safe_filename
+
+    # ==================== Excel 报告生成方法 ====================
+
+    def _auto_adjust_column_width(self, ws, min_width: int = 8, max_width: int = 60) -> None:
+        """
+        自动调整工作表列宽
+
+        Args:
+            ws: openpyxl 工作表对象
+            min_width: 最小列宽
+            max_width: 最大列宽
+        """
+        for column_cells in ws.columns:
+            max_length = 0
+            column = column_cells[0].column_letter
+
+            for cell in column_cells:
+                try:
+                    if cell.value:
+                        # 计算字符长度（中文字符按2计算，以适应Excel显示）
+                        cell_value = str(cell.value)
+                        # 考虑换行符，取最长行
+                        if '\n' in cell_value:
+                            cell_length = max(
+                                sum(2 if ord(c) > 127 else 1 for c in line)
+                                for line in cell_value.split('\n')
+                            )
+                        else:
+                            cell_length = sum(2 if ord(c) > 127 else 1 for c in cell_value)
+                        max_length = max(max_length, cell_length)
+                except Exception:
+                    pass
+
+            # 应用宽度限制
+            adjusted_width = min(max(max_length + 2, min_width), max_width)
+            ws.column_dimensions[column].width = adjusted_width
+
+    def _apply_header_style(self, ws, row: int = 1) -> None:
+        """
+        为指定行应用表头样式
+
+        Args:
+            ws: openpyxl 工作表对象
+            row: 表头行号（从1开始）
+        """
+        for cell in ws[row]:
+            cell.fill = self.HEADER_FILL
+            cell.font = self.HEADER_FONT
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = self.THIN_BORDER
+
+    def _generate_excel_file_report(self, result: FileCheckResult, output_path: str) -> None:
+        """
+        生成单文件 Excel 报告
+
+        Args:
+            result: 文件检查结果
+            output_path: 输出文件路径
+
+        Raises:
+            RuntimeError: 如果报告生成失败
+        """
+        try:
+            wb = Workbook()
+
+            # ===== 概览工作表 =====
+            ws_overview = wb.active
+            ws_overview.title = "概览"
+
+            # 概览数据
+            overview_data = [
+                ("文件路径", result.file_path),
+                ("检查时间", result.check_time),
+                ("检查状态", result.status),
+            ]
+
+            # 审核模式信息
+            if result.audit_mode:
+                mode_text = "Diff-Only（差异审核）" if result.audit_mode == "diff-only" else "全文件审核"
+                if result.audit_stats and result.audit_mode == "diff-only":
+                    audit_summary = result.get_audit_summary()
+                    if audit_summary:
+                        mode_text += f" - {audit_summary}"
+                overview_data.append(("审核模式", mode_text))
+
+            overview_data.extend([
+                ("", ""),  # 空行分隔
+                ("总问题数", result.get_total_issues()),
+                ("错误 (ERROR)", result.error_count),
+                ("警告 (WARNING)", result.warning_count),
+                ("提示 (INFO)", result.info_count),
+            ])
+
+            if result.error_message:
+                overview_data.append(("", ""))
+                overview_data.append(("错误信息", result.error_message))
+
+            # 写入概览数据
+            for row_idx, (label, value) in enumerate(overview_data, start=1):
+                ws_overview.cell(row=row_idx, column=1, value=label)
+                ws_overview.cell(row=row_idx, column=2, value=value)
+                # 标签列加粗
+                if label:
+                    ws_overview.cell(row=row_idx, column=1).font = Font(bold=True)
+                # 状态列应用颜色
+                if label == "检查状态":
+                    status_fill = self.STATUS_FILLS.get(result.status)
+                    if status_fill:
+                        ws_overview.cell(row=row_idx, column=2).fill = status_fill
+
+            self._auto_adjust_column_width(ws_overview)
+
+            # ===== 问题详情工作表 =====
+            ws_issues = wb.create_sheet("问题详情")
+
+            # 表头
+            headers = ["序号", "严重程度", "规则ID", "行号", "描述", "建议", "代码片段"]
+            for col_idx, header in enumerate(headers, start=1):
+                ws_issues.cell(row=1, column=col_idx, value=header)
+            self._apply_header_style(ws_issues, row=1)
+
+            # 问题数据
+            if result.issues:
+                for row_idx, issue in enumerate(result.issues, start=2):
+                    # 行号格式
+                    if issue.line_start != issue.line_end:
+                        line_range = f"{issue.line_start}-{issue.line_end}"
+                    else:
+                        line_range = str(issue.line_start)
+
+                    ws_issues.cell(row=row_idx, column=1, value=row_idx - 1)
+
+                    # 严重程度（带颜色）
+                    severity_value = issue.severity.value.upper() if hasattr(issue.severity, 'value') else str(issue.severity).upper()
+                    severity_cell = ws_issues.cell(row=row_idx, column=2, value=severity_value)
+                    severity_key = issue.severity.value.lower() if hasattr(issue.severity, 'value') else str(issue.severity).lower()
+                    severity_fill = self.SEVERITY_FILLS.get(severity_key)
+                    if severity_fill:
+                        severity_cell.fill = severity_fill
+
+                    ws_issues.cell(row=row_idx, column=3, value=issue.rule_id)
+                    ws_issues.cell(row=row_idx, column=4, value=line_range)
+                    ws_issues.cell(row=row_idx, column=5, value=issue.description)
+                    ws_issues.cell(row=row_idx, column=6, value=issue.suggestion)
+
+                    # 代码片段（自动换行）
+                    code_cell = ws_issues.cell(row=row_idx, column=7, value=issue.code_snippet or "")
+                    code_cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+                # 冻结表头
+                ws_issues.freeze_panes = "A2"
+                # 启用筛选
+                ws_issues.auto_filter.ref = ws_issues.dimensions
+            else:
+                # 无问题时显示提示
+                ws_issues.cell(row=2, column=1, value="未发现问题")
+                ws_issues.merge_cells('A2:G2')
+                ws_issues.cell(row=2, column=1).alignment = Alignment(horizontal="center")
+
+            self._auto_adjust_column_width(ws_issues)
+
+            # 确保目录存在
+            parent_dir = os.path.dirname(output_path)
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
+
+            # 保存文件
+            wb.save(output_path)
+
+            # 验证文件是否创建成功
+            if not os.path.exists(output_path):
+                raise RuntimeError(f"Excel 文件未创建成功: {output_path}")
+
+            file_size = os.path.getsize(output_path)
+            logger.debug(f"Excel 文件报告已保存: {output_path} (大小: {file_size} 字节)")
+
+        except Exception as e:
+            error_msg = f"生成 Excel 文件报告失败 {output_path}: {e}"
+            logger.error(error_msg, exc_info=True)
+            raise RuntimeError(error_msg) from e
+
+    def _generate_excel_summary_report(
+        self,
+        results: List[FileCheckResult],
+        output_path: str,
+        git_info: Optional[GitInfo] = None
+    ) -> None:
+        """
+        生成汇总 Excel 报告
+
+        Args:
+            results: 文件检查结果列表
+            output_path: 输出文件路径
+            git_info: Git 信息（可选）
+
+        Raises:
+            RuntimeError: 如果报告生成失败
+        """
+        try:
+            wb = Workbook()
+
+            # 统计数据
+            total_files = len(results)
+            checked_files = len([r for r in results if r.status == "success"])
+            total_issues = sum(len(r.issues) for r in results)
+            total_errors = sum(r.error_count for r in results)
+            total_warnings = sum(r.warning_count for r in results)
+            total_infos = sum(r.info_count for r in results)
+
+            # ===== 汇总概览工作表 =====
+            ws_overview = wb.active
+            ws_overview.title = "汇总概览"
+
+            overview_data = []
+
+            # Git 信息
+            if git_info:
+                if git_info.type == "staged":
+                    overview_data.append(("检查类型", "Git 暂存区文件"))
+                elif git_info.type == "unstaged":
+                    overview_data.append(("检查类型", "Git 工作区修改文件"))
+                elif git_info.type == "commit":
+                    overview_data.append(("检查类型", "Git Commit 检查"))
+                    if git_info.short_hash:
+                        msg = git_info.message[:50] + "..." if git_info.message and len(git_info.message) > 50 else (git_info.message or "")
+                        overview_data.append(("Commit", f"{git_info.short_hash} - {msg}"))
+                elif git_info.type == "diff":
+                    overview_data.append(("检查类型", "Git Diff 检查"))
+                    if git_info.commit1 and git_info.commit2:
+                        overview_data.append(("对比范围", f"{git_info.commit1}...{git_info.commit2}"))
+
+                if git_info.branch:
+                    overview_data.append(("当前分支", git_info.branch))
+
+            overview_data.extend([
+                ("", ""),  # 空行分隔
+                ("总文件数", total_files),
+                ("已检查文件", checked_files),
+                ("完成率", f"{checked_files / total_files * 100:.1f}%" if total_files > 0 else "0%"),
+                ("", ""),
+                ("总问题数", total_issues),
+                ("错误 (ERROR)", total_errors),
+                ("警告 (WARNING)", total_warnings),
+                ("提示 (INFO)", total_infos),
+            ])
+
+            for row_idx, (label, value) in enumerate(overview_data, start=1):
+                ws_overview.cell(row=row_idx, column=1, value=label)
+                ws_overview.cell(row=row_idx, column=2, value=value)
+                if label:
+                    ws_overview.cell(row=row_idx, column=1).font = Font(bold=True)
+
+            self._auto_adjust_column_width(ws_overview)
+
+            # ===== 文件列表工作表 =====
+            ws_files = wb.create_sheet("文件列表")
+
+            file_headers = ["序号", "文件路径", "状态", "错误", "警告", "提示", "总计", "审核模式"]
+            for col_idx, header in enumerate(file_headers, start=1):
+                ws_files.cell(row=1, column=col_idx, value=header)
+            self._apply_header_style(ws_files, row=1)
+
+            # 按严重程度优先排序：先按 ERROR 数量，再按 WARNING，最后 INFO
+            sorted_results = sorted(
+                results,
+                key=lambda r: (r.error_count, r.warning_count, r.info_count),
+                reverse=True
+            )
+
+            for row_idx, result in enumerate(sorted_results, start=2):
+                ws_files.cell(row=row_idx, column=1, value=row_idx - 1)
+                ws_files.cell(row=row_idx, column=2, value=result.file_path)
+
+                # 状态（带颜色）
+                status_cell = ws_files.cell(row=row_idx, column=3, value=result.status)
+                status_fill = self.STATUS_FILLS.get(result.status)
+                if status_fill:
+                    status_cell.fill = status_fill
+
+                ws_files.cell(row=row_idx, column=4, value=result.error_count)
+                ws_files.cell(row=row_idx, column=5, value=result.warning_count)
+                ws_files.cell(row=row_idx, column=6, value=result.info_count)
+                ws_files.cell(row=row_idx, column=7, value=result.get_total_issues())
+                ws_files.cell(row=row_idx, column=8, value=result.audit_mode or "-")
+
+            ws_files.freeze_panes = "A2"
+            ws_files.auto_filter.ref = ws_files.dimensions
+            self._auto_adjust_column_width(ws_files)
+
+            # ===== 问题分布工作表 =====
+            ws_dist = wb.create_sheet("问题分布")
+
+            # 按规则ID统计
+            rule_stats: Dict[str, Dict[str, int]] = {}
+            for result in results:
+                for issue in result.issues:
+                    if issue.rule_id not in rule_stats:
+                        rule_stats[issue.rule_id] = {"error": 0, "warning": 0, "info": 0}
+                    severity_key = issue.severity.value.lower() if hasattr(issue.severity, 'value') else str(issue.severity).lower()
+                    rule_stats[issue.rule_id][severity_key] += 1
+
+            dist_headers = ["规则ID", "ERROR", "WARNING", "INFO", "总计"]
+            for col_idx, header in enumerate(dist_headers, start=1):
+                ws_dist.cell(row=1, column=col_idx, value=header)
+            self._apply_header_style(ws_dist, row=1)
+
+            # 按总数排序规则
+            sorted_rules = sorted(rule_stats.items(), key=lambda x: sum(x[1].values()), reverse=True)
+
+            for row_idx, (rule_id, counts) in enumerate(sorted_rules, start=2):
+                total = sum(counts.values())
+                ws_dist.cell(row=row_idx, column=1, value=rule_id)
+                ws_dist.cell(row=row_idx, column=2, value=counts["error"])
+                ws_dist.cell(row=row_idx, column=3, value=counts["warning"])
+                ws_dist.cell(row=row_idx, column=4, value=counts["info"])
+                ws_dist.cell(row=row_idx, column=5, value=total)
+
+            if rule_stats:
+                ws_dist.freeze_panes = "A2"
+            self._auto_adjust_column_width(ws_dist)
+
+            # ===== 所有问题工作表 =====
+            ws_all = wb.create_sheet("所有问题")
+
+            all_headers = ["序号", "文件路径", "严重程度", "规则ID", "行号", "描述", "建议"]
+            for col_idx, header in enumerate(all_headers, start=1):
+                ws_all.cell(row=1, column=col_idx, value=header)
+            self._apply_header_style(ws_all, row=1)
+
+            issue_idx = 1
+            for result in sorted_results:
+                for issue in result.issues:
+                    row_idx = issue_idx + 1
+
+                    # 行号格式
+                    if issue.line_start != issue.line_end:
+                        line_range = f"{issue.line_start}-{issue.line_end}"
+                    else:
+                        line_range = str(issue.line_start)
+
+                    ws_all.cell(row=row_idx, column=1, value=issue_idx)
+                    ws_all.cell(row=row_idx, column=2, value=result.file_path)
+
+                    # 严重程度（带颜色）
+                    severity_value = issue.severity.value.upper() if hasattr(issue.severity, 'value') else str(issue.severity).upper()
+                    severity_cell = ws_all.cell(row=row_idx, column=3, value=severity_value)
+                    severity_key = issue.severity.value.lower() if hasattr(issue.severity, 'value') else str(issue.severity).lower()
+                    severity_fill = self.SEVERITY_FILLS.get(severity_key)
+                    if severity_fill:
+                        severity_cell.fill = severity_fill
+
+                    ws_all.cell(row=row_idx, column=4, value=issue.rule_id)
+                    ws_all.cell(row=row_idx, column=5, value=line_range)
+
+                    # 描述和建议（自动换行）
+                    desc_cell = ws_all.cell(row=row_idx, column=6, value=issue.description)
+                    desc_cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+                    suggest_cell = ws_all.cell(row=row_idx, column=7, value=issue.suggestion)
+                    suggest_cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+                    issue_idx += 1
+
+            if issue_idx > 1:
+                ws_all.freeze_panes = "A2"
+                ws_all.auto_filter.ref = ws_all.dimensions
+            self._auto_adjust_column_width(ws_all)
+
+            # 确保目录存在
+            parent_dir = os.path.dirname(output_path)
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
+
+            # 保存文件
+            wb.save(output_path)
+
+            # 验证文件是否创建成功
+            if not os.path.exists(output_path):
+                raise RuntimeError(f"Excel 汇总报告未创建成功: {output_path}")
+
+            file_size = os.path.getsize(output_path)
+            logger.info(f"Excel 汇总报告已保存: {output_path} (大小: {file_size} 字节)")
+
+        except Exception as e:
+            error_msg = f"生成 Excel 汇总报告失败 {output_path}: {e}"
+            logger.error(error_msg, exc_info=True)
+            raise RuntimeError(error_msg) from e
