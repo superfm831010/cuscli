@@ -402,9 +402,19 @@ class ChatAgent:
             printer.print_in_terminal("estimated_chat_input_tokens", style="yellow",
                                       estimated_input_tokens=estimated_input_tokens)
 
+            # 添加对话剪枝（参考 auto 命令的处理方式）
+            from autocoder.common.pruner.conversation_pruner import ConversationPruner
+            pruner = ConversationPruner(self.args, chat_llm)
+            pruned_conversations = pruner.prune_conversations(loaded_conversations)
+
+            # 如果剪枝后对话为空，记录警告并使用原始对话
+            if not pruned_conversations:
+                logger.warning("Conversations pruned to empty list, using original conversations")
+                pruned_conversations = loaded_conversations
+
             return stream_chat_with_continue(
                 llm=chat_llm,
-                conversations=loaded_conversations,
+                conversations=pruned_conversations,
                 llm_config={},
                 args=self.args
             )
