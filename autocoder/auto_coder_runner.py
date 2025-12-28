@@ -369,17 +369,11 @@ def initialize_system(args: InitializeSystemRequest):
         else:
             print(f"  {message}")
 
-        if not os.path.exists(base_persist_dir):
-            os.makedirs(base_persist_dir, exist_ok=True)
-            print_status(
-                get_message_with_format("created_dir", path=base_persist_dir), "success"
-            )
-
-        if first_time[0]:
-            configure("project_type:*", skip_print=True)
-            configure_success[0] = True
-
-        print_status(get_message("init_complete"), "success")
+    if not os.path.exists(base_persist_dir):
+        os.makedirs(base_persist_dir, exist_ok=True)
+        print_status(
+            get_message_with_format("created_dir", path=base_persist_dir), "success"
+        )
 
     # 检查是否有模型配置，如果没有则引导用户配置
     llm_manager = LLMManager()
@@ -405,6 +399,12 @@ def initialize_system(args: InitializeSystemRequest):
             if not current_model or not llm_manager.check_model_exists(current_model):
                 configure(f"model:{first_model.name}", skip_print=True)
                 print_status(f"自动设置默认模型: {first_model.name}", "success")
+
+    if first_time[0]:
+        configure("project_type:*", skip_print=True)
+        configure_success[0] = True
+
+    print_status(get_message("init_complete"), "success")
 
     init_project_if_required(target_dir=project_root, project_type="*")
 
