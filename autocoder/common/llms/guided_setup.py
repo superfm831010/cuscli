@@ -273,3 +273,80 @@ def _save_model_config(console: Console, model_config: Dict) -> bool:
     except Exception as e:
         console.print(f"[red]保存配置时出错: {str(e)}[/red]")
         return False
+
+
+def guide_add_model() -> Optional[str]:
+    """
+    引导用户添加新模型的交互式流程（用于 /models /add 命令）
+
+    与 guide_first_model_setup() 类似，但欢迎信息不同
+
+    Returns:
+        Optional[str]: 成功时返回模型名称，失败或取消时返回 None
+    """
+    console = Console()
+
+    # 显示欢迎信息（与首次配置不同）
+    console.print("\n")
+    console.print(Panel(
+        "[bold cyan]添加新模型[/bold cyan]\n\n"
+        "配置一个新的模型。\n\n"
+        "[yellow]提示：[/yellow] 配置的模型信息将保存在 [green]~/.auto-coder/keys/models.json[/green]",
+        title="➕ 添加模型",
+        border_style="cyan"
+    ))
+
+    try:
+        # 收集模型信息
+        model_config = _prompt_model_info(console)
+
+        if not model_config:
+            console.print("[yellow]配置已取消[/yellow]")
+            return None
+
+        # 检查模型名称是否已存在
+        llm_manager = LLMManager()
+        if llm_manager.check_model_exists(model_config['name']):
+            console.print(f"[red]错误: 模型名称 '{model_config['name']}' 已存在[/red]")
+            console.print("[yellow]提示: 请使用 /models /list 查看现有模型[/yellow]")
+            return None
+
+        # 确认信息
+        if not _confirm_model_config(console, model_config):
+            console.print("[yellow]配置已取消[/yellow]")
+            return None
+
+        # 测试连接
+        test_result = _test_model_connection(console, model_config)
+        if test_result == "cancel":
+            console.print("[yellow]配置已取消[/yellow]")
+            return None
+        elif test_result == "retry":
+            # 用户选择重新配置
+            console.print("\n[cyan]请重新输入配置信息[/cyan]")
+            return guide_add_model()
+
+        # 保存配置
+        success = _save_model_config(console, model_config)
+
+        if success:
+            console.print("\n")
+            console.print(Panel(
+                f"[bold green]✓[/bold green] 模型 [bold]{model_config['name']}[/bold] 添加成功！\n\n"
+                "你现在可以使用以下命令：\n"
+                f"  [cyan]/models /switch {model_config['name']}[/cyan] - 切换到此模型\n"
+                "  [cyan]/models /list[/cyan] - 查看所有模型",
+                title="✅ 添加成功",
+                border_style="green"
+            ))
+            return model_config['name']
+        else:
+            console.print("[red]配置保存失败[/red]")
+            return None
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]配置已取消[/yellow]")
+        return None
+    except Exception as e:
+        console.print(f"\n[red]配置过程出错: {str(e)}[/red]")
+        return None

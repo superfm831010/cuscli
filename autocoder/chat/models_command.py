@@ -76,6 +76,14 @@ def handle_models_command(query: str):
         subcmd = "/chat"
         query = query.replace("/chat", "", 1).strip()
 
+    if "/add" in query and "/add_provider" not in query:
+        subcmd = "/add"
+        query = query.replace("/add", "", 1).strip()
+
+    if "/switch" in query:
+        subcmd = "/switch"
+        query = query.replace("/switch", "", 1).strip()
+
     # 如果没有找到任何子命令，检查是否是简化的激活命令格式: provider/model_name <api_key>
     if not subcmd and query.strip():
         parts = query.strip().split()
@@ -479,6 +487,75 @@ def handle_models_command(query: str):
                 content=f"Failed to remove model: {name}. Cannot remove default models.",
                 meta={"action": "models", "input": {"query": query}},
             )
+
+    elif subcmd == "/add":
+        # 交互式添加新模型
+        from autocoder.common.llms.guided_setup import guide_add_model
+
+        model_name = guide_add_model()
+        if model_name:
+            # 添加成功后自动切换到新模型
+            memory_manager.set_config("model", model_name)
+            printer.print_in_terminal(
+                "models_auto_set_model", style="cyan", name=model_name
+            )
+            result_manager.add_result(
+                content=f"Model added and switched to: {model_name}",
+                meta={"action": "models", "input": {"query": query}},
+            )
+        else:
+            result_manager.add_result(
+                content="Model addition cancelled or failed",
+                meta={"action": "models", "input": {"query": query}},
+            )
+
+    elif subcmd == "/switch":
+        # 切换模型
+        model_name = query.strip()
+        if not model_name:
+            # 没有提供模型名称，显示可用模型列表
+            all_models = llm_manager.get_all_models()
+            available_models = [
+                m.name for m in all_models.values() if llm_manager.has_key(m.name)
+            ]
+            if available_models:
+                printer.print_in_terminal("models_switch_usage", style="yellow")
+                console.print("[cyan]可用模型:[/cyan]")
+                for m in available_models:
+                    current_model = memory_manager.get_config("model", "")
+                    if m == current_model:
+                        console.print(f"  [green]• {m} (当前)[/green]")
+                    else:
+                        console.print(f"  • {m}")
+            else:
+                printer.print_in_terminal("models_no_available_models", style="yellow")
+            result_manager.add_result(
+                content=f"Available models: {', '.join(available_models)}",
+                meta={"action": "models", "input": {"query": query}},
+            )
+        else:
+            # 检查模型是否存在
+            if not llm_manager.check_model_exists(model_name):
+                printer.print_in_terminal("models_not_found", style="red", name=model_name)
+                result_manager.add_result(
+                    content=f"Model not found: {model_name}",
+                    meta={"action": "models", "input": {"query": query}},
+                )
+            elif not llm_manager.has_key(model_name):
+                # 模型存在但没有 API Key
+                printer.print_in_terminal("models_no_api_key", style="red", name=model_name)
+                result_manager.add_result(
+                    content=f"Model {model_name} has no API Key configured",
+                    meta={"action": "models", "input": {"query": query}},
+                )
+            else:
+                # 切换模型
+                memory_manager.set_config("model", model_name)
+                printer.print_in_terminal("models_switched", style="green", name=model_name)
+                result_manager.add_result(
+                    content=f"Switched to model: {model_name}",
+                    meta={"action": "models", "input": {"query": query}},
+                )
 
     elif subcmd == "/chat":
         if not query.strip():

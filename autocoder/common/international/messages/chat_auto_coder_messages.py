@@ -1558,4 +1558,32 @@ Rules file usage:
         "ar": "المكونات الإضافية المحملة:",
         "ru": "Загруженные плагины:",
     },
+    "models_switch_usage": {
+        "en": "Usage: /models /switch <model_name>",
+        "zh": "用法: /models /switch <模型名称>",
+        "ja": "使用法: /models /switch <モデル名>",
+        "ar": "الاستخدام: /models /switch <اسم_النموذج>",
+        "ru": "Использование: /models /switch <имя_модели>",
+    },
+    "models_switched": {
+        "en": "Switched to model: {{name}}",
+        "zh": "已切换到模型: {{name}}",
+        "ja": "モデルに切り替えました: {{name}}",
+        "ar": "تم التبديل إلى النموذج: {{name}}",
+        "ru": "Переключено на модель: {{name}}",
+    },
+    "models_no_api_key": {
+        "en": "Model '{{name}}' has no API Key configured. Please configure it first.",
+        "zh": "模型 '{{name}}' 未配置 API Key。请先配置 API Key。",
+        "ja": "モデル '{{name}}' には API キーが設定されていません。先に設定してください。",
+        "ar": "النموذج '{{name}}' لا يحتوي على مفتاح API. يرجى تكوينه أولاً.",
+        "ru": "У модели '{{name}}' не настроен API ключ. Сначала настройте его.",
+    },
+    "models_no_available_models": {
+        "en": "No models with API Key configured. Use '/models /add' to add a new model.",
+        "zh": "没有已配置 API Key 的模型。使用 '/models /add' 添加新模型。",
+        "ja": "API キーが設定されているモデルがありません。'/models /add' を使用して新しいモデルを追加してください。",
+        "ar": "لا توجد نماذج بمفتاح API مكوّن. استخدم '/models /add' لإضافة نموذج جديد.",
+        "ru": "Нет моделей с настроенным API ключом. Используйте '/models /add' для добавления новой модели.",
+    },
 }
