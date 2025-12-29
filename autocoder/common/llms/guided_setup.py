@@ -2,7 +2,7 @@
 交互式引导用户配置第一个模型
 """
 
-from prompt_toolkit import prompt
+from autocoder.common.async_prompt import prompt
 from prompt_toolkit.formatted_text import HTML
 from rich.console import Console
 from rich.panel import Panel
