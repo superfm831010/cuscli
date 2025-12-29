@@ -65,6 +65,8 @@ if errorlevel 1 goto :error
 call :install_cuscli
 if errorlevel 1 goto :error
 
+call :extract_cmder
+
 call :verify_installation
 call :add_to_path
 call :show_completion
@@ -268,6 +270,48 @@ if defined WHEEL_FILE (
 ) else (
     echo [WARN] No cuscli wheel file found, skipping installation
 )
+goto :eof
+
+:extract_cmder
+echo.
+echo [INFO] Setting up Cmder terminal...
+
+set "CMDER_ZIP=%SCRIPT_DIR%\cmder_mini.zip"
+set "CMDER_DIR=%SCRIPT_DIR%\cmder"
+
+REM Check if Cmder zip exists
+if not exist "%CMDER_ZIP%" (
+    echo [INFO] Cmder Mini not found - skipping (optional component)
+    goto :eof
+)
+
+REM Check if already extracted
+if exist "%CMDER_DIR%\Cmder.exe" (
+    echo [INFO] Cmder already extracted
+    goto :eof
+)
+
+echo [INFO] Extracting Cmder Mini...
+
+REM Use PowerShell to extract (available on Windows Server 2016+)
+powershell -Command "& {Expand-Archive -Path '%CMDER_ZIP%' -DestinationPath '%CMDER_DIR%' -Force}" 2>nul
+if errorlevel 1 (
+    echo [WARN] Failed to extract Cmder using PowerShell
+    echo [WARN] Trying alternative method...
+
+    REM Try using tar (available on Windows 10 1803+)
+    tar -xf "%CMDER_ZIP%" -C "%SCRIPT_DIR%" 2>nul
+    if errorlevel 1 (
+        echo [WARN] Failed to extract Cmder
+        echo [WARN] Please manually extract %CMDER_ZIP% to %CMDER_DIR%
+        echo [WARN] Cmder is optional - cuscli will still work without it
+    ) else (
+        echo [INFO] Cmder extracted successfully (using tar)
+    )
+) else (
+    echo [INFO] Cmder extracted successfully
+)
+
 goto :eof
 
 :verify_installation
