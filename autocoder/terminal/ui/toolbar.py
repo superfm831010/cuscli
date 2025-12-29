@@ -21,7 +21,6 @@ def get_bottom_toolbar_func(
 
     def get_bottom_toolbar():
         mode = get_mode_func()
-        human_as_model = get_human_as_model_string_func()
         agentic_mode = get_agentic_mode_string_func()
         MODES = {
             "normal": "normal",
@@ -59,6 +58,6 @@ def get_bottom_toolbar_func(
             # 静默处理异常，不影响底部工具栏的显示
             pass
 
-        return f"PWD: {pwd} \nInput: {MODES[mode]} | Human as Model: {human_as_model} | Agentic Mode: {agentic_mode} | {plugin_info}{async_tasks_info}"
+        return f"PWD: {pwd} \nInput: {MODES[mode]} | Agentic Mode: {agentic_mode} | {plugin_info}{async_tasks_info}"
 
     return get_bottom_toolbar
