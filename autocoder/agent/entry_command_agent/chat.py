@@ -411,21 +411,6 @@ class ChatAgent:
                 logger.warning("Conversations pruned to empty list, using original conversations")
                 pruned_conversations = loaded_conversations
 
-            # 详细诊断日志：打印发送给模型的对话内容
-            logger.info(f"=== Chat conversations debug ===")
-            logger.info(f"Total messages: {len(pruned_conversations)}")
-            # 打印最后5条消息
-            last_msgs = pruned_conversations[-5:] if len(pruned_conversations) >= 5 else pruned_conversations
-            for i, conv in enumerate(last_msgs):
-                role = conv.get('role', 'unknown')
-                content = conv.get('content', '')
-                content_preview = content[:200] if content else '(empty)'
-                msg_index = len(pruned_conversations) - len(last_msgs) + i
-                logger.info(f"  [{msg_index}] {role}: {content_preview}...")
-            if pruned_conversations:
-                logger.info(f"Last message role: {pruned_conversations[-1].get('role', 'N/A')}")
-            logger.info(f"=== End debug ===")
-
             # 确保最后一条消息是 user 角色，否则模型不会回复
             if pruned_conversations and pruned_conversations[-1].get('role') == 'assistant':
                 logger.warning("Last message is assistant, adding user query to ensure model response")
