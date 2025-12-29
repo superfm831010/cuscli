@@ -44,9 +44,6 @@ call :check_requirements
 call :download_python
 if errorlevel 1 goto :error
 
-call :download_cmder
-if errorlevel 1 goto :error
-
 REM If Python is not available, stop here and ask user to install
 if not defined PYTHON_CMD (
     echo.
@@ -173,43 +170,6 @@ if errorlevel 1 (
     )
 ) else (
     echo [INFO] Python installer downloaded successfully
-)
-
-goto :eof
-
-:download_cmder
-echo.
-echo [INFO] Downloading Cmder Mini terminal...
-
-set "CMDER_DIR=%SCRIPT_DIR%\cmder"
-set "CMDER_ZIP=%SCRIPT_DIR%\cmder_mini.zip"
-
-REM Cmder Mini download URL (v1.3.25 - stable release)
-set "CMDER_URL=https://github.com/cmderdev/cmder/releases/download/v1.3.25/cmder_mini.zip"
-
-if exist "%CMDER_ZIP%" (
-    echo [INFO] Cmder Mini already exists: cmder_mini.zip
-    goto :eof
-)
-
-echo [INFO] Downloading from %CMDER_URL%
-echo [INFO] This may take a few minutes...
-
-REM Use PowerShell to download (more reliable than curl on Windows)
-powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%CMDER_URL%' -OutFile '%CMDER_ZIP%'}" 2>nul
-if errorlevel 1 (
-    REM Try curl as fallback
-    curl -L -o "%CMDER_ZIP%" "%CMDER_URL%" 2>nul
-    if errorlevel 1 (
-        echo [WARN] Failed to download Cmder Mini
-        echo [WARN] Please manually download from: %CMDER_URL%
-        echo [WARN] And place it in: %SCRIPT_DIR%
-        echo [WARN] Cmder is optional - cuscli will still work without it
-    ) else (
-        echo [INFO] Cmder Mini downloaded successfully
-    )
-) else (
-    echo [INFO] Cmder Mini downloaded successfully
 )
 
 goto :eof
