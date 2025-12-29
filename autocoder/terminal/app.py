@@ -496,7 +496,7 @@ class TerminalApp:
                     prompt_message = [
                         ("class:username", "coding"),
                         ("class:at", "@"),
-                        ("class:host", "auto-coder.chat"),
+                        ("class:host", "cuscli.chat"),
                         ("class:colon", ":"),
                         ("class:path", "~"),
                         ("class:dollar", "$ "),
