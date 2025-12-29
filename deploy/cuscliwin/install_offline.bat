@@ -66,6 +66,7 @@ call :install_cuscli
 if errorlevel 1 goto :error
 
 call :extract_cmder
+call :register_cmder
 
 call :verify_installation
 call :add_to_path
@@ -314,6 +315,31 @@ if errorlevel 1 (
 
 goto :eof
 
+:register_cmder
+echo.
+echo [INFO] Registering Cmder command to system PATH...
+
+REM Check if cuscliwin directory is already in PATH
+echo %PATH% | findstr /i /c:"%SCRIPT_DIR%" >nul
+if not errorlevel 1 (
+    echo [INFO] Cuscliwin directory already in PATH
+    goto :eof
+)
+
+REM Add cuscliwin directory to user PATH (no admin required)
+REM This makes 'cmder.cmd' globally accessible
+setx PATH "%PATH%;%SCRIPT_DIR%" >nul 2>&1
+if errorlevel 1 (
+    echo [WARN] Could not add to PATH automatically
+    echo [WARN] To use 'cmder' command globally, please add this directory to PATH manually:
+    echo [WARN]   %SCRIPT_DIR%
+) else (
+    echo [INFO] Cmder command registered successfully
+    echo [INFO] After restarting Command Prompt, you can run 'cmder' from any directory
+)
+
+goto :eof
+
 :verify_installation
 echo.
 echo [INFO] Verifying installation...
@@ -378,14 +404,16 @@ echo ============================================
 echo   How to use cuscli
 echo ============================================
 echo.
-echo After restarting Command Prompt, you can run cuscli from any directory:
+echo Method 1: Use 'cmder' command (Recommended)
+echo   After restarting Command Prompt, run from any directory:
 echo.
-echo   cd C:\your\project
-echo   cuscli
+echo     cmder
 echo.
-echo Or use the start script:
+echo   This opens Cmder terminal with venv activated.
+echo   Then cd to your project and run: cuscli
 echo.
-echo   cd C:\your\project
+echo Method 2: Use start.bat directly
+echo.
 echo   %SCRIPT_DIR%\start.bat
 echo.
 echo NOTE: Restart Command Prompt for PATH changes to take effect!
