@@ -107,3 +107,18 @@ cython_debug/
 .autocodercommands
 .autocoderagents
 .autocoderlinters
+
+# 大体积文件与部署产物（不纳入版本控制）
+*.whl
+*.tar.gz
+deploy/cuscliwin.zip
+deploy/cuscliwin/packages/
+deploy/cuscliwin/python/
+deploy/packages/
+
+# 验收交付物与规则文件
+验收/
+*.xlsx
+
+# checker 检查样例代码
+/src/

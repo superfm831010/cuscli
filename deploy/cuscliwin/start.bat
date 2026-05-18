@@ -50,8 +50,8 @@ if exist "%CMDER_DIR%\Cmder.exe" (
     set "CONFIG_FILE=%SCRIPT_DIR%\cmder_config.tmp"
     echo CUSCLI_VENV=%VENV_DIR%> "%CONFIG_FILE%"
 
-    REM Start Cmder with init script using ConEmu's -run parameter
-    start "" "%CMDER_DIR%\Cmder.exe" /SINGLE /START "%SCRIPT_DIR%" -run "\"%CMDER_INIT%\""
+    REM Start Cmder (user_profile.cmd in cmder/config/ will auto-activate venv)
+    start "" "%CMDER_DIR%\Cmder.exe" /SINGLE /START "%SCRIPT_DIR%"
 
     REM Exit current cmd window
     exit /b 0
